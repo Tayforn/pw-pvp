@@ -74,16 +74,18 @@ export default function AdminsManager({ currentUserId }: { currentUserId: string
                     Видалити
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="btn btn-bad btn-sm"
-                  onClick={() =>
-                    confirm(`Видалити ВСІ турніри «${a.email}» (разом із заявками й сітками)? Це незворотньо.`) &&
-                    deleteTournamentsByOwner(a.userId).catch(reportError)
-                  }
-                >
-                  Очистити турніри
-                </button>
+                {a.role !== 'superadmin' && (
+                  <button
+                    type="button"
+                    className="btn btn-bad btn-sm"
+                    onClick={() =>
+                      confirm(`Видалити ВСІ турніри «${a.email}» (разом із заявками й сітками)? Це незворотньо.`) &&
+                      deleteTournamentsByOwner(a.userId).catch(reportError)
+                    }
+                  >
+                    Очистити турніри
+                  </button>
+                )}
               </>
             )}
           </div>
