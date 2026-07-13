@@ -8,6 +8,9 @@ export interface TournamentSeries {
   slug: string;
   name: string;
   isActive: boolean;
+  /** День тижня для автостворення турнірів цієї серії: 0=неділя..6=субота
+   * (як Postgres extract(dow)); null = автостворення вимкнене. */
+  autoWeekday: number | null;
 }
 
 export type TournamentStatus = 'draft' | 'registration_open' | 'registration_closed' | 'in_progress' | 'completed' | 'cancelled';
@@ -28,6 +31,8 @@ export interface Tournament {
   createdBy: string | null;
   /** 'unlisted' = створено ГМ-ом — не показується на публічних сторінках, лише за прямим посиланням. */
   visibility: 'public' | 'unlisted';
+  /** Матч за 3-тє місце між програними півфіналістів — лише для single_elim. */
+  thirdPlaceMatch: boolean;
 }
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
@@ -44,7 +49,7 @@ export interface Registration {
   memberNicknames: string[] | null;
 }
 
-export type BracketSide = 'winners' | 'losers' | 'final';
+export type BracketSide = 'winners' | 'losers' | 'final' | 'third_place';
 
 export interface BracketMatch {
   id: string;
@@ -73,6 +78,9 @@ export function isRegistrationOpen(t: Pick<Tournament, 'status' | 'eventDate'>):
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   return t.eventDate >= today;
 }
+
+/** Індекс — той самий 0=неділя..6=субота, що й Postgres extract(dow). */
+export const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'] as const;
 
 export const STATUS_LABELS: Record<TournamentStatus, string> = {
   draft: 'Чернетка',

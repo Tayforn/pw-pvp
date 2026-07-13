@@ -6,22 +6,22 @@
 import { supabase } from '../app/supabaseClient';
 import { isRegistrationOpen, type Registration, type RegistrationStatus, type Tournament, type TournamentSeries, type TournamentStatus } from './types';
 
-interface SeriesRow { id: string; slug: string; name: string; is_active: boolean }
+interface SeriesRow { id: string; slug: string; name: string; is_active: boolean; auto_weekday: number | null }
 interface TournamentRow {
   id: string; series_id: string | null; name: string; event_date: string; status: TournamentStatus;
   rules_md: string | null; prizes_md: string | null; bracket_type: 'single_elim' | 'double_elim'; bracket_size: number | null;
-  team_size: number | null; created_by: string | null; visibility: 'public' | 'unlisted';
+  team_size: number | null; created_by: string | null; visibility: 'public' | 'unlisted'; third_place_match: boolean;
 }
 interface RegistrationRow {
   id: string; tournament_id: string; nickname: string; rules_ack: boolean; status: RegistrationStatus; created_at: string;
   member_nicknames: string[] | null;
 }
 
-const seriesFromRow = (r: SeriesRow): TournamentSeries => ({ id: r.id, slug: r.slug, name: r.name, isActive: r.is_active });
+const seriesFromRow = (r: SeriesRow): TournamentSeries => ({ id: r.id, slug: r.slug, name: r.name, isActive: r.is_active, autoWeekday: r.auto_weekday });
 const tournamentFromRow = (r: TournamentRow): Tournament => ({
   id: r.id, seriesId: r.series_id, name: r.name, eventDate: r.event_date, status: r.status,
   rulesMd: r.rules_md, prizesMd: r.prizes_md, bracketType: r.bracket_type, bracketSize: r.bracket_size, teamSize: r.team_size,
-  createdBy: r.created_by, visibility: r.visibility,
+  createdBy: r.created_by, visibility: r.visibility, thirdPlaceMatch: r.third_place_match,
 });
 const registrationFromRow = (r: RegistrationRow): Registration => ({
   id: r.id, tournamentId: r.tournament_id, nickname: r.nickname, rulesAck: r.rules_ack, status: r.status, createdAt: r.created_at,
@@ -96,15 +96,16 @@ export async function deleteRegistration(id: string): Promise<void> {
 }
 
 // ── Admin CRUD: серії ──────────────────────────────────────
-export async function createSeries(input: { slug: string; name: string }): Promise<void> {
-  const { error } = await supabase.from('tournament_series').insert({ slug: input.slug, name: input.name });
+export async function createSeries(input: { slug: string; name: string; autoWeekday?: number | null }): Promise<void> {
+  const { error } = await supabase.from('tournament_series').insert({ slug: input.slug, name: input.name, auto_weekday: input.autoWeekday ?? null });
   if (error) throw error;
 }
 
-export async function updateSeries(id: string, fields: { name?: string; isActive?: boolean }): Promise<void> {
+export async function updateSeries(id: string, fields: { name?: string; isActive?: boolean; autoWeekday?: number | null }): Promise<void> {
   const patch: Record<string, unknown> = {};
   if (fields.name !== undefined) patch.name = fields.name;
   if (fields.isActive !== undefined) patch.is_active = fields.isActive;
+  if (fields.autoWeekday !== undefined) patch.auto_weekday = fields.autoWeekday;
   const { error } = await supabase.from('tournament_series').update(patch).eq('id', id);
   if (error) throw error;
 }
@@ -125,6 +126,8 @@ export interface TournamentInput {
   bracketType: 'single_elim' | 'double_elim';
   /** null/0/1 = звичайний турнір; >=2 = командний (стільки нікнеймів вимагає форма заявки). */
   teamSize: number | null;
+  /** Матч за 3-тє місце — застосовується лише коли bracketType === 'single_elim'. */
+  thirdPlaceMatch: boolean;
 }
 
 /** createdBy/visibility задаються один раз при створенні (не редагуються
@@ -143,6 +146,7 @@ export async function createTournament(input: TournamentInput, owner: { createdB
       prizes_md: input.prizesMd || null,
       bracket_type: input.bracketType,
       team_size: input.teamSize && input.teamSize >= 2 ? input.teamSize : null,
+      third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
       created_by: owner.createdBy,
       visibility: owner.visibility,
     })
@@ -164,6 +168,7 @@ export async function updateTournament(id: string, input: TournamentInput): Prom
       prizes_md: input.prizesMd || null,
       bracket_type: input.bracketType,
       team_size: input.teamSize && input.teamSize >= 2 ? input.teamSize : null,
+      third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
     })
     .eq('id', id);
   if (error) throw error;

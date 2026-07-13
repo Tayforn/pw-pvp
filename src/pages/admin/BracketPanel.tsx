@@ -55,7 +55,7 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
     setBusy(true);
     try {
       if (isDouble) await generateDoubleEliminationBracket(tournament.id, confirmed.map((r) => r.id));
-      else await generateSingleEliminationBracket(tournament.id, confirmed.map((r) => r.id));
+      else await generateSingleEliminationBracket(tournament.id, confirmed.map((r) => r.id), tournament.thirdPlaceMatch);
       await reload();
     } catch (e) {
       setErr(errorMessage(e, 'Не вдалося згенерувати сітку.'));

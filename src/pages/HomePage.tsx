@@ -10,6 +10,7 @@ import type { Tournament, TournamentSeries } from '../data/types';
 import { STATUS_LABELS } from '../data/types';
 import { fetchPublicTournaments, subscribeToTournamentChanges } from '../data/tournaments';
 import { fetchChampion } from '../data/bracket';
+import ChampionBlock from '../components/ChampionBlock';
 
 interface SeriesBlock {
   series: TournamentSeries;
@@ -36,7 +37,10 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
       for (const s of active) {
         const editions = tournaments.filter((t) => t.seriesId === s.id).sort((a, b) => (a.eventDate < b.eventDate ? 1 : -1));
         const latest = editions[0] ?? null;
-        const champion = latest && latest.status === 'completed' ? await fetchChampion(latest.id) : null;
+        // Не гейтимо на status==='completed' — якщо в сітці вже проставлено
+        // переможця вирішального матчу, показуємо його одразу, навіть якщо
+        // адмін ще не перевів формальний статус турніру в "Завершено".
+        const champion = latest ? await fetchChampion(latest.id) : null;
         result.push({ series: s, latest, champion });
       }
       if (!cancelled) setBlocks(result);
@@ -71,16 +75,10 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
             <div key={s.id} className="card" style={{ padding: 20 }}>
               <h3 style={{ marginTop: 0 }}>{s.name}</h3>
               {!latest && <p className="hint">Ще не було жодного турніру цієї серії.</p>}
-              {latest && latest.status === 'completed' && (
+              {latest && (
                 <>
-                  <p className="hint" style={{ marginBottom: 8 }}>{latest.name} · {latest.eventDate}</p>
-                  {champion ? <p className="badge good">🏆 Чемпіон: {champion}</p> : <p className="hint">Переможець ще не визначений.</p>}
-                </>
-              )}
-              {latest && latest.status !== 'completed' && (
-                <>
-                  <p className="hint" style={{ marginBottom: 8 }}>{latest.name} · {latest.eventDate}</p>
-                  <span className="badge warn">{STATUS_LABELS[latest.status]}</span>
+                  <p className="hint" style={{ marginBottom: 10 }}>{latest.name} · {latest.eventDate}</p>
+                  {champion ? <ChampionBlock nickname={champion} /> : <span className="badge warn">{STATUS_LABELS[latest.status]}</span>}
                 </>
               )}
               {latest && (

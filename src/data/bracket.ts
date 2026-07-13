@@ -109,8 +109,11 @@ export async function bracketHasResults(tournamentId: string): Promise<boolean> 
 
 /** Генерує (або перегенеровує — стара сітка видаляється) одинарну елімінацію:
  * рандомний шафл підтверджених учасників, бай розподілено по перших матчах
- * раунду 1 (не скупчено в одному), бай-матчі одразу резолвляться каскадом. */
-export async function generateSingleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[]): Promise<void> {
+ * раунду 1 (не скупчено в одному), бай-матчі одразу резолвляться каскадом.
+ * thirdPlaceMatch=true (і рівно 2 півфіналісти-програні) додає окремий матч
+ * bracket_side='third_place' — програні півфіналу потрапляють туди так само,
+ * як програні прогресують у losers-сітку double_elim (через loser_next_match_id). */
+export async function generateSingleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], thirdPlaceMatch = false): Promise<void> {
   if (confirmedRegistrationIds.length < 2) throw new Error('Потрібно щонайменше 2 підтверджені учасники.');
 
   await supabase.from('bracket_matches').delete().eq('tournament_id', tournamentId);
@@ -128,11 +131,15 @@ export async function generateSingleEliminationBracket(tournamentId: string, con
     const count = bracketSize / 2 ** r;
     idsByRound.push(Array.from({ length: count }, () => crypto.randomUUID()));
   }
+  // Півфінальний раунд (той, що безпосередньо перед фіналом) завжди має рівно
+  // 2 матчі, незалежно від розміру сітки — фінал завжди 1 матч на 2 слоти.
+  const thirdPlaceId = thirdPlaceMatch && rounds >= 2 ? crypto.randomUUID() : null;
 
   const queue = [...shuffled];
   const rows: Record<string, unknown>[] = [];
   for (let r = 1; r <= rounds; r++) {
     const ids = idsByRound[r - 1];
+    const isSemifinal = thirdPlaceId !== null && r === rounds - 1;
     for (let s = 0; s < ids.length; s++) {
       const hasNext = r < rounds;
       let p1: string | null = null;
@@ -153,8 +160,27 @@ export async function generateSingleEliminationBracket(tournamentId: string, con
         winner_id: null,
         next_match_id: hasNext ? idsByRound[r][Math.floor(s / 2)] : null,
         next_match_slot: hasNext ? (s % 2) + 1 : null,
+        loser_next_match_id: isSemifinal ? thirdPlaceId : null,
+        loser_next_match_slot: isSemifinal ? ((s % 2) + 1) : null,
       });
     }
+  }
+  if (thirdPlaceId) {
+    rows.push({
+      id: thirdPlaceId,
+      tournament_id: tournamentId,
+      bracket_side: 'third_place',
+      round: rounds,
+      slot: 0,
+      format: 'bo1',
+      participant1_id: null,
+      participant2_id: null,
+      winner_id: null,
+      next_match_id: null,
+      next_match_slot: null,
+      loser_next_match_id: null,
+      loser_next_match_slot: null,
+    });
   }
 
   const { error } = await supabase.from('bracket_matches').insert(rows);

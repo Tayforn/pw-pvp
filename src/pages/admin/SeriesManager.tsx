@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { errorMessage, reportError } from '../../app/errorMessage';
 import type { TournamentSeries } from '../../data/types';
+import { WEEKDAY_LABELS } from '../../data/types';
 import { createSeries, deleteSeries, updateSeries } from '../../data/tournaments';
 
 function slugify(name: string): string {
@@ -18,6 +19,7 @@ function slugify(name: string): string {
 
 export default function SeriesManager({ series, onChanged }: { series: TournamentSeries[]; onChanged: () => void }) {
   const [name, setName] = useState('');
+  const [autoWeekday, setAutoWeekday] = useState<number | ''>('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -36,8 +38,9 @@ export default function SeriesManager({ series, onChanged }: { series: Tournamen
       candidate = `${base}-${n++}`;
     }
     try {
-      await createSeries({ slug: candidate, name: name.trim() });
+      await createSeries({ slug: candidate, name: name.trim(), autoWeekday: autoWeekday === '' ? null : autoWeekday });
       setName('');
+      setAutoWeekday('');
       onChanged();
     } catch (e) {
       setErr(errorMessage(e, 'Не вдалося створити серію.'));
@@ -52,9 +55,20 @@ export default function SeriesManager({ series, onChanged }: { series: Tournamen
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         {series.length === 0 && <p className="hint" style={{ padding: 16 }}>Серій ще немає.</p>}
         {series.map((s) => (
-          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: '1px solid var(--line)' }}>
+          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
             <span>{s.name}</span>
             <span className="hint" style={{ margin: 0 }}>/{s.slug}</span>
+            <select
+              value={s.autoWeekday ?? ''}
+              title="Автостворення турнірів на цей день тижня"
+              style={{ fontSize: 12.5, padding: '4px 8px', borderRadius: 8, background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--line-2)' }}
+              onChange={(e) => updateSeries(s.id, { autoWeekday: e.target.value === '' ? null : Number(e.target.value) }).then(onChanged).catch(reportError)}
+            >
+              <option value="">Без автостворення</option>
+              {WEEKDAY_LABELS.map((label, i) => (
+                <option key={i} value={i}>Авто: {label}</option>
+              ))}
+            </select>
             <span className={'badge ' + (s.isActive ? 'good' : 'mute')} style={{ marginLeft: 'auto' }}>{s.isActive ? 'активна' : 'вимкнена'}</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateSeries(s.id, { isActive: !s.isActive }).then(onChanged).catch(reportError)}>
               {s.isActive ? 'Вимкнути' : 'Увімкнути'}
@@ -75,9 +89,22 @@ export default function SeriesManager({ series, onChanged }: { series: Tournamen
           <span>Назва серії</span>
           <input type="text" value={name} placeholder="Регулярний четверговий турнір" onChange={(e) => setName(e.target.value)} />
         </label>
+        <label className="field" style={{ flex: '0 0 220px' }}>
+          <span>Автостворення турнірів (необов'язково)</span>
+          <select value={autoWeekday} onChange={(e) => setAutoWeekday(e.target.value === '' ? '' : Number(e.target.value))}>
+            <option value="">— не створювати автоматично —</option>
+            {WEEKDAY_LABELS.map((label, i) => (
+              <option key={i} value={i}>{label}</option>
+            ))}
+          </select>
+        </label>
         <button type="button" className="btn btn-primary" disabled={busy || !name.trim()} onClick={add}>+ Додати серію</button>
       </div>
       {err && <p className="form-err">{err}</p>}
+      <p className="hint" style={{ marginTop: 8 }}>
+        Якщо вказано день — щодня о 03:00 (UTC) перевіряється, чи є вже створений турнір на найближчу таку дату для серії; якщо
+        немає, він створюється автоматично (реєстрація одразу відкрита, налаштування копіюються з останнього турніру серії).
+      </p>
     </div>
   );
 }

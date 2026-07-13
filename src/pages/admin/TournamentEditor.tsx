@@ -31,6 +31,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   const [rulesMd, setRulesMd] = useState(initial?.rulesMd ?? '');
   const [prizesMd, setPrizesMd] = useState(initial?.prizesMd ?? '');
   const [bracketType, setBracketType] = useState<BracketType>(initial?.bracketType ?? 'single_elim');
+  const [thirdPlaceMatch, setThirdPlaceMatch] = useState(initial?.thirdPlaceMatch ?? false);
   const [teamMode, setTeamMode] = useState(!!initial?.teamSize);
   const [teamSize, setTeamSize] = useState(initial?.teamSize ?? 5);
   const [busy, setBusy] = useState(false);
@@ -49,6 +50,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
       prizesMd,
       bracketType,
       teamSize: teamMode ? teamSize : null,
+      thirdPlaceMatch,
     };
     try {
       if (initial) await updateTournament(initial.id, input);
@@ -101,10 +103,26 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
           )}
           <label className="field">
             <span>Тип сітки</span>
-            <select value={bracketType} onChange={(e) => setBracketType(e.target.value as BracketType)}>
+            <select
+              value={bracketType}
+              onChange={(e) => {
+                const v = e.target.value as BracketType;
+                setBracketType(v);
+                if (v === 'double_elim') setThirdPlaceMatch(false);
+              }}
+            >
               <option value="single_elim">Одинарна елімінація</option>
               <option value="double_elim">Подвійна елімінація (лише степінь двійки учасників, без байів)</option>
             </select>
+          </label>
+          <label className="checkbox-row" style={bracketType !== 'single_elim' ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+            <input
+              type="checkbox"
+              checked={thirdPlaceMatch}
+              disabled={bracketType !== 'single_elim'}
+              onChange={(e) => setThirdPlaceMatch(e.target.checked)}
+            />
+            Матч за 3-тє місце (лише одинарна елімінація)
           </label>
           <label className="checkbox-row">
             <input type="checkbox" checked={teamMode} onChange={(e) => setTeamMode(e.target.checked)} />

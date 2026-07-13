@@ -5,6 +5,7 @@ import type { Tournament, TournamentSeries } from '../data/types';
 import { STATUS_LABELS } from '../data/types';
 import { fetchPublicTournaments, fetchSeries } from '../data/tournaments';
 import { fetchChampion } from '../data/bracket';
+import ChampionBlock from '../components/ChampionBlock';
 
 export default function SeriesPage({ slug, onNavigate }: { slug: string; onNavigate: (r: Route) => void }) {
   const [series, setSeries] = useState<TournamentSeries | null | undefined>(undefined);
@@ -21,9 +22,11 @@ export default function SeriesPage({ slug, onNavigate }: { slug: string; onNavig
       if (cancelled) return;
       setSeries(s);
       setEditions(mine);
+      // Не гейтимо на status==='completed' — показуємо переможця, щойно він
+      // проставлений у сітці, навіть якщо формальний статус ще не змінили.
       const champ: Record<string, string | null> = {};
       for (const t of mine) {
-        if (t.status === 'completed') champ[t.id] = await fetchChampion(t.id);
+        champ[t.id] = await fetchChampion(t.id);
       }
       if (!cancelled) setChampions(champ);
     }
@@ -46,21 +49,32 @@ export default function SeriesPage({ slug, onNavigate }: { slug: string; onNavig
       {editions.length === 0 ? (
         <p className="hint">Ще не було жодного турніру цієї серії.</p>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
           {editions.map((t) => (
             <button
               key={t.id}
               type="button"
-              className="btn btn-ghost"
-              style={{ width: '100%', justifyContent: 'space-between', borderRadius: 0, border: 0, borderBottom: '1px solid var(--line)', flexWrap: 'wrap', gap: 8 }}
+              className="card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 12,
+                padding: 18,
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: 15,
+                color: 'inherit',
+              }}
               onClick={() => onNavigate({ name: 'tournament', id: t.id })}
             >
-              <span>{t.name} · {t.eventDate}</span>
-              {t.status === 'completed' ? (
-                champions[t.id] ? <span className="badge good">🏆 {champions[t.id]}</span> : <span className="hint">без переможця</span>
-              ) : (
-                <span className="badge warn">{STATUS_LABELS[t.status]}</span>
-              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 8 }}>
+                <span style={{ fontWeight: 600 }}>{t.name}</span>
+                {!champions[t.id] && <span className="badge warn">{STATUS_LABELS[t.status]}</span>}
+              </div>
+              <span className="hint" style={{ margin: 0 }}>{t.eventDate}</span>
+              {champions[t.id] && <ChampionBlock nickname={champions[t.id]!} />}
             </button>
           ))}
         </div>

@@ -260,6 +260,7 @@ export default function BracketView({ matches, registrations, editable }: Props)
   const winners = matches.filter((m) => m.bracketSide === 'winners');
   const losers = matches.filter((m) => m.bracketSide === 'losers');
   const final = matches.filter((m) => m.bracketSide === 'final');
+  const thirdPlace = matches.filter((m) => m.bracketSide === 'third_place');
   const isDoubleElim = losers.length > 0 || final.length > 0;
 
   const wbMaxRound = Math.max(...winners.map((m) => m.round));
@@ -298,6 +299,13 @@ export default function BracketView({ matches, registrations, editable }: Props)
         <div style={{ marginTop: 24, maxWidth: 220 }}>
           <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
           <MatchCard m={final[0]} registrations={registrations} editable={editable} />
+        </div>
+      )}
+
+      {thirdPlace.length > 0 && (
+        <div style={{ marginTop: 24, maxWidth: 220 }}>
+          <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
+          <MatchCard m={thirdPlace[0]} registrations={registrations} editable={editable} />
         </div>
       )}
     </div>
