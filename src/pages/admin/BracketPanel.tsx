@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { errorMessage, reportError } from '../../app/errorMessage';
 import type { BracketMatch, Registration, Tournament } from '../../data/types';
-import { fetchRegistrations, subscribeToTournamentChanges } from '../../data/tournaments';
+import { fetchRegistrations, setTournamentStatus, subscribeToTournamentChanges } from '../../data/tournaments';
 import {
   bracketHasResults,
   fetchBracket,
@@ -66,10 +66,23 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
 
   const canGenerate = isDouble ? isPowerOfTwo(confirmed.length) : confirmed.length >= 2;
 
+  const finish = () => {
+    if (!confirm(`Завершити турнір «${tournament.name}»? Статус одразу стане "Завершено".`)) return;
+    setBusy(true);
+    setTournamentStatus(tournament.id, 'completed')
+      .catch(reportError)
+      .finally(() => setBusy(false));
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
         <span className="hint" style={{ margin: 0 }}>Підтверджених учасників: {confirmed.length}</span>
+        {bracket.length > 0 && tournament.status !== 'completed' && (
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={finish}>
+            🏁 Завершити турнір
+          </button>
+        )}
         {bracket.length === 0 ? (
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || !canGenerate} onClick={generate}>
             Згенерувати сітку

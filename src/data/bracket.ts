@@ -14,6 +14,7 @@
 
 import { supabase } from '../app/supabaseClient';
 import type { BracketMatch, BracketSide } from './types';
+import { setTournamentStatus } from './tournaments';
 
 interface BracketRow {
   id: string;
@@ -60,17 +61,22 @@ export async function fetchBracket(tournamentId: string): Promise<BracketMatch[]
   return (data as BracketRow[]).map(fromRow);
 }
 
-/** Переможець турніру — для double_elim це гранд-фінал (bracket_side='final'),
- * для single_elim — найвищий round у winners-сітці. Для головної/серій. */
+/** Матч, що визначає чемпіона турніру — для double_elim це гранд-фінал
+ * (bracket_side='final'), для single_elim — найвищий round у winners-сітці
+ * (bracket_side='third_place' сюди не потрапляє, він не про 1-ше місце). */
+function pickDecisiveMatch(matches: BracketMatch[]): BracketMatch | undefined {
+  const grandFinal = matches.find((m) => m.bracketSide === 'final');
+  if (grandFinal) return grandFinal;
+  const winners = matches.filter((m) => m.bracketSide === 'winners');
+  if (!winners.length) return undefined;
+  const maxRound = Math.max(...winners.map((m) => m.round));
+  return winners.find((m) => m.round === maxRound);
+}
+
+/** Переможець турніру — для головної/серій. */
 export async function fetchChampion(tournamentId: string): Promise<string | null> {
   const matches = await fetchBracket(tournamentId);
-  const grandFinal = matches.find((m) => m.bracketSide === 'final');
-  const decisive = grandFinal ?? (() => {
-    const winners = matches.filter((m) => m.bracketSide === 'winners');
-    if (!winners.length) return undefined;
-    const maxRound = Math.max(...winners.map((m) => m.round));
-    return winners.find((m) => m.round === maxRound);
-  })();
+  const decisive = pickDecisiveMatch(matches);
   if (!decisive?.winnerId) return null;
   const { data } = await supabase.from('registrations').select('nickname').eq('id', decisive.winnerId).single();
   return (data as { nickname: string } | null)?.nickname ?? null;
@@ -359,5 +365,14 @@ export async function setMatchWinner(matchId: string, winnerId: string | null, s
     const field = m.loserNextMatchSlot === 1 ? 'participant1_id' : 'participant2_id';
     const { error: loserErr } = await supabase.from('bracket_matches').update({ [field]: loserId }).eq('id', m.loserNextMatchId);
     if (loserErr) throw loserErr;
+  }
+
+  // Щойно у вирішальному матчі (гранд-фінал / фінал winners-сітки) з'явився
+  // переможець — турнір сам стає "Завершено", без ручного перемикання
+  // статусу адміном.
+  if (winnerId) {
+    const all = await fetchBracket(m.tournamentId);
+    const decisive = pickDecisiveMatch(all);
+    if (decisive?.winnerId) await setTournamentStatus(m.tournamentId, 'completed');
   }
 }

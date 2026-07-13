@@ -174,6 +174,14 @@ export async function updateTournament(id: string, input: TournamentInput): Prom
   if (error) throw error;
 }
 
+/** Точкова зміна статусу (без переписування всіх інших полів турніру, на
+ * відміну від updateTournament) — використовується і кнопкою "Завершити
+ * турнір" в адмінці, і автозавершенням при переможці вирішального матчу. */
+export async function setTournamentStatus(id: string, status: TournamentStatus): Promise<void> {
+  const { error } = await supabase.from('tournaments').update({ status }).eq('id', id);
+  if (error) throw error;
+}
+
 export async function deleteTournament(id: string): Promise<void> {
   const { error } = await supabase.from('tournaments').delete().eq('id', id);
   if (error) throw error;
