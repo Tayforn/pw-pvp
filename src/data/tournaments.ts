@@ -4,7 +4,7 @@
 // =========================================================
 
 import { supabase } from '../app/supabaseClient';
-import type { Registration, RegistrationStatus, Tournament, TournamentSeries, TournamentStatus } from './types';
+import { isRegistrationOpen, type Registration, type RegistrationStatus, type Tournament, type TournamentSeries, type TournamentStatus } from './types';
 
 interface SeriesRow { id: string; slug: string; name: string; is_active: boolean }
 interface TournamentRow {
@@ -68,6 +68,14 @@ export async function fetchRegistrations(tournamentId: string): Promise<Registra
 }
 
 export async function submitRegistration(input: { tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[] }): Promise<void> {
+  // Свіжа перевірка прямо перед вставкою — стан на сторінці міг застаріти
+  // (вкладка відкрита довго, адмін тим часом закрив реєстрацію чи турнір
+  // уже пройшов). RLS-політика в БД теж це перевіряє, ця — для чистого
+  // повідомлення користувачу замість "new row violates row-level security".
+  const tournament = await fetchTournament(input.tournamentId);
+  if (!tournament || !isRegistrationOpen(tournament)) {
+    throw new Error('Реєстрація на цей турнір закрита або турнір уже пройшов.');
+  }
   const { error } = await supabase.from('registrations').insert({
     tournament_id: input.tournamentId,
     nickname: input.nickname,

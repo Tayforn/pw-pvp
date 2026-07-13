@@ -64,6 +64,16 @@ export interface BracketMatch {
   loserNextMatchSlot: 1 | 2 | null;
 }
 
+/** Реєстрація дозволена лише поки статус 'registration_open' і турнір ще не
+ * пройшов (event_date не в минулому) — обидві умови незалежні: адмін може
+ * забути закрити реєстрацію після дати турніру. */
+export function isRegistrationOpen(t: Pick<Tournament, 'status' | 'eventDate'>): boolean {
+  if (t.status !== 'registration_open') return false;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return t.eventDate >= today;
+}
+
 export const STATUS_LABELS: Record<TournamentStatus, string> = {
   draft: 'Чернетка',
   registration_open: 'Реєстрація відкрита',

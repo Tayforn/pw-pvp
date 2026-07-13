@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PageMeta from '../app/PageMeta';
 import { errorMessage } from '../app/errorMessage';
 import { hasRegistered, markRegistered } from '../app/registeredTournaments';
-import type { Tournament } from '../data/types';
+import { isRegistrationOpen, type Tournament } from '../data/types';
 import { fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 
 export default function RegisterPage() {
@@ -29,7 +29,7 @@ export default function RegisterPage() {
       });
     } else {
       fetchPublicTournaments().then((all) => {
-        const open = all.filter((t) => t.status === 'registration_open');
+        const open = all.filter((t) => isRegistrationOpen(t));
         setTournaments(open);
         if (open.length) setTournamentId(open[0].id);
       });
@@ -79,7 +79,8 @@ export default function RegisterPage() {
   if (pinnedId) {
     if (pinned === undefined) return <p className="hint">Завантаження…</p>;
     if (pinned === null) return <p className="hint">Турнір не знайдено.</p>;
-    if (pinned.status !== 'registration_open') {
+    if (!isRegistrationOpen(pinned)) {
+      const passed = pinned.status === 'registration_open';
       return (
         <div>
           <PageMeta title="Заявка на турнір — PW PvP" />
@@ -87,7 +88,7 @@ export default function RegisterPage() {
             <span className="eyebrow">PvP</span>
             <h2>{pinned.name}</h2>
           </div>
-          <p className="hint">Реєстрація на цей турнір зараз не відкрита.</p>
+          <p className="hint">{passed ? 'Турнір уже пройшов.' : 'Реєстрація на цей турнір зараз не відкрита.'}</p>
         </div>
       );
     }
