@@ -63,13 +63,15 @@ export default function AdminsManager({ currentUserId }: { currentUserId: string
                 >
                   {a.role === 'superadmin' ? 'Понизити до ГМ' : 'Підвищити до суперадміна'}
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-bad btn-sm"
-                  onClick={() => confirm(`Видалити права адміна для «${a.email}»? Його турніри залишаться.`) && removeAdmin(a.userId).then(reload).catch(reportError)}
-                >
-                  Видалити
-                </button>
+                {a.role !== 'superadmin' && (
+                  <button
+                    type="button"
+                    className="btn btn-bad btn-sm"
+                    onClick={() => confirm(`Видалити права адміна для «${a.email}»? Його турніри залишаться.`) && removeAdmin(a.userId).then(reload).catch(reportError)}
+                  >
+                    Видалити
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-bad btn-sm"
