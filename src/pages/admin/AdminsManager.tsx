@@ -56,13 +56,15 @@ export default function AdminsManager({ currentUserId }: { currentUserId: string
               <span className="hint" style={{ margin: 0 }}>(ти)</span>
             ) : (
               <>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setAdminRole(a.userId, a.role === 'superadmin' ? 'gm' : 'superadmin').then(reload).catch(reportError)}
-                >
-                  {a.role === 'superadmin' ? 'Понизити до ГМ' : 'Підвищити до суперадміна'}
-                </button>
+                {a.role !== 'superadmin' && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setAdminRole(a.userId, 'superadmin').then(reload).catch(reportError)}
+                  >
+                    Підвищити до суперадміна
+                  </button>
+                )}
                 {a.role !== 'superadmin' && (
                   <button
                     type="button"
