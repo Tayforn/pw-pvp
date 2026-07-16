@@ -1,26 +1,21 @@
 // =========================================================
-// Головна: блок на кожну активну регулярну серію (результат останньої
-// завершеної edition, або статус найближчої) + список найближчих турнірів.
+// Головна: п'єдестал (топ-3) останнього турніру єдиної активної серії +
+// велика кнопка реєстрації на найближчий турнір + список найближчих турнірів.
 // =========================================================
 
 import { useEffect, useState } from 'react';
 import type { Route } from '../app/useRoute';
 import PageMeta from '../app/PageMeta';
 import type { Tournament, TournamentSeries } from '../data/types';
-import { STATUS_LABELS } from '../data/types';
+import { isRegistrationOpen, STATUS_LABELS } from '../data/types';
 import { fetchPublicTournaments, subscribeToTournamentChanges } from '../data/tournaments';
-import { fetchChampion } from '../data/bracket';
-import ChampionBlock from '../components/ChampionBlock';
-
-interface SeriesBlock {
-  series: TournamentSeries;
-  latest: Tournament | null;
-  champion: string | null;
-}
+import { fetchPodium, type Podium as PodiumData } from '../data/bracket';
+import Podium from '../components/Podium';
 
 export default function HomePage({ series, onNavigate }: { series: TournamentSeries[]; onNavigate: (r: Route) => void }) {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [blocks, setBlocks] = useState<SeriesBlock[]>([]);
+  const [latest, setLatest] = useState<Tournament | null>(null);
+  const [podium, setPodium] = useState<PodiumData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,18 +27,17 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
   useEffect(() => {
     let cancelled = false;
     async function build() {
-      const active = series.filter((s) => s.isActive);
-      const result: SeriesBlock[] = [];
-      for (const s of active) {
-        const editions = tournaments.filter((t) => t.seriesId === s.id).sort((a, b) => (a.eventDate < b.eventDate ? 1 : -1));
-        const latest = editions[0] ?? null;
-        // Не гейтимо на status==='completed' — якщо в сітці вже проставлено
-        // переможця вирішального матчу, показуємо його одразу, навіть якщо
-        // адмін ще не перевів формальний статус турніру в "Завершено".
-        const champion = latest ? await fetchChampion(latest.id) : null;
-        result.push({ series: s, latest, champion });
+      const activeSeries = series.find((s) => s.isActive);
+      const editions = activeSeries ? tournaments.filter((t) => t.seriesId === activeSeries.id).sort((a, b) => (a.eventDate < b.eventDate ? 1 : -1)) : [];
+      const l = editions[0] ?? null;
+      // Не гейтимо на status==='completed' — якщо в сітці вже проставлено
+      // переможця вирішального матчу, показуємо п'єдестал одразу, навіть
+      // якщо адмін ще не перевів формальний статус турніру в "Завершено".
+      const p = l ? await fetchPodium(l.id) : null;
+      if (!cancelled) {
+        setLatest(l);
+        setPodium(p);
       }
-      if (!cancelled) setBlocks(result);
     }
     build();
     return () => {
@@ -60,38 +54,27 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
     .sort((a, b) => (a.eventDate < b.eventDate ? -1 : 1))
     .slice(0, 6);
 
+  const nextOpen = tournaments.filter(isRegistrationOpen).sort((a, b) => (a.eventDate < b.eventDate ? -1 : 1))[0];
+  const registerHref = import.meta.env.BASE_URL + 'register' + (nextOpen ? '?t=' + nextOpen.id : '');
+
   return (
     <div>
       <PageMeta title="PW PvP — турніри сервера" description="Регулярні та одноразові турніри, заявки, сітка, переможці." />
       <div className="section-head">
         <span className="eyebrow">PvP</span>
         <h2>Турніри сервера</h2>
-        <p>Заявки на турніри, сітка і результати регулярних змагань.</p>
       </div>
 
-      {blocks.length > 0 && (
-        <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', marginBottom: 24 }}>
-          {blocks.map(({ series: s, latest, champion }) => (
-            <div key={s.id} className="card" style={{ padding: 20 }}>
-              <h3 style={{ marginTop: 0 }}>{s.name}</h3>
-              {!latest && <p className="hint">Ще не було жодного турніру цієї серії.</p>}
-              {latest && (
-                <>
-                  <p className="hint" style={{ marginBottom: 10 }}>{latest.name} · {latest.eventDate}</p>
-                  {champion ? <ChampionBlock nickname={champion} /> : <span className="badge warn">{STATUS_LABELS[latest.status]}</span>}
-                </>
-              )}
-              {latest && (
-                <div style={{ marginTop: 14 }}>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => onNavigate({ name: 'series', slug: s.slug })}>
-                    Історія серії →
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <a className="btn btn-primary btn-lg" href={registerHref} style={{ display: 'inline-block', marginBottom: 24 }}>
+        ✍ Зареєструватися
+      </a>
+
+      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+        <h3 style={{ marginTop: 0 }}>{latest ? `Переможці: ${latest.name}` : 'Переможці'}</h3>
+        {!latest && <p className="hint">Ще не було жодного турніру.</p>}
+        {latest && !podium && <span className="badge warn">{STATUS_LABELS[latest.status]}</span>}
+        {latest && podium && <Podium podium={podium} caption={latest.eventDate} />}
+      </div>
 
       <h3>Найближчі турніри</h3>
       {loading ? (

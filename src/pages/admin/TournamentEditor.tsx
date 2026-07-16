@@ -1,6 +1,7 @@
 // =========================================================
 // Адмінка: модалка створення/редагування турніру — назва, дата,
-// серія, статус, правила, призи, тип сітки.
+// статус, правила, призи, тип сітки. Серія (для суперадміна) в UI
+// не показується — новий турнір мовчки прив'язується до єдиної активної.
 // =========================================================
 
 import { useState } from 'react';
@@ -26,7 +27,10 @@ interface Props {
 export default function TournamentEditor({ initial, series, isSuperadmin, currentUserId, onClose, onSaved }: Props) {
   const [name, setName] = useState(initial?.name ?? '');
   const [eventDate, setEventDate] = useState(initial?.eventDate ?? new Date().toISOString().slice(0, 10));
-  const [seriesId, setSeriesId] = useState(initial?.seriesId ?? '');
+  // Сайт спрощено до однієї активної серії — вибір серії в UI прибрано,
+  // новий турнір мовчки прив'язується до активної (якщо є); при редагуванні
+  // існуючого турніру seriesId лишається як був, історію не чіпаємо.
+  const [seriesId] = useState(initial?.seriesId ?? series.find((s) => s.isActive)?.id ?? '');
   const [status, setStatus] = useState<TournamentStatus>(initial?.status ?? 'draft');
   const [rulesMd, setRulesMd] = useState(initial?.rulesMd ?? '');
   const [prizesMd, setPrizesMd] = useState(initial?.prizesMd ?? '');
@@ -82,15 +86,6 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
             </label>
           </div>
           <div className="field-row">
-            {isSuperadmin && (
-              <label className="field">
-                <span>Серія (регулярний турнір)</span>
-                <select value={seriesId} onChange={(e) => setSeriesId(e.target.value)}>
-                  <option value="">— одноразовий —</option>
-                  {series.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </label>
-            )}
             <label className="field">
               <span>Статус</span>
               <select value={status} onChange={(e) => setStatus(e.target.value as TournamentStatus)}>

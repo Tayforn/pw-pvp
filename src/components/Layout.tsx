@@ -87,7 +87,7 @@ export default function Layout() {
       <Header navOpen={navOpen} onNavToggle={() => setOpen(!document.documentElement.classList.contains('nav-open'))} />
       <div className="nav-backdrop" aria-hidden="true" onClick={() => setOpen(false)}></div>
       <div className="app-shell container">
-        <Sidebar route={route} isAdmin={isAdmin} series={series} onNavigate={go} />
+        <Sidebar route={route} isAdmin={isAdmin} onNavigate={go} />
         <div className="content">
           <main>{page}</main>
         </div>

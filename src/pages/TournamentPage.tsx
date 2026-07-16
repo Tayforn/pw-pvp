@@ -75,33 +75,37 @@ export default function TournamentPage({ id }: { id: string }) {
         </div>
       )}
 
-      <h3>{tournament.teamSize ? `Команди (${confirmed.length})` : `Учасники (${confirmed.length})`}</h3>
-      <div className="card" style={{ marginBottom: 18 }}>
-        {confirmed.length === 0 ? (
-          <p className="hint">Ще немає підтверджених учасників.</p>
-        ) : tournament.teamSize ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {confirmed.map((r) => (
-              <div key={r.id}>
-                <b>{r.nickname}</b>
-                {r.memberNicknames && r.memberNicknames.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                    {r.memberNicknames.map((m, i) => (
-                      <span key={i} className="badge mute">{m}</span>
-                    ))}
+      {bracket.length === 0 && (
+        <>
+          <h3>{tournament.teamSize ? `Команди (${confirmed.length})` : `Учасники (${confirmed.length})`}</h3>
+          <div className="card" style={{ marginBottom: 18 }}>
+            {confirmed.length === 0 ? (
+              <p className="hint">Ще немає підтверджених учасників.</p>
+            ) : tournament.teamSize ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {confirmed.map((r) => (
+                  <div key={r.id}>
+                    <b>{r.nickname}</b>
+                    {r.memberNicknames && r.memberNicknames.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                        {r.memberNicknames.map((m, i) => (
+                          <span key={i} className="badge mute">{m}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {confirmed.map((r) => (
+                  <span key={r.id} className="badge mute">{r.nickname}</span>
+                ))}
+              </div>
+            )}
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {confirmed.map((r) => (
-              <span key={r.id} className="badge mute">{r.nickname}</span>
-            ))}
-          </div>
-        )}
-      </div>
+        </>
+      )}
 
       <h3>Сітка</h3>
       <BracketView matches={bracket} registrations={registrations} />

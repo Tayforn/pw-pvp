@@ -82,6 +82,34 @@ export async function fetchChampion(tournamentId: string): Promise<string | null
   return (data as { nickname: string } | null)?.nickname ?? null;
 }
 
+export interface Podium {
+  first: string;
+  second: string | null;
+  third: string | null;
+}
+
+/** Топ-3 турніру — для п'єдесталу на Головній. 2-ге місце — програний
+ * вирішального матчу; 3-тє — переможець матчу bracket_side='third_place',
+ * якщо адмін вмикав цю опцію (single_elim), інакше null. */
+export async function fetchPodium(tournamentId: string): Promise<Podium | null> {
+  const matches = await fetchBracket(tournamentId);
+  const decisive = pickDecisiveMatch(matches);
+  if (!decisive?.winnerId) return null;
+
+  const firstId = decisive.winnerId;
+  const secondId = decisive.participant1Id === firstId ? decisive.participant2Id : decisive.participant1Id;
+  const thirdId = matches.find((m) => m.bracketSide === 'third_place')?.winnerId ?? null;
+
+  const ids = [firstId, secondId, thirdId].filter((id): id is string => !!id);
+  const { data, error } = await supabase.from('registrations').select('id, nickname').in('id', ids);
+  if (error) throw error;
+  const nickOf = (id: string | null) => (id ? ((data as { id: string; nickname: string }[]).find((r) => r.id === id)?.nickname ?? null) : null);
+
+  const first = nickOf(firstId);
+  if (!first) return null;
+  return { first, second: nickOf(secondId), third: nickOf(thirdId) };
+}
+
 function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
