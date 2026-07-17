@@ -65,25 +65,37 @@ export default function TournamentPage({ id }: { id: string }) {
         </div>
       )}
 
-      {(tournament.rulesMd || tournament.prizesMd) && (
-        <div
-          className="card"
-          style={{ marginBottom: 18, display: 'grid', gap: 16, gridTemplateColumns: tournament.rulesMd && tournament.prizesMd ? '1fr 1fr' : '1fr' }}
-        >
-          {tournament.rulesMd && (
-            <div>
-              <h4 style={{ marginTop: 0 }}>Правила</h4>
-              <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
-            </div>
-          )}
-          {tournament.prizesMd && (
-            <div>
-              <h4 style={{ marginTop: 0 }}>Призи</h4>
-              <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.prizesMd}</p>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Після завершення турніру правила/призи вже не актуальні — ховаємо
+          їх у згорнутий <details>-акордеон, щоб не займали місце під сіткою
+          (кому треба — розгорне). Для активних турнірів картка як була. */}
+      {(tournament.rulesMd || tournament.prizesMd) && (() => {
+        const grid = (
+          <div style={{ display: 'grid', gap: 16, gridTemplateColumns: tournament.rulesMd && tournament.prizesMd ? '1fr 1fr' : '1fr' }}>
+            {tournament.rulesMd && (
+              <div>
+                <h4 style={{ marginTop: 0 }}>Правила</h4>
+                <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
+              </div>
+            )}
+            {tournament.prizesMd && (
+              <div>
+                <h4 style={{ marginTop: 0 }}>Призи</h4>
+                <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.prizesMd}</p>
+              </div>
+            )}
+          </div>
+        );
+        return tournament.status === 'completed' ? (
+          <details className="card" style={{ marginBottom: 18 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+              {tournament.rulesMd && tournament.prizesMd ? 'Правила та призи' : tournament.rulesMd ? 'Правила' : 'Призи'}
+            </summary>
+            <div style={{ marginTop: 12 }}>{grid}</div>
+          </details>
+        ) : (
+          <div className="card" style={{ marginBottom: 18 }}>{grid}</div>
+        );
+      })()}
 
       {bracket.length === 0 && (
         <>
