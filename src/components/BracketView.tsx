@@ -277,7 +277,7 @@ export default function BracketView({ matches, registrations, editable }: Props)
   return (
     <div
       className={fullscreen ? 'bracket-scroll' : undefined}
-      style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 2000, background: 'var(--bg-0)', padding: 24, overflow: 'auto' } : undefined}
+      style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 2000, background: 'var(--bg-0)', padding: 24, overflow: 'auto', display: 'flex', flexDirection: 'column' } : undefined}
     >
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFullscreen((v) => !v)}>
@@ -285,29 +285,35 @@ export default function BracketView({ matches, registrations, editable }: Props)
         </button>
       </div>
 
-      {isDoubleElim && <h3 style={{ margin: '0 0 8px' }}>Верхня сітка</h3>}
-      <BracketColumns sideMatches={winners} roundLabel={wbLabel} registrations={registrations} editable={editable} />
+      {/* margin: auto у flex-контейнері центрує сітку по обох осях, коли вона
+          менша за екран, і чесно деградує до звичайного скролу (margin 0),
+          коли більша — на відміну від align/justify-center, які в скрол-
+          контейнері обрізали б початок контенту. */}
+      <div style={fullscreen ? { margin: 'auto' } : undefined}>
+        {isDoubleElim && <h3 style={{ margin: '0 0 8px' }}>Верхня сітка</h3>}
+        <BracketColumns sideMatches={winners} roundLabel={wbLabel} registrations={registrations} editable={editable} />
 
-      {losers.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ margin: '0 0 8px' }}>Нижня сітка</h3>
-          <BracketColumns sideMatches={losers} roundLabel={lbLabel} registrations={registrations} editable={editable} />
-        </div>
-      )}
+        {losers.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <h3 style={{ margin: '0 0 8px' }}>Нижня сітка</h3>
+            <BracketColumns sideMatches={losers} roundLabel={lbLabel} registrations={registrations} editable={editable} />
+          </div>
+        )}
 
-      {final.length > 0 && (
-        <div style={{ marginTop: 24, maxWidth: 220 }}>
-          <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
-          <MatchCard m={final[0]} registrations={registrations} editable={editable} />
-        </div>
-      )}
+        {final.length > 0 && (
+          <div style={{ marginTop: 24, maxWidth: 220 }}>
+            <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
+            <MatchCard m={final[0]} registrations={registrations} editable={editable} />
+          </div>
+        )}
 
-      {thirdPlace.length > 0 && (
-        <div style={{ marginTop: 24, maxWidth: 220 }}>
-          <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
-          <MatchCard m={thirdPlace[0]} registrations={registrations} editable={editable} />
-        </div>
-      )}
+        {thirdPlace.length > 0 && (
+          <div style={{ marginTop: 24, maxWidth: 220 }}>
+            <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
+            <MatchCard m={thirdPlace[0]} registrations={registrations} editable={editable} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

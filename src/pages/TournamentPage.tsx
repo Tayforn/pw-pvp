@@ -55,6 +55,16 @@ export default function TournamentPage({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* Коли сітка вже згенерована — вона головний контент сторінки,
+          тож іде першою, а правила/призи опускаються під неї. До генерації
+          порядок звичний: правила → учасники → заглушка сітки внизу. */}
+      {bracket.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <h3>Сітка</h3>
+          <BracketView matches={bracket} registrations={registrations} />
+        </div>
+      )}
+
       {(tournament.rulesMd || tournament.prizesMd) && (
         <div
           className="card"
@@ -107,8 +117,12 @@ export default function TournamentPage({ id }: { id: string }) {
         </>
       )}
 
-      <h3>Сітка</h3>
-      <BracketView matches={bracket} registrations={registrations} />
+      {bracket.length === 0 && (
+        <>
+          <h3>Сітка</h3>
+          <BracketView matches={bracket} registrations={registrations} />
+        </>
+      )}
     </div>
   );
 }
