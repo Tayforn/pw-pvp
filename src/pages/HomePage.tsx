@@ -29,11 +29,24 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
     async function build() {
       const activeSeries = series.find((s) => s.isActive);
       const editions = activeSeries ? tournaments.filter((t) => t.seriesId === activeSeries.id).sort((a, b) => (a.eventDate < b.eventDate ? 1 : -1)) : [];
-      const l = editions[0] ?? null;
-      // Не гейтимо на status==='completed' — якщо в сітці вже проставлено
-      // переможця вирішального матчу, показуємо п'єдестал одразу, навіть
-      // якщо адмін ще не перевів формальний статус турніру в "Завершено".
-      const p = l ? await fetchPodium(l.id) : null;
+      // Крон тримає створеним наступний (майбутній) турнір серії, тож
+      // найновіший за датою майже ніколи не має результатів — для блоку
+      // "Переможці" беремо найсвіжіший турнір, що вже МАЄ п'єдестал.
+      // Майбутні дати відсікаємо одразу (у них результатів бути не може);
+      // сьогоднішній лишається: не гейтимо на status==='completed' — якщо
+      // переможець вирішального матчу вже проставлений, показуємо одразу.
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const played = editions.filter((t) => t.eventDate <= todayStr);
+      let l: Tournament | null = played[0] ?? null;
+      let p: PodiumData | null = null;
+      for (const t of played) {
+        const candidate = await fetchPodium(t.id);
+        if (candidate) {
+          l = t;
+          p = candidate;
+          break;
+        }
+      }
       if (!cancelled) {
         setLatest(l);
         setPodium(p);

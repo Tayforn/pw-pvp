@@ -1,20 +1,53 @@
 // =========================================================
-// Адмінка: керування єдиною активною серією (autoWeekday/активність) —
-// створення нових серій і видалення прибрано з UI, сайт спрощено до однієї.
+// Адмінка: керування єдиною активною серією (autoWeekday/активність).
+// Сайт спрощено до однієї серії, тож форма створення з'являється лише
+// коли серій немає взагалі (напр. після очищення БД) — інакше базу можна
+// було б наповнити лише через SQL-редактор Supabase.
 // =========================================================
 
-import { reportError } from '../../app/errorMessage';
+import { useState } from 'react';
+import { errorMessage, reportError } from '../../app/errorMessage';
 import type { TournamentSeries } from '../../data/types';
 import { WEEKDAY_LABELS } from '../../data/types';
-import { updateSeries } from '../../data/tournaments';
+import { createSeries, deleteSeries, updateSeries } from '../../data/tournaments';
 
-// Сайт спрощено до однієї активної серії (публічно вибір серії більше не
-// показується) — форму створення нової серії й кнопку видалення прибрано з
-// UI, хоча createSeries/deleteSeries лишаються в data/tournaments.ts.
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9а-яїєіґ]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 // Унікальність активної серії гарантує частковий унікальний індекс у БД
 // (міграція 0013) — дизейбл кнопки "Увімкнути" нижче лише дублює це
 // зручною підказкою на клієнті.
 export default function SeriesManager({ series, onChanged }: { series: TournamentSeries[]; onChanged: () => void }) {
+  const [name, setName] = useState('');
+  const [autoWeekday, setAutoWeekday] = useState<number | ''>('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    setErr(null);
+    // slug генерується мовчки з назви — окреме поле для нього лише плутало,
+    // адже саме id ідентифікує серію технічно, slug потрібен лише для
+    // читабельного URL (/series/:slug).
+    const slug = slugify(name) || 'series';
+    try {
+      await createSeries({ slug, name: name.trim(), autoWeekday: autoWeekday === '' ? null : autoWeekday });
+      setName('');
+      setAutoWeekday('');
+      onChanged();
+    } catch (e) {
+      setErr(errorMessage(e, 'Не вдалося створити серію.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div>
       <h3>Регулярні серії</h3>
@@ -47,11 +80,38 @@ export default function SeriesManager({ series, onChanged }: { series: Tournamen
               >
                 {s.isActive ? 'Вимкнути' : 'Увімкнути'}
               </button>
+              <button
+                type="button"
+                className="btn btn-bad btn-sm"
+                onClick={() => confirm(`Видалити серію «${s.name}»? Турніри цієї серії стануть одноразовими.`) && deleteSeries(s.id).then(onChanged).catch(reportError)}
+              >
+                Видалити
+              </button>
             </div>
           );
         })}
       </div>
-      <p className="hint">
+
+      {series.length === 0 && (
+        <div className="card field-row" style={{ alignItems: 'flex-end' }}>
+          <label className="field">
+            <span>Назва серії</span>
+            <input type="text" value={name} placeholder="Регулярний четверговий турнір" onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="field" style={{ flex: '0 0 220px' }}>
+            <span>Автостворення турнірів (необов'язково)</span>
+            <select value={autoWeekday} onChange={(e) => setAutoWeekday(e.target.value === '' ? '' : Number(e.target.value))}>
+              <option value="">— не створювати автоматично —</option>
+              {WEEKDAY_LABELS.map((label, i) => (
+                <option key={i} value={i}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn btn-primary" disabled={busy || !name.trim()} onClick={add}>+ Додати серію</button>
+        </div>
+      )}
+      {err && <p className="form-err">{err}</p>}
+      <p className="hint" style={{ marginTop: 8 }}>
         Якщо вказано день — щодня о 03:00 (UTC) перевіряється, чи є вже створений турнір на найближчу таку дату для серії; якщо
         немає, він створюється автоматично (реєстрація одразу відкрита, налаштування копіюються з останнього турніру серії).
       </p>
