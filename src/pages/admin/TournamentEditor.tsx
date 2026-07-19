@@ -36,6 +36,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   const [prizesMd, setPrizesMd] = useState(initial?.prizesMd ?? '');
   const [bracketType, setBracketType] = useState<BracketType>(initial?.bracketType ?? 'single_elim');
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(initial?.thirdPlaceMatch ?? false);
+  const [bracketNewLook, setBracketNewLook] = useState(initial?.bracketNewLook ?? true);
   const [teamMode, setTeamMode] = useState(!!initial?.teamSize);
   const [teamSize, setTeamSize] = useState(initial?.teamSize ?? 5);
   const [busy, setBusy] = useState(false);
@@ -55,6 +56,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
       bracketType,
       teamSize: teamMode ? teamSize : null,
       thirdPlaceMatch,
+      bracketNewLook,
     };
     try {
       if (initial) await updateTournament(initial.id, input);
@@ -118,6 +120,15 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
               onChange={(e) => setThirdPlaceMatch(e.target.checked)}
             />
             Матч за 3-тє місце (лише одинарна елімінація)
+          </label>
+          <label className="checkbox-row" style={bracketType !== 'single_elim' ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
+            <input
+              type="checkbox"
+              checked={bracketNewLook}
+              disabled={bracketType !== 'single_elim'}
+              onChange={(e) => setBracketNewLook(e.target.checked)}
+            />
+            Новий вигляд сітки (дзеркальна, лише одинарна елімінація)
           </label>
           <label className="checkbox-row">
             <input type="checkbox" checked={teamMode} onChange={(e) => setTeamMode(e.target.checked)} />

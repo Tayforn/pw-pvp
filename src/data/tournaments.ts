@@ -11,6 +11,7 @@ interface TournamentRow {
   id: string; series_id: string | null; name: string; event_date: string; status: TournamentStatus;
   rules_md: string | null; prizes_md: string | null; bracket_type: 'single_elim' | 'double_elim'; bracket_size: number | null;
   team_size: number | null; created_by: string | null; visibility: 'public' | 'unlisted'; third_place_match: boolean;
+  bracket_new_look: boolean;
 }
 interface RegistrationRow {
   id: string; tournament_id: string; nickname: string; rules_ack: boolean; status: RegistrationStatus; created_at: string;
@@ -21,7 +22,7 @@ const seriesFromRow = (r: SeriesRow): TournamentSeries => ({ id: r.id, slug: r.s
 const tournamentFromRow = (r: TournamentRow): Tournament => ({
   id: r.id, seriesId: r.series_id, name: r.name, eventDate: r.event_date, status: r.status,
   rulesMd: r.rules_md, prizesMd: r.prizes_md, bracketType: r.bracket_type, bracketSize: r.bracket_size, teamSize: r.team_size,
-  createdBy: r.created_by, visibility: r.visibility, thirdPlaceMatch: r.third_place_match,
+  createdBy: r.created_by, visibility: r.visibility, thirdPlaceMatch: r.third_place_match, bracketNewLook: r.bracket_new_look,
 });
 const registrationFromRow = (r: RegistrationRow): Registration => ({
   id: r.id, tournamentId: r.tournament_id, nickname: r.nickname, rulesAck: r.rules_ack, status: r.status, createdAt: r.created_at,
@@ -128,6 +129,8 @@ export interface TournamentInput {
   teamSize: number | null;
   /** Матч за 3-тє місце — застосовується лише коли bracketType === 'single_elim'. */
   thirdPlaceMatch: boolean;
+  /** Дзеркальний вигляд сітки замість колонок — застосовується лише коли bracketType === 'single_elim'. */
+  bracketNewLook: boolean;
 }
 
 /** createdBy/visibility задаються один раз при створенні (не редагуються
@@ -147,6 +150,7 @@ export async function createTournament(input: TournamentInput, owner: { createdB
       bracket_type: input.bracketType,
       team_size: input.teamSize && input.teamSize >= 2 ? input.teamSize : null,
       third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
+      bracket_new_look: input.bracketType !== 'single_elim' || input.bracketNewLook,
       created_by: owner.createdBy,
       visibility: owner.visibility,
     })
@@ -169,6 +173,7 @@ export async function updateTournament(id: string, input: TournamentInput): Prom
       bracket_type: input.bracketType,
       team_size: input.teamSize && input.teamSize >= 2 ? input.teamSize : null,
       third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
+      bracket_new_look: input.bracketType !== 'single_elim' || input.bracketNewLook,
     })
     .eq('id', id);
   if (error) throw error;

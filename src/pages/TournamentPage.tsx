@@ -61,7 +61,7 @@ export default function TournamentPage({ id }: { id: string }) {
       {bracket.length > 0 && (
         <div style={{ marginBottom: 18 }}>
           <h3>Сітка</h3>
-          <BracketView matches={bracket} registrations={registrations} />
+          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} />
         </div>
       )}
 
@@ -132,7 +132,7 @@ export default function TournamentPage({ id }: { id: string }) {
       {bracket.length === 0 && (
         <>
           <h3>Сітка</h3>
-          <BracketView matches={bracket} registrations={registrations} />
+          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} />
         </>
       )}
     </div>

@@ -33,6 +33,9 @@ export interface Tournament {
   visibility: 'public' | 'unlisted';
   /** Матч за 3-тє місце між програними півфіналістів — лише для single_elim. */
   thirdPlaceMatch: boolean;
+  /** Дзеркальна сітка з конекторами (true) чи колонки по раундах (false) —
+   * впливає лише на single_elim, для double_elim вигляд один. */
+  bracketNewLook: boolean;
 }
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';

@@ -111,6 +111,7 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
       <BracketView
         matches={bracket}
         registrations={registrations}
+        bracketNewLook={tournament.bracketNewLook}
         editable={{
           onSetFormat: (matchId, format) => setMatchFormat(matchId, format).then(reload).catch(reportError),
           onSetWinner: (matchId, winnerId, score) => setMatchWinner(matchId, winnerId, score).then(reload).catch(reportError),

@@ -82,6 +82,9 @@ interface Props {
   matches: BracketMatch[];
   registrations: Registration[];
   editable?: BracketEditable;
+  /** single_elim: дзеркальна сітка (true, за замовчуванням) чи колонки по
+   * раундах (false, старий вигляд) — не впливає на double_elim. */
+  bracketNewLook?: boolean;
 }
 
 /** bo1 — переможець сам собою й визначає рахунок (1-0/0-1), питати нема сенсу.
@@ -555,7 +558,7 @@ function SingleElimBracket({
   );
 }
 
-export default function BracketView({ matches, registrations, editable }: Props) {
+export default function BracketView({ matches, registrations, editable, bracketNewLook = true }: Props) {
   const [fullscreen, setFullscreen] = useState(false);
 
   // Лок скролу сторінки під час фулскріна — інакше видно ОДРАЗУ два скролбари:
@@ -576,6 +579,9 @@ export default function BracketView({ matches, registrations, editable }: Props)
 
   const wbLabel = (r: number) => `Верхня · Раунд ${r}`;
   const lbLabel = (r: number) => `Нижня · Раунд ${r}`;
+  const wbMaxRound = winners.length > 0 ? Math.max(...winners.map((m) => m.round)) : 0;
+  const singleElimLabel = (r: number) =>
+    r === wbMaxRound ? 'Фінал' : r === wbMaxRound - 1 && wbMaxRound > 1 ? 'Півфінал' : `Раунд ${r}`;
 
   return (
     <div
@@ -619,8 +625,18 @@ export default function BracketView({ matches, registrations, editable }: Props)
               </div>
             )}
           </>
-        ) : (
+        ) : bracketNewLook ? (
           <SingleElimBracket matches={winners} registrations={registrations} editable={editable} thirdPlace={thirdPlace} />
+        ) : (
+          <>
+            <BracketColumns sideMatches={winners} roundLabel={singleElimLabel} registrations={registrations} editable={editable} />
+            {thirdPlace && (
+              <div style={{ marginTop: 24, maxWidth: 220 }}>
+                <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
+                <MatchCard m={thirdPlace} registrations={registrations} editable={editable} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
