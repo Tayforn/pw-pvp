@@ -445,3 +445,52 @@ body.modal-open { overflow: hidden; }
 .bracket-scroll::-webkit-scrollbar-thumb { background: var(--accent-2); border-radius: 6px; border: 2px solid var(--bg-2); }
 .bracket-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .modal-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+/* ── Дзеркальна сітка single_elim (BracketView) ──────────────────────── */
+.trn-grid { display: grid; min-width: max-content; }
+
+.trn-header {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent-3); font-weight: 700; white-space: nowrap;
+}
+
+.trn-match-outer { width: 100%; }
+
+.trn-match {
+  width: 100%; display: flex; flex-direction: column;
+  border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+}
+.trn-match.trn-decided { border-color: rgba(227, 185, 94, 0.4); }
+
+.trn-match-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-mute); font-weight: 700; padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trn-slot {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; font-size: 13px; font-weight: 600;
+  color: var(--text-dim); border-bottom: 1px solid var(--line);
+}
+.trn-slot:last-child { border-bottom: none; }
+.trn-slot.pickable { cursor: pointer; }
+.trn-slot.pickable:hover { background: rgba(227, 185, 94, 0.08); }
+.trn-slot.win { color: var(--good); background: rgba(53, 224, 161, 0.14); }
+.trn-slot.lose { color: var(--text-mute); }
+.trn-slot-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trn-win-mark { color: var(--good); font-weight: 800; font-size: 12px; }
+
+.trn-conn { position: relative; }
+.trn-conn-h { position: absolute; height: 1px; background: var(--accent-3); opacity: 0.6; transform: translateY(-50%); }
+.trn-conn-v { position: absolute; width: 1px; background: var(--accent-3); opacity: 0.6; transform: translateX(-50%); }
+
+.trn-final-cell { position: relative; }
+.trn-champion { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-mute); font-size: 12.5px; font-weight: 600; text-align: center; }
+.trn-champion.has-champion { color: var(--accent-3); }
+.trn-crown { font-size: 22px; line-height: 1; opacity: 0.45; }
+.trn-champion.has-champion .trn-crown { opacity: 1; }
+.trn-champion span:last-child { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; }

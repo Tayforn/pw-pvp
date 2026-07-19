@@ -1,17 +1,28 @@
 // =========================================================
-// Рендер турнірної сітки: колонки по раундах (без SVG-конекторів —
-// свідоме спрощення MVP). Той самий компонент для публічного read-only
+// Рендер турнірної сітки. Той самий компонент для публічного read-only
 // перегляду (TournamentPage) і адмінського редактора (AdminPage) —
-// різниця лише в наявності `editable`. Для double_elim рендерить три
-// секції: Верхня сітка (winners), Нижня сітка (losers), Гранд-фінал (final).
+// різниця лише в наявності `editable`.
+//
+// single_elim: дзеркальна сітка (обидві половини сходяться до фіналу
+// в центрі, з конекторами й короною чемпіона) — тестовий вигляд за
+// референсом турнірної сітки Perfect World.
+// double_elim: колонки по раундах без конекторів (як було) — три секції:
+// Верхня сітка (winners), Нижня сітка (losers), Гранд-фінал (final).
 // =========================================================
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { BracketMatch, Registration } from '../data/types';
 
 function nameFor(id: string | null, regs: Registration[]): string {
   if (!id) return '—';
   return regs.find((r) => r.id === id)?.nickname ?? '?';
+}
+
+function roundLabel(depthFromFinal: number): string {
+  if (depthFromFinal === 0) return 'Фінал';
+  if (depthFromFinal === 1) return 'Півфінал';
+  if (depthFromFinal === 2) return 'Чвертьфінал';
+  return `1/${2 ** depthFromFinal} фіналу`;
 }
 
 const FORMAT_LABELS: Record<string, string> = { bo1: 'BO1', bo3: 'BO3', bo5: 'BO5' };
@@ -178,14 +189,14 @@ function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrati
 const DEFAULT_MATCH_H = 84;
 const GAP = 16;
 
-/** Одна "сітка" (колонки по раундах) — winners АБО losers. Кожен матч
- * позиціонується абсолютно по центру між двома матчами, що в нього ведуть;
- * висота картки НЕ хардкодиться, а вимірюється з реального DOM (перша
+/** Одна "сітка" (колонки по раундах) — winners АБО losers, для double_elim.
+ * Кожен матч позиціонується абсолютно по центру між двома матчами, що в нього
+ * ведуть; висота картки НЕ хардкодиться, а вимірюється з реального DOM (перша
  * картка раунду 1) — інакше при відхиленні реального контенту від
  * припущеної константи картки в різних раундах накладаються одна на одну. */
 function BracketColumns({
   sideMatches,
-  roundLabel,
+  roundLabel: label,
   registrations,
   editable,
 }: {
@@ -225,7 +236,7 @@ function BracketColumns({
       {rounds.map((r, ri) => (
         <div key={r} style={{ flex: '0 0 220px' }}>
           <h4 style={{ margin: '0 0 4px', color: 'var(--text-dim)', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            {roundLabel(r)}
+            {label(r)}
           </h4>
           <div style={{ position: 'relative', height: columnHeight }}>
             {byRound.get(r)!.map((m, s) => (
@@ -240,6 +251,306 @@ function BracketColumns({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Дзеркальна сітка single_elim ────────────────────────────────────────
+
+const TRN_MATCH_W = 176;
+const TRN_CONN_W = 36;
+const TRN_FINAL_W = 196;
+const TRN_ROW_H = 40;
+const TRN_ROW_H_EDIT = 48;
+const TRN_ROW_GAP = 8;
+
+/** Компактна картка матчу для дзеркальної сітки: та сама логіка вибору
+ * переможця/формату, що й MatchCard, лише інша розмітка (два рядки-слоти
+ * в одній рамці замість двох кнопок у картці). */
+function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registrations: Registration[]; editable?: BracketEditable }) {
+  const [pendingWinner, setPendingWinner] = useState<string | null>(null);
+  const isBo1 = m.format.toLowerCase() === 'bo1';
+
+  const pick = (pid: string | null) => {
+    if (!editable || !pid || !m.participant1Id || !m.participant2Id) return;
+    if (isBo1) {
+      editable.onSetWinner(m.id, pid, pid === m.participant1Id ? '1-0' : '0-1');
+    } else {
+      setPendingWinner(pid);
+    }
+  };
+
+  return (
+    <div className="trn-match-outer">
+      <div className={'trn-match' + (m.winnerId ? ' trn-decided' : '')}>
+        <div className="trn-match-meta">
+          <span>
+            {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
+            {m.score ? ` · ${m.score}` : ''}
+          </span>
+          {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
+        </div>
+        {[m.participant1Id, m.participant2Id].map((pid, i) => {
+          const isWin = !!m.winnerId && pid === m.winnerId;
+          const isLose = !!m.winnerId && !!pid && pid !== m.winnerId;
+          const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id;
+          return (
+            <div
+              key={i}
+              className={'trn-slot' + (isWin ? ' win' : '') + (isLose ? ' lose' : '') + (clickable ? ' pickable' : '')}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={() => pick(pid)}
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        pick(pid);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <span className="trn-slot-name">{nameFor(pid, registrations)}</span>
+              {isWin && <span className="trn-win-mark" aria-hidden="true">✓</span>}
+            </div>
+          );
+        })}
+      </div>
+      {pendingWinner && (
+        <ScorePrompt
+          initial={m.score ?? ''}
+          onCancel={() => setPendingWinner(null)}
+          onConfirm={(score) => {
+            editable?.onSetWinner(m.id, pendingWinner, score);
+            setPendingWinner(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Розкладка колонок/рядків grid-сітки: обидві половини дзеркальні відносно
+ * фіналу в центрі (структура завжди — повне бінарне дерево, бай-матчі
+ * резолвляться на бекенді одразу при генерації, тож round/slot завжди щільні). */
+function buildMirrorLayout(bracketSize: number) {
+  const roundCount = Math.log2(bracketSize);
+  const halfRounds = roundCount - 1;
+  const halfSize = bracketSize / 2;
+  const matchesAt = (r: number) => bracketSize / 2 ** (r + 1);
+  const halfMatchesAt = (r: number) => matchesAt(r) / 2;
+  const localSpan = (r: number) => 2 ** (r + 1);
+
+  let col = 1;
+  const leftMatchCol: number[] = [];
+  const leftConnCol: number[] = [];
+  for (let r = 0; r < halfRounds; r++) {
+    leftMatchCol[r] = col++;
+    leftConnCol[r] = col++;
+  }
+  const finalCol = col++;
+  const rightConnCol: number[] = [];
+  const rightMatchCol: number[] = [];
+  for (let r = halfRounds - 1; r >= 0; r--) {
+    rightConnCol[r] = col++;
+    rightMatchCol[r] = col++;
+  }
+  const totalCols = col - 1;
+
+  const colWidths: number[] = [];
+  for (let c = 1; c <= totalCols; c++) {
+    if (c === finalCol) colWidths.push(TRN_FINAL_W);
+    else if (leftConnCol.includes(c) || rightConnCol.includes(c)) colWidths.push(TRN_CONN_W);
+    else colWidths.push(TRN_MATCH_W);
+  }
+
+  interface Cell { round: number; slot: number; gridColumn: number; gridRow: string; }
+  const cells: Cell[] = [];
+  for (let r = 0; r < halfRounds; r++) {
+    const span = localSpan(r);
+    const count = halfMatchesAt(r);
+    for (let i = 0; i < count; i++) {
+      cells.push({ round: r + 1, slot: i, gridColumn: leftMatchCol[r], gridRow: `${i * span + 2} / span ${span}` });
+      cells.push({ round: r + 1, slot: halfMatchesAt(r) + i, gridColumn: rightMatchCol[r], gridRow: `${halfSize + i * span + 2} / span ${span}` });
+    }
+  }
+
+  // points — % висоти комірки, де лінія торкається карток-"дітей" (завжди
+  // 25%/75% для звичайного парного злиття — це універсально, не залежить
+  // від рівня, бо комірка конектора завжди дзеркально обрамляє рівно двох
+  // дітей). Для in'єднання в фінал дитина лише одна (свій бік половини),
+  // а друга "точка" — це вже центр фіналу (50%), тому points містить лише
+  // одне значення.
+  interface Conn { gridColumn: number; gridRow: string; mirrored: boolean; points: number[]; }
+  const connectors: Conn[] = [];
+  for (let r = 0; r < halfRounds; r++) {
+    const toFinal = r === halfRounds - 1;
+    if (toFinal) {
+      // Останній раунд половини заходить прямо у фінал. Фінал центрований
+      // по ВСІЙ висоті сітки (а не по половині), тож щоб лінія дійсно
+      // домальовувалась до його центру, конектор теж має займати всю
+      // висоту — інакше горизонталь опиняється на висоті центру половини
+      // (25%/75%), а не центру фіналу (50%), і лінія "висить у повітрі".
+      connectors.push({ gridColumn: leftConnCol[r], gridRow: `2 / span ${bracketSize}`, mirrored: false, points: [25] });
+      connectors.push({ gridColumn: rightConnCol[r], gridRow: `2 / span ${bracketSize}`, mirrored: true, points: [75] });
+    } else {
+      const span = localSpan(r + 1);
+      const count = halfMatchesAt(r + 1);
+      for (let i = 0; i < count; i++) {
+        connectors.push({ gridColumn: leftConnCol[r], gridRow: `${i * span + 2} / span ${span}`, mirrored: false, points: [25, 75] });
+        connectors.push({ gridColumn: rightConnCol[r], gridRow: `${halfSize + i * span + 2} / span ${span}`, mirrored: true, points: [25, 75] });
+      }
+    }
+  }
+
+  interface Header { gridColumn: string; label: string; }
+  const headers: Header[] = [];
+  for (let r = 0; r < halfRounds; r++) {
+    const label = roundLabel(roundCount - 1 - r);
+    headers.push({ gridColumn: `${leftMatchCol[r]} / span 2`, label });
+    headers.push({ gridColumn: `${rightConnCol[r]} / span 2`, label });
+  }
+  headers.push({ gridColumn: `${finalCol} / span 1`, label: 'Фінал' });
+
+  return { totalCols, colWidths, cells, connectors, headers, finalCol, finalRound: roundCount, bodyRows: bracketSize };
+}
+
+/** Лінія-конектор — не суцільний "T", а прямі відрізки під 90°: короткий
+ * горизонтальний "вусик" від картки-дитини до вертикалі, вертикаль, і
+ * горизонталь у батьківську картку — як на референсі (PW-турнірна сітка),
+ * де лінія відходить від блочка під прямим кутом, а не прилягає до нього. */
+interface ConnSeg { axis: 'h' | 'v'; pos: number; from: number; to: number }
+function connectorSegments(mirrored: boolean, points: number[]): ConnSeg[] {
+  const childX = mirrored ? 100 : 0;
+  const parentX = mirrored ? 0 : 100;
+  const elbowX = 50;
+  const segs: ConnSeg[] = points.map((p) => ({ axis: 'h', pos: p, from: Math.min(childX, elbowX), to: Math.max(childX, elbowX) }));
+  segs.push({ axis: 'h', pos: 50, from: Math.min(elbowX, parentX), to: Math.max(elbowX, parentX) });
+  const allY = [...points, 50];
+  segs.push({ axis: 'v', pos: elbowX, from: Math.min(...allY), to: Math.max(...allY) });
+  return segs;
+}
+
+function TrnConnector({ mirrored, points }: { mirrored: boolean; points: number[] }) {
+  return (
+    <>
+      {connectorSegments(mirrored, points).map((s, i) =>
+        s.axis === 'h' ? (
+          <div key={i} className="trn-conn-h" style={{ left: `${s.from}%`, width: `${s.to - s.from}%`, top: `${s.pos}%` }} />
+        ) : (
+          <div key={i} className="trn-conn-v" style={{ top: `${s.from}%`, height: `${s.to - s.from}%`, left: `${s.pos}%` }} />
+        ),
+      )}
+    </>
+  );
+}
+
+function SingleElimBracket({
+  matches,
+  registrations,
+  editable,
+  thirdPlace,
+}: {
+  matches: BracketMatch[];
+  registrations: Registration[];
+  editable?: BracketEditable;
+  thirdPlace: BracketMatch | null;
+}) {
+  const round1Count = matches.filter((m) => m.round === 1).length;
+  const bracketSize = round1Count * 2;
+  const layout = useMemo(() => (bracketSize >= 2 ? buildMirrorLayout(bracketSize) : null), [bracketSize]);
+
+  // Висота рядка НЕ хардкодиться (як і в BracketColumns) — вимірюється з
+  // реального DOM першої картки раунду 1. Інакше фактична висота картки
+  // (залежить від шрифтів/редактора формату/масштабу браузера) розходиться
+  // з припущеною константою, і сусідні картки в сітці накладаються одна на
+  // одну. TRN_ROW_GAP — гарантований проміжок між сусідніми картками.
+  const [rowH, setRowH] = useState(editable ? TRN_ROW_H_EDIT : TRN_ROW_H);
+  const [cardH, setCardH] = useState(rowH * 2 - TRN_ROW_GAP);
+  const firstMatchRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const h = firstMatchRef.current?.getBoundingClientRect().height;
+    if (h) {
+      if (Math.abs(h - cardH) > 1) setCardH(h);
+      const next = Math.ceil((h - TRN_ROW_GAP) / 2);
+      if (Math.abs(next - rowH) > 1) setRowH(next);
+    }
+  });
+
+  if (!layout) return null;
+  const findMatch = (round: number, slot: number) => matches.find((m) => m.round === round && m.slot === slot);
+  const finalMatch = findMatch(layout.finalRound, 0);
+  const championName = finalMatch?.winnerId ? nameFor(finalMatch.winnerId, registrations) : null;
+
+  return (
+    <div>
+      <div className="bracket-scroll" style={{ overflowX: 'auto', paddingBottom: 10 }}>
+        <div
+          className="trn-grid"
+          style={{
+            gridTemplateColumns: layout.colWidths.map((w) => w + 'px').join(' '),
+            gridTemplateRows: `28px repeat(${layout.bodyRows}, ${rowH}px)`,
+            rowGap: TRN_ROW_GAP,
+          }}
+        >
+          {layout.headers.map((h, i) => (
+            <div key={i} className="trn-header" style={{ gridColumn: h.gridColumn, gridRow: '1' }}>
+              {h.label}
+            </div>
+          ))}
+
+          {layout.cells.map((c, i) => {
+            const m = findMatch(c.round, c.slot);
+            if (!m) return null;
+            const isFirst = c.round === 1 && c.slot === 0;
+            return (
+              <div
+                key={i}
+                ref={isFirst ? firstMatchRef : undefined}
+                style={{ gridColumn: c.gridColumn, gridRow: c.gridRow, display: 'flex', alignItems: 'center' }}
+              >
+                <TrnMatch m={m} registrations={registrations} editable={editable} />
+              </div>
+            );
+          })}
+
+          {layout.connectors.map((c, i) => (
+            <div key={i} className="trn-conn" style={{ gridColumn: c.gridColumn, gridRow: c.gridRow }} aria-hidden="true">
+              <TrnConnector mirrored={c.mirrored} points={c.points} />
+            </div>
+          ))}
+
+          {finalMatch && (
+            <div className="trn-final-cell" style={{ gridColumn: `${layout.finalCol}`, gridRow: `2 / span ${layout.bodyRows}` }}>
+              {/* Картка позиціонується абсолютно рівно по центру комірки (50%) —
+                  саме туди й цілять конектори. Корону кладемо ПІД нею окремим
+                  абсолютним блоком, а не в тому самому flex-centered стеку:
+                  інакше центрується пара "картка+корона" разом, і сама картка
+                  зсувається вище за 50% — конектори не дотягувались до неї. */}
+              <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)' }}>
+                <TrnMatch m={finalMatch} registrations={registrations} editable={editable} />
+              </div>
+              <div
+                className={'trn-champion' + (championName ? ' has-champion' : '')}
+                style={{ position: 'absolute', left: 0, right: 0, top: `calc(50% + ${cardH / 2 + 14}px)` }}
+              >
+                <span className="trn-crown" aria-hidden="true">🏆</span>
+                <span>{championName || 'Переможець турніру'}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {thirdPlace && (
+        <div style={{ marginTop: 24, maxWidth: 240 }}>
+          <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
+          <TrnMatch m={thirdPlace} registrations={registrations} editable={editable} />
+        </div>
+      )}
     </div>
   );
 }
@@ -260,18 +571,10 @@ export default function BracketView({ matches, registrations, editable }: Props)
   const winners = matches.filter((m) => m.bracketSide === 'winners');
   const losers = matches.filter((m) => m.bracketSide === 'losers');
   const final = matches.filter((m) => m.bracketSide === 'final');
-  const thirdPlace = matches.filter((m) => m.bracketSide === 'third_place');
+  const thirdPlace = matches.find((m) => m.bracketSide === 'third_place') ?? null;
   const isDoubleElim = losers.length > 0 || final.length > 0;
 
-  const wbMaxRound = Math.max(...winners.map((m) => m.round));
-  const wbLabel = (r: number) =>
-    isDoubleElim
-      ? `Верхня · Раунд ${r}`
-      : r === wbMaxRound
-        ? 'Фінал'
-        : r === wbMaxRound - 1 && wbMaxRound > 1
-          ? 'Півфінал'
-          : `Раунд ${r}`;
+  const wbLabel = (r: number) => `Верхня · Раунд ${r}`;
   const lbLabel = (r: number) => `Нижня · Раунд ${r}`;
 
   return (
@@ -290,28 +593,34 @@ export default function BracketView({ matches, registrations, editable }: Props)
           коли більша — на відміну від align/justify-center, які в скрол-
           контейнері обрізали б початок контенту. */}
       <div style={fullscreen ? { margin: 'auto' } : undefined}>
-        {isDoubleElim && <h3 style={{ margin: '0 0 8px' }}>Верхня сітка</h3>}
-        <BracketColumns sideMatches={winners} roundLabel={wbLabel} registrations={registrations} editable={editable} />
+        {isDoubleElim ? (
+          <>
+            <h3 style={{ margin: '0 0 8px' }}>Верхня сітка</h3>
+            <BracketColumns sideMatches={winners} roundLabel={wbLabel} registrations={registrations} editable={editable} />
 
-        {losers.length > 0 && (
-          <div style={{ marginTop: 24 }}>
-            <h3 style={{ margin: '0 0 8px' }}>Нижня сітка</h3>
-            <BracketColumns sideMatches={losers} roundLabel={lbLabel} registrations={registrations} editable={editable} />
-          </div>
-        )}
+            {losers.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <h3 style={{ margin: '0 0 8px' }}>Нижня сітка</h3>
+                <BracketColumns sideMatches={losers} roundLabel={lbLabel} registrations={registrations} editable={editable} />
+              </div>
+            )}
 
-        {final.length > 0 && (
-          <div style={{ marginTop: 24, maxWidth: 220 }}>
-            <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
-            <MatchCard m={final[0]} registrations={registrations} editable={editable} />
-          </div>
-        )}
+            {final.length > 0 && (
+              <div style={{ marginTop: 24, maxWidth: 220 }}>
+                <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
+                <MatchCard m={final[0]} registrations={registrations} editable={editable} />
+              </div>
+            )}
 
-        {thirdPlace.length > 0 && (
-          <div style={{ marginTop: 24, maxWidth: 220 }}>
-            <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
-            <MatchCard m={thirdPlace[0]} registrations={registrations} editable={editable} />
-          </div>
+            {thirdPlace && (
+              <div style={{ marginTop: 24, maxWidth: 220 }}>
+                <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
+                <MatchCard m={thirdPlace} registrations={registrations} editable={editable} />
+              </div>
+            )}
+          </>
+        ) : (
+          <SingleElimBracket matches={winners} registrations={registrations} editable={editable} thirdPlace={thirdPlace} />
         )}
       </div>
     </div>
