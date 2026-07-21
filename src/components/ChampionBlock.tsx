@@ -11,9 +11,9 @@ export default function ChampionBlock({ nickname, label = 'Чемпіон' }: { 
         alignItems: 'center',
         gap: 12,
         padding: '10px 14px',
-        borderRadius: 12,
-        background: 'linear-gradient(135deg, rgba(227, 185, 94, 0.2), rgba(199, 154, 62, 0.08))',
-        border: '1px solid rgba(227, 185, 94, 0.4)',
+        borderRadius: 'var(--radius-lg)',
+        background: 'linear-gradient(135deg, var(--glow-gold-1), var(--glow-gold-2))',
+        border: '1px solid var(--glow-gold-border)',
       }}
     >
       <span style={{ fontSize: 24, lineHeight: 1 }}>🏆</span>

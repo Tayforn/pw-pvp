@@ -30,7 +30,7 @@ const KNOWN_FORMATS = ['bo1', 'bo3', 'bo5'];
 
 function FormatEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [custom, setCustom] = useState(!KNOWN_FORMATS.includes(value));
-  const smallInputStyle = { fontSize: 12, padding: '3px 6px', borderRadius: 6, background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--line-2)', textTransform: 'uppercase' } as const;
+  const smallInputStyle = { fontSize: 12, padding: '3px 6px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--line-2)', textTransform: 'uppercase' } as const;
 
   if (custom) {
     return (
@@ -111,7 +111,7 @@ function ScorePrompt({ onConfirm, onCancel, initial }: { onConfirm: (score: stri
             maxLength={9}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && value.trim() && onConfirm(value.trim())}
-            style={{ width: '100%', fontSize: 15, padding: '10px 12px', borderRadius: 9, background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--accent)' }}
+            style={{ width: '100%', fontSize: 15, padding: '10px 12px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--accent)' }}
           />
         </div>
         <div className="modal-foot">
@@ -160,9 +160,9 @@ function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrati
               textAlign: 'left',
               padding: '7px 9px',
               marginBottom: 4,
-              borderRadius: 8,
+              borderRadius: 'var(--radius)',
               border: '1px solid var(--line-2)',
-              background: isWinner ? 'rgba(53,224,161,0.14)' : 'transparent',
+              background: isWinner ? 'rgba(var(--good-rgb), 0.14)' : 'transparent',
               color: isWinner ? 'var(--good)' : pid ? 'var(--text)' : 'var(--text-mute)',
               fontWeight: isWinner ? 700 : 500,
               cursor: clickable ? 'pointer' : 'default',
