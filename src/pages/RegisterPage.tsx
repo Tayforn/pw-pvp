@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import PageMeta from '../app/PageMeta';
+import { routeUrl } from '../app/useRoute';
 import { errorMessage } from '../app/errorMessage';
 import { hasRegistered, markRegistered } from '../app/registeredTournaments';
 import { isRegistrationOpen, type Tournament } from '../data/types';
@@ -168,6 +169,18 @@ export default function RegisterPage() {
             <input type="checkbox" checked={rulesAck} onChange={(e) => setRulesAck(e.target.checked)} />
             З правилами турніру ознайомлений(а)
           </label>
+          <small className="hint">
+            Ще не знайомий(а) з правилами?{' '}
+            {tournament?.rulesMd ? (
+              <a className="link" href={routeUrl({ name: 'tournament', id: tournament.id })}>
+                Правила цього турніру
+              </a>
+            ) : (
+              <a className="link" href={routeUrl({ name: 'rules' })} data-goto="rules">
+                Загальні правила турнірів
+              </a>
+            )}
+          </small>
           {err && <p className="form-err">{err}</p>}
           <button type="submit" className="btn btn-primary" disabled={busy || !rulesAck || !nickname.trim() || !membersValid}>
             {busy ? 'Надсилання…' : 'Подати заявку'}

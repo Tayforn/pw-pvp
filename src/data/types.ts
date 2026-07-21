@@ -82,6 +82,15 @@ export function isRegistrationOpen(t: Pick<Tournament, 'status' | 'eventDate'>):
   return t.eventDate >= today;
 }
 
+/** Статус для відображення (беджі): якщо в БД ще 'registration_open', але
+ * event_date вже минула, показуємо його як закритий — не чекаючи, поки
+ * серверний крон (close_past_tournament_registrations, 0016) перезапише
+ * сам запис раз на 2 години. */
+export function effectiveStatus(t: Pick<Tournament, 'status' | 'eventDate'>): TournamentStatus {
+  if (t.status === 'registration_open' && !isRegistrationOpen(t)) return 'registration_closed';
+  return t.status;
+}
+
 /** Індекс — той самий 0=неділя..6=субота, що й Postgres extract(dow). */
 export const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'] as const;
 

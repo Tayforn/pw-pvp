@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Route } from '../app/useRoute';
 import PageMeta from '../app/PageMeta';
 import type { Tournament, TournamentSeries } from '../data/types';
-import { STATUS_LABELS } from '../data/types';
+import { STATUS_LABELS, effectiveStatus } from '../data/types';
 import { fetchPublicTournaments, fetchSeries } from '../data/tournaments';
 import { fetchChampion } from '../data/bracket';
 import ChampionBlock from '../components/ChampionBlock';
@@ -71,7 +71,7 @@ export default function SeriesPage({ slug, onNavigate }: { slug: string; onNavig
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 8 }}>
                 <span style={{ fontWeight: 600 }}>{t.name}</span>
-                {!champions[t.id] && <span className="badge warn">{STATUS_LABELS[t.status]}</span>}
+                {!champions[t.id] && <span className="badge warn">{STATUS_LABELS[effectiveStatus(t)]}</span>}
               </div>
               <span className="hint" style={{ margin: 0 }}>{t.eventDate}</span>
               {champions[t.id] && <ChampionBlock nickname={champions[t.id]!} />}

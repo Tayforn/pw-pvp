@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Route } from '../app/useRoute';
 import PageMeta from '../app/PageMeta';
 import type { Tournament } from '../data/types';
-import { STATUS_LABELS } from '../data/types';
+import { STATUS_LABELS, effectiveStatus } from '../data/types';
 import { fetchPublicTournaments, subscribeToTournamentChanges } from '../data/tournaments';
 
 export default function TournamentsPage({ onNavigate }: { onNavigate: (r: Route) => void }) {
@@ -37,7 +37,10 @@ export default function TournamentsPage({ onNavigate }: { onNavigate: (r: Route)
               onClick={() => onNavigate({ name: 'tournament', id: t.id })}
             >
               <span>{t.name} · {t.eventDate}</span>
-              <span className={'badge ' + (t.status === 'completed' ? 'good' : t.status === 'cancelled' ? 'bad' : 'warn')}>{STATUS_LABELS[t.status]}</span>
+              {(() => {
+                const s = effectiveStatus(t);
+                return <span className={'badge ' + (s === 'completed' ? 'good' : s === 'cancelled' ? 'bad' : 'warn')}>{STATUS_LABELS[s]}</span>;
+              })()}
             </button>
           ))}
         </div>

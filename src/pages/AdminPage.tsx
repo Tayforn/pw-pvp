@@ -13,7 +13,7 @@ import { useAuth } from '../app/useAuth';
 import { reportError } from '../app/errorMessage';
 import PageMeta from '../app/PageMeta';
 import type { Tournament, TournamentSeries } from '../data/types';
-import { STATUS_LABELS } from '../data/types';
+import { STATUS_LABELS, effectiveStatus, isRegistrationOpen } from '../data/types';
 import { deleteTournament, fetchAdminTournaments, subscribeToTournamentChanges } from '../data/tournaments';
 import SeriesManager from './admin/SeriesManager';
 import TournamentEditor from './admin/TournamentEditor';
@@ -105,13 +105,13 @@ function TournamentRow({
           {seriesName(t.seriesId)}
           {t.teamSize ? ` · команди×${t.teamSize}` : ''}
         </span>
-        <span className={'badge ' + (t.status === 'completed' ? 'good' : t.status === 'cancelled' ? 'bad' : 'warn')} style={{ whiteSpace: 'nowrap' }}>
+        <span className={'badge ' + (effectiveStatus(t) === 'completed' ? 'good' : effectiveStatus(t) === 'cancelled' ? 'bad' : 'warn')} style={{ whiteSpace: 'nowrap' }}>
           {t.visibility === 'unlisted' ? '🔒 ' : ''}
-          {STATUS_LABELS[t.status]}
+          {STATUS_LABELS[effectiveStatus(t)]}
         </span>
         <span style={{ display: 'flex', gap: 4 }}>
           <button type="button" className="btn btn-ghost btn-sm" title="Копіювати посилання на сторінку турніру" onClick={() => copyLink('t/' + t.id)}>🔗</button>
-          {t.status === 'registration_open' && (
+          {isRegistrationOpen(t) && (
             <button type="button" className="btn btn-ghost btn-sm" title="Копіювати посилання на реєстрацію" onClick={() => copyLink('register?t=' + t.id)}>📝</button>
           )}
         </span>

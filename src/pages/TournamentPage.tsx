@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import PageMeta from '../app/PageMeta';
 import type { BracketMatch, Registration, Tournament } from '../data/types';
-import { STATUS_LABELS } from '../data/types';
+import { STATUS_LABELS, effectiveStatus, isRegistrationOpen } from '../data/types';
 import { fetchRegistrations, fetchTournament, subscribeToTournamentChanges } from '../data/tournaments';
 import { fetchBracket } from '../data/bracket';
 import BracketView from '../components/BracketView';
@@ -41,13 +41,14 @@ export default function TournamentPage({ id }: { id: string }) {
         <span className="eyebrow">Турнір · {tournament.eventDate}</span>
         <h2>{tournament.name}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
-          <span className={'badge ' + (tournament.status === 'completed' ? 'good' : tournament.status === 'cancelled' ? 'bad' : 'warn')}>
-            {STATUS_LABELS[tournament.status]}
-          </span>
+          {(() => {
+            const s = effectiveStatus(tournament);
+            return <span className={'badge ' + (s === 'completed' ? 'good' : s === 'cancelled' ? 'bad' : 'warn')}>{STATUS_LABELS[s]}</span>;
+          })()}
           <button type="button" className="btn btn-ghost btn-sm" onClick={share}>
             {copied ? 'Скопійовано!' : '🔗 Поділитися'}
           </button>
-          {tournament.status === 'registration_open' && (
+          {isRegistrationOpen(tournament) && (
             <a className="btn btn-primary btn-sm" href={import.meta.env.BASE_URL + 'register?t=' + tournament.id}>
               ✍ Реєстрація
             </a>
