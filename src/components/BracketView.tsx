@@ -74,8 +74,52 @@ function FormatEditor({ value, onChange }: { value: string; onChange: (v: string
 }
 
 export interface BracketEditable {
-  onSetWinner: (matchId: string, winnerId: string, score?: string) => void;
+  onSetWinner: (matchId: string, winnerId: string | null, score?: string | null) => void;
   onSetFormat: (matchId: string, format: string) => void;
+}
+
+/** Скільки перемог потрібно для серії даного формату (bo3 → 2, bo5 → 3,
+ * bo7 → 4…). Формат без цифри (нетиповий кастом) — 1, щоб адмін завжди мав
+ * змогу завершити матч кліком, а не залипав без варіанту зафіксувати результат. */
+function requiredWins(format: string): number {
+  const digits = format.match(/\d+/);
+  const n = digits ? parseInt(digits[0], 10) : 1;
+  return Math.max(1, Math.floor(n / 2) + 1);
+}
+
+/** Рахунок серії не БО1: клік по ніку — +1 перемога цьому учаснику (а не
+ * одразу переможець), допоки хтось не набере потрібну кількість — тоді
+ * матч фіксується автоматично з рахунком "X-Y". Рахунок локальний
+ * (не персиститься, доки серія не вирішена) — «Скинути» одразу обнуляє
+ * його і, якщо матч уже було вирішено цим-таки тало, знімає переможця. */
+function useMatchTally(m: BracketMatch, editable?: BracketEditable) {
+  const [tally, setTally] = useState<[number, number]>([0, 0]);
+
+  useEffect(() => {
+    setTally([0, 0]);
+  }, [m.id, m.participant1Id, m.participant2Id, m.winnerId]);
+
+  const addWin = (pid: string | null) => {
+    if (!editable || !pid || !m.participant1Id || !m.participant2Id || m.winnerId) return;
+    const idx = pid === m.participant1Id ? 0 : 1;
+    const needed = requiredWins(m.format);
+    setTally((t) => {
+      const next: [number, number] = [t[0], t[1]];
+      next[idx] += 1;
+      if (next[idx] >= needed) {
+        editable.onSetWinner(m.id, pid, `${next[0]}-${next[1]}`);
+        return [0, 0];
+      }
+      return next;
+    });
+  };
+
+  const reset = () => {
+    setTally([0, 0]);
+    if (m.winnerId) editable?.onSetWinner(m.id, null, null);
+  };
+
+  return { tally, addWin, reset };
 }
 
 interface Props {
@@ -87,67 +131,41 @@ interface Props {
   bracketNewLook?: boolean;
 }
 
-/** bo1 — переможець сам собою й визначає рахунок (1-0/0-1), питати нема сенсу.
- * Будь-який інший формат (bo3/bo5/кастом) вимагає рахунок серії від адміна.
- * Це СПРАВЖНЯ модалка (position: fixed, поза потоком картки) — не inline-
- * розширення картки: якщо додати поле прямо всередині картки, воно тимчасово
- * збільшує її висоту, а решта сітки позиціонується абсолютно за заздалегідь
- * виміряною (меншою) висотою — картка "наїжджає" на сусідню знизу. */
-function ScorePrompt({ onConfirm, onCancel, initial }: { onConfirm: (score: string) => void; onCancel: () => void; initial: string }) {
-  const [value, setValue] = useState(initial);
-  return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="modal" role="dialog" aria-modal="true" style={{ width: 'min(320px, 100%)' }}>
-        <div className="modal-head">
-          <h3>Рахунок серії</h3>
-          <button type="button" className="modal-close" onClick={onCancel}>✕</button>
-        </div>
-        <div className="modal-body">
-          <input
-            type="text"
-            autoFocus
-            value={value}
-            placeholder="напр. 2-1"
-            maxLength={9}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && value.trim() && onConfirm(value.trim())}
-            style={{ width: '100%', fontSize: 15, padding: '10px 12px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--accent)' }}
-          />
-        </div>
-        <div className="modal-foot">
-          <button type="button" className="btn btn-ghost" onClick={onCancel}>Скасувати</button>
-          <button type="button" className="btn btn-primary" disabled={!value.trim()} onClick={() => onConfirm(value.trim())}>OK</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrations: Registration[]; editable?: BracketEditable }) {
-  const [pendingWinner, setPendingWinner] = useState<string | null>(null);
   const isBo1 = m.format.toLowerCase() === 'bo1';
+  const { tally, addWin, reset } = useMatchTally(m, editable);
 
   const pick = (pid: string | null) => {
     if (!editable || !pid || !m.participant1Id || !m.participant2Id) return;
     if (isBo1) {
       editable.onSetWinner(m.id, pid, pid === m.participant1Id ? '1-0' : '0-1');
     } else {
-      setPendingWinner(pid);
+      addWin(pid);
     }
   };
 
+  const showReset = editable && !isBo1 && (tally[0] > 0 || tally[1] > 0 || !!m.winnerId);
+
   return (
     <div className="card" style={{ padding: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
         <span className="badge mute" style={{ textTransform: 'uppercase' }}>
           {FORMAT_LABELS[m.format] ?? m.format}
           {m.score ? ` · ${m.score}` : ''}
         </span>
-        {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {showReset && (
+            <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '3px 8px', fontSize: 12 }} title="Скинути рахунок серії" onClick={reset}>
+              ↺ Скинути
+            </button>
+          )}
+          {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
+        </div>
       </div>
       {[m.participant1Id, m.participant2Id].map((pid, i) => {
         const isWinner = !!m.winnerId && pid === m.winnerId;
-        const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id;
+        const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id && (isBo1 || !m.winnerId);
+        const wins = !isBo1 && !m.winnerId ? tally[i] : 0;
         return (
           <button
             key={i}
@@ -172,19 +190,10 @@ function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrati
           >
             {isWinner ? '🏆 ' : ''}
             {nameFor(pid, registrations)}
+            {wins > 0 && <span style={{ marginLeft: 8, opacity: 0.75, fontWeight: 700 }}>({wins})</span>}
           </button>
         );
       })}
-      {pendingWinner && (
-        <ScorePrompt
-          initial={m.score ?? ''}
-          onCancel={() => setPendingWinner(null)}
-          onConfirm={(score) => {
-            editable?.onSetWinner(m.id, pendingWinner, score);
-            setPendingWinner(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -271,17 +280,19 @@ const TRN_ROW_GAP = 8;
  * переможця/формату, що й MatchCard, лише інша розмітка (два рядки-слоти
  * в одній рамці замість двох кнопок у картці). */
 function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registrations: Registration[]; editable?: BracketEditable }) {
-  const [pendingWinner, setPendingWinner] = useState<string | null>(null);
   const isBo1 = m.format.toLowerCase() === 'bo1';
+  const { tally, addWin, reset } = useMatchTally(m, editable);
 
   const pick = (pid: string | null) => {
     if (!editable || !pid || !m.participant1Id || !m.participant2Id) return;
     if (isBo1) {
       editable.onSetWinner(m.id, pid, pid === m.participant1Id ? '1-0' : '0-1');
     } else {
-      setPendingWinner(pid);
+      addWin(pid);
     }
   };
+
+  const showReset = editable && !isBo1 && (tally[0] > 0 || tally[1] > 0 || !!m.winnerId);
 
   return (
     <div className="trn-match-outer">
@@ -291,12 +302,25 @@ function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registratio
             {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
             {m.score ? ` · ${m.score}` : ''}
           </span>
-          {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {showReset && (
+              <button
+                type="button"
+                onClick={reset}
+                title="Скинути рахунок серії"
+                style={{ fontSize: 11, lineHeight: 1, padding: '2px 4px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--line-2)', cursor: 'pointer' }}
+              >
+                ↺
+              </button>
+            )}
+            {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
+          </span>
         </div>
         {[m.participant1Id, m.participant2Id].map((pid, i) => {
           const isWin = !!m.winnerId && pid === m.winnerId;
           const isLose = !!m.winnerId && !!pid && pid !== m.winnerId;
-          const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id;
+          const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id && (isBo1 || !m.winnerId);
+          const wins = !isBo1 && !m.winnerId ? tally[i] : 0;
           return (
             <div
               key={i}
@@ -316,21 +340,12 @@ function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registratio
               }
             >
               <span className="trn-slot-name">{nameFor(pid, registrations)}</span>
+              {wins > 0 && <span style={{ opacity: 0.75, fontWeight: 800, marginRight: 4 }}>({wins})</span>}
               {isWin && <span className="trn-win-mark" aria-hidden="true">✓</span>}
             </div>
           );
         })}
       </div>
-      {pendingWinner && (
-        <ScorePrompt
-          initial={m.score ?? ''}
-          onCancel={() => setPendingWinner(null)}
-          onConfirm={(score) => {
-            editable?.onSetWinner(m.id, pendingWinner, score);
-            setPendingWinner(null);
-          }}
-        />
-      )}
     </div>
   );
 }
