@@ -29,6 +29,14 @@ export function useAuth(): AuthState {
 
   useEffect(() => {
     let cancelled = false;
+    // Лише ПЕРШЕ визначення сесії показує "Перевірка сесії…" (loading=true).
+    // Supabase шле onAuthStateChange не тільки при вході/виході, а й при
+    // кожному рефреші токена — зокрема одразу, як вкладка знову отримує фокус
+    // після alt-tab. Якщо й тоді скидати loading у true, AdminPage на мить
+    // рендерить лише "Перевірка сесії…" замість усього дерева — і весь стан
+    // під ним (розгорнуті акордеони турнірів, чернетка редагування) губиться
+    // разом із розмонтованим TournamentsAdmin.
+    let initialized = false;
 
     async function checkAdmin(s: Session | null) {
       if (!s) {
@@ -45,16 +53,22 @@ export function useAuth(): AuthState {
       }
     }
 
+    const finishLoading = () => {
+      if (cancelled) return;
+      initialized = true;
+      setLoading(false);
+    };
+
     supabase.auth.getSession().then(({ data }) => {
       if (cancelled) return;
       setSession(data.session);
-      checkAdmin(data.session).finally(() => !cancelled && setLoading(false));
+      checkAdmin(data.session).finally(finishLoading);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      setLoading(true);
-      checkAdmin(s).finally(() => !cancelled && setLoading(false));
+      if (!initialized) setLoading(true);
+      checkAdmin(s).finally(finishLoading);
     });
 
     return () => {
