@@ -1,6 +1,8 @@
 // =========================================================
 // Адмінка: логін (Supabase Auth, спільний з pw-events) + керування
-// серіями, турнірами, верифікацією заявок, сіткою і ГМ-акаунтами.
+// турнірами, верифікацією заявок, сіткою, учасниками і ГМ-акаунтами.
+// Керування серіями прибрано з UI (див. коментар у TournamentEditor.tsx) —
+// SeriesManager.tsx лишається в коді, просто не рендериться тут.
 //
 // Ролі: 'superadmin' бачить/керує ВСІМА турнірами; 'gm' — лише своїми
 // (created_by), і його турніри не показуються на публічних сторінках
@@ -15,11 +17,11 @@ import PageMeta from '../app/PageMeta';
 import type { Tournament, TournamentSeries } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isRegistrationOpen } from '../data/types';
 import { deleteTournament, fetchAdminTournaments, subscribeToTournamentChanges } from '../data/tournaments';
-import SeriesManager from './admin/SeriesManager';
 import TournamentEditor from './admin/TournamentEditor';
 import RegistrationsPanel from './admin/RegistrationsPanel';
 import BracketPanel from './admin/BracketPanel';
 import AdminsManager from './admin/AdminsManager';
+import ParticipantsManager from './admin/ParticipantsManager';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -134,13 +136,12 @@ function TournamentRow({
   );
 }
 
-function Section({ title, items, defaultOpen, render }: { title: string; items: Tournament[]; defaultOpen: boolean; render: (t: Tournament) => React.ReactNode }) {
-  const [open, setOpen] = useState(defaultOpen);
+function Section({ title, items, open, onToggle, render }: { title: string; items: Tournament[]; open: boolean; onToggle: () => void; render: (t: Tournament) => React.ReactNode }) {
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px',
           background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--text)', fontWeight: 700, fontSize: 15, textAlign: 'left',
@@ -159,6 +160,16 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [editing, setEditing] = useState<Tournament | 'new' | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Стан розгорнутих груп живе тут (а не всередині Section) і рендериться
+  // БЕЗУМОВНО (без tournaments.length === 0 ? … перемикання гілок нижче) —
+  // інакше живий рефетч (subscribeToTournamentChanges) міг би на мить
+  // розмонтувати Section і скинути розгорнутий стан груп/заявок.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    Активні: true,
+    Чернетки: false,
+    Минулі: false,
+  });
+  const toggleSection = (title: string) => setOpenSections((s) => ({ ...s, [title]: !s[title] }));
 
   const reload = () => fetchAdminTournaments(currentUserId, isSuperadmin).then(setTournaments);
   useEffect(() => {
@@ -199,15 +210,9 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
         <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>+ Новий турнір</button>
       </div>
 
-      {tournaments.length === 0 ? (
-        <p className="hint">Турнірів ще немає.</p>
-      ) : (
-        <>
-          <Section title="Активні" items={active} defaultOpen render={renderRow} />
-          <Section title="Чернетки" items={drafts} defaultOpen={false} render={renderRow} />
-          <Section title="Минулі" items={past} defaultOpen={false} render={renderRow} />
-        </>
-      )}
+      <Section title="Активні" items={active} open={openSections.Активні} onToggle={() => toggleSection('Активні')} render={renderRow} />
+      <Section title="Чернетки" items={drafts} open={openSections.Чернетки} onToggle={() => toggleSection('Чернетки')} render={renderRow} />
+      <Section title="Минулі" items={past} open={openSections.Минулі} onToggle={() => toggleSection('Минулі')} render={renderRow} />
 
       {editing && (
         <TournamentEditor
@@ -225,6 +230,7 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
 
 export default function AdminPage({ series }: { series: TournamentSeries[] }) {
   const { session, isAdmin, role, loading } = useAuth();
+  const [tab, setTab] = useState<'tournaments' | 'participants'>('tournaments');
 
   if (loading) return <p className="hint">Перевірка сесії…</p>;
   if (!session) return <LoginForm />;
@@ -249,12 +255,21 @@ export default function AdminPage({ series }: { series: TournamentSeries[] }) {
         </div>
         <button type="button" className="btn btn-ghost" onClick={() => supabase.auth.signOut()}>Вийти</button>
       </div>
-      {isSuperadmin && (
-        <div style={{ marginBottom: 32 }}>
-          <SeriesManager series={series} onChanged={() => {}} />
-        </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <button type="button" className={'btn btn-sm ' + (tab === 'tournaments' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('tournaments')}>
+          Турніри
+        </button>
+        <button type="button" className={'btn btn-sm ' + (tab === 'participants' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('participants')}>
+          Учасники
+        </button>
+      </div>
+
+      {tab === 'tournaments' ? (
+        <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />
+      ) : (
+        <ParticipantsManager />
       )}
-      <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />
       {isSuperadmin && (
         <div style={{ marginTop: 32 }}>
           <AdminsManager currentUserId={session.user.id} />
