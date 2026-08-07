@@ -43,6 +43,15 @@ export default function Header({ navOpen, onNavToggle }: Props) {
         <a href="https://cyberpw.fun/" target="_blank" rel="noopener" className="partner-logo" title="cyberpw.fun">
           <img src={import.meta.env.BASE_URL + 'assets/logo.webp'} alt="CyberPW" />
         </a>
+        <a
+          href="https://tayforn.github.io/pw.calc/refine"
+          target="_blank"
+          rel="noopener"
+          className="partner-logo partner-logo-alt"
+          title="PW Хелпер — калькулятори"
+        >
+          <img src={import.meta.env.BASE_URL + 'assets/pwcalc-icon.png'} alt="PW Хелпер" />
+        </a>
         <button
           type="button"
           className="theme-toggle"
