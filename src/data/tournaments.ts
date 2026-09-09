@@ -27,7 +27,8 @@ interface RegistrationRow {
   // 0017
   kind?: RegistrationKind | null; team_registration_id?: string | null;
   char_class?: CharClass | null; weapon_grade?: WeaponGrade | null; weapon_refine?: WeaponRefine | null; weapon_pz?: boolean | null;
-  armor_set?: ArmorSet | null; armor_refine?: ArmorRefine | null; gems?: Gems | null; special_sets?: SpecialSet[] | null; tract?: Tract | null; genie?: Genie | null;
+  armor_set?: ArmorSet | null; armor_refine?: ArmorRefine | null; gems?: Gems | null; special_sets?: SpecialSet[] | null;
+  special_set_gems?: Partial<Record<SpecialSet, Gems>> | null; tract?: Tract | null; genie?: Genie | null;
   attack_level?: number | null; defense_level?: number | null;
 }
 
@@ -44,7 +45,8 @@ const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
   if (!r.char_class || !r.weapon_grade || !r.weapon_refine || r.weapon_pz == null || !r.armor_set || !r.armor_refine || !r.gems || !r.tract || !r.genie) return null;
   return {
     charClass: r.char_class, weaponGrade: r.weapon_grade, weaponRefine: r.weapon_refine, weaponPz: r.weapon_pz,
-    armorSet: r.armor_set, armorRefine: r.armor_refine, gems: r.gems, specialSets: r.special_sets ?? [], tract: r.tract, genie: r.genie,
+    armorSet: r.armor_set, armorRefine: r.armor_refine, gems: r.gems, specialSets: r.special_sets ?? [],
+    specialSetGems: r.special_set_gems && typeof r.special_set_gems === 'object' ? r.special_set_gems : {}, tract: r.tract, genie: r.genie,
   };
 };
 const registrationFromRow = (r: RegistrationRow): Registration => ({
@@ -55,7 +57,8 @@ const registrationFromRow = (r: RegistrationRow): Registration => ({
 });
 const gearToRow = (g: PlayerGear) => ({
   char_class: g.charClass, weapon_grade: g.weaponGrade, weapon_refine: g.weaponRefine, weapon_pz: g.weaponPz,
-  armor_set: g.armorSet, armor_refine: g.armorRefine, gems: g.gems, special_sets: g.specialSets, tract: g.tract, genie: g.genie,
+  armor_set: g.armorSet, armor_refine: g.armorRefine, gems: g.gems, special_sets: g.specialSets, special_set_gems: g.specialSetGems,
+  tract: g.tract, genie: g.genie,
 });
 
 export async function fetchSeries(): Promise<TournamentSeries[]> {

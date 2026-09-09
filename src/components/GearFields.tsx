@@ -15,7 +15,7 @@
 // specialSets завжди масив — так вимагає constraint registrations_gear_all_or_none.
 // =========================================================
 
-import type { PlayerGear, SpecialSet } from '../data/types';
+import type { Gems, PlayerGear, SpecialSet } from '../data/types';
 import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER,
   GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_HINTS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
@@ -42,7 +42,9 @@ interface Props {
 export function isGearComplete(v: Partial<PlayerGear>): v is PlayerGear {
   return !!(
     v.charClass && v.weaponGrade && v.weaponRefine && typeof v.weaponPz === 'boolean' &&
-    v.armorSet && v.armorRefine && v.gems && Array.isArray(v.specialSets) && v.tract && v.genie
+    v.armorSet && v.armorRefine && v.gems && Array.isArray(v.specialSets) &&
+    v.specialSetGems && v.specialSets.every((s) => !!v.specialSetGems![s]) && // для кожного відміченого сету обрано камені
+    v.tract && v.genie
   );
 }
 
@@ -85,12 +87,21 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
     const next: Partial<PlayerGear> = { ...value, ...p };
     next.weaponPz = next.weaponPz ?? false;
     next.specialSets = next.specialSets ?? [];
+    next.specialSetGems = next.specialSetGems ?? {};
     onChange(next);
   };
 
-  // Порядок у масиві — як у SPECIAL_SET_ORDER, щоб однакові відповіді давали однаковий рядок.
+  // Порядок у масиві — як у SPECIAL_SET_ORDER, щоб однакові відповіді давали
+  // однаковий рядок; знятий сет забирає з собою і свої камені.
   const toggleSet = (s: SpecialSet, on: boolean) => {
-    patch({ specialSets: SPECIAL_SET_ORDER.filter((x) => (x === s ? on : sets.includes(x))) });
+    const nextGems = { ...(value.specialSetGems ?? {}) };
+    if (!on) delete nextGems[s];
+    patch({ specialSets: SPECIAL_SET_ORDER.filter((x) => (x === s ? on : sets.includes(x))), specialSetGems: nextGems });
+  };
+  const setSetGems = (s: SpecialSet, gems: Gems | undefined) => {
+    const nextGems = { ...(value.specialSetGems ?? {}) };
+    if (gems) nextGems[s] = gems; else delete nextGems[s];
+    patch({ specialSetGems: nextGems });
   };
 
   // Приховані сети (feature flag у правилах — поки ні в кого немає) показуємо
@@ -132,6 +143,22 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
           </label>
         ))}
       </div>
+      {/* Камені в кожному відміченому свап-сеті: «сет затиканий 7 бурштинками» і
+          «сет із фул ПЗ-камінням» — різні речі (відгук гільдії). */}
+      {sets.length > 0 && (
+        <div className="field-row">
+          {SPECIAL_SET_ORDER.filter((s) => sets.includes(s)).map((s) => (
+            <OptionSelect
+              key={s}
+              label={`${SPECIAL_SET_LABELS[s]}: камні`}
+              value={value.specialSetGems?.[s]}
+              options={GEMS_ORDER}
+              labels={GEMS_LABELS}
+              onChange={(v) => setSetGems(s, v)}
+            />
+          ))}
+        </div>
+      )}
 
       <OptionSelect label="Джин" value={value.genie} options={GENIE_ORDER} labels={GENIE_LABELS} onChange={(v) => patch({ genie: v })} />
 

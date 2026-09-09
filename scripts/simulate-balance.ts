@@ -24,60 +24,53 @@ interface Profile {
   gems: Weighted<Gems>;
   sets: Weighted<SpecialSet[]>;
   tract: Weighted<Tract>;
-  genieTop: number;
+  genie: Weighted<Genie>;
   classes?: Weighted<CharClass>;
 }
 
 const uniformClasses: Weighted<CharClass> = CLASS_ORDER.map((c) => [c, 1]);
 
+const MIXED: Omit<Profile, 'name'> = {
+  weaponGrade: [['nirvana', 15], ['r8r', 25], ['cgd', 25], ['r9', 10], ['r9r1', 8], ['rcgd', 10], ['r9r2', 7]],
+  weaponRefine: [['w0_5', 5], ['w6_7', 10], ['w8_9', 20], ['w10', 35], ['w11', 15], ['w12', 15]],
+  weaponPz: 0.5,
+  armorSet: [['nirvana', 15], ['nirvana_r8_mix', 40], ['r8r', 45]],
+  armorRefine: [['a0_4', 5], ['a5', 10], ['a6', 10], ['a7', 15], ['a8', 20], ['a9', 15], ['a10', 15], ['a11', 5], ['a12', 5]],
+  gems: [['g0_9', 10], ['g10', 15], ['g11', 15], ['xuan', 20], ['xuan_pa', 15], ['pa', 10], ['xuan_camp', 10], ['camp', 5]],
+  sets: [[[], 35], [['aspd'], 15], [['pa'], 15], [['pz'], 15], [['pz', 'pa'], 10], [['pz', 'pa', 'aspd'], 10]],
+  tract: [['t1_3', 15], ['t4_5', 15], ['t6', 20], ['t7', 20], ['t8', 20], ['emperor', 10]],
+  genie: [['g60', 30], ['g61_70', 15], ['g71_80', 15], ['g81_90', 15], ['g91_99', 10], ['g100', 15]],
+};
+
 const PROFILES: Profile[] = [
-  {
-    name: 'mixed',
-    weaponGrade: [['nirvana', 15], ['r8r', 25], ['cgd', 25], ['r9', 10], ['r9r1', 8], ['rcgd', 10], ['r9r2', 7]],
-    weaponRefine: [['w0_5', 5], ['w6_7', 10], ['w8_9', 20], ['w10', 35], ['w11', 15], ['w12', 15]],
-    weaponPz: 0.5,
-    armorSet: [['nirvana', 15], ['nirvana_r8_mix', 15], ['r8', 25], ['r8r', 45]],
-    armorRefine: [['a0_4', 5], ['a5', 10], ['a6', 10], ['a7', 15], ['a8', 20], ['a9', 15], ['a10', 15], ['a11', 5], ['a12', 5]],
-    gems: [['g0_9', 10], ['g10', 15], ['g11', 15], ['xuan', 20], ['xuan_pa', 15], ['pa', 10], ['xuan_camp', 10], ['camp', 5]],
-    sets: [[[], 35], [['aspd'], 15], [['pa'], 15], [['pz'], 15], [['pz', 'pa'], 10], [['pz', 'pa', 'aspd'], 10]],
-    tract: [['t1_3', 15], ['t4_5', 15], ['t6', 20], ['t7', 20], ['t8', 20], ['emperor', 10]],
-    genieTop: 0.4,
-  },
+  { name: 'mixed', ...MIXED },
   {
     name: 'top',
     weaponGrade: [['cgd', 15], ['r9', 15], ['r9r1', 20], ['rcgd', 25], ['r9r2', 25]],
     weaponRefine: [['w8_9', 5], ['w10', 25], ['w11', 30], ['w12', 40]],
     weaponPz: 0.7,
-    armorSet: [['r8', 10], ['r8r', 90]],
+    armorSet: [['nirvana_r8_mix', 10], ['r8r', 90]],
     armorRefine: [['a8', 20], ['a9', 20], ['a10', 30], ['a11', 15], ['a12', 15]],
     gems: [['xuan', 10], ['xuan_pa', 15], ['pa', 25], ['xuan_camp', 25], ['camp', 25]],
     sets: [[['pz'], 20], [['pa'], 20], [['pz', 'pa'], 30], [['pz', 'pa', 'aspd'], 30]],
     tract: [['t7', 20], ['t8', 50], ['emperor', 30]],
-    genieTop: 0.8,
+    genie: [['g81_90', 20], ['g91_99', 30], ['g100', 50]],
   },
   {
     name: 'budget',
     weaponGrade: [['other', 10], ['nirvana', 40], ['r8r', 35], ['cgd', 15]],
     weaponRefine: [['w0_5', 20], ['w6_7', 25], ['w8_9', 30], ['w10', 20], ['w11', 5]],
     weaponPz: 0.3,
-    armorSet: [['other', 10], ['nirvana', 40], ['nirvana_r8_mix', 30], ['r8', 20]],
+    armorSet: [['other', 10], ['nirvana', 40], ['nirvana_r8_mix', 50]],
     armorRefine: [['a0_4', 30], ['a5', 25], ['a6', 20], ['a7', 15], ['a8', 10]],
     gems: [['g0_9', 50], ['g10', 30], ['g11', 15], ['xuan', 5]],
     sets: [[[], 70], [['aspd'], 15], [['pa'], 10], [['pz'], 5]],
     tract: [['t1_3', 40], ['t4_5', 30], ['t6', 20], ['t7', 10]],
-    genieTop: 0.1,
+    genie: [['g60', 70], ['g61_70', 20], ['g71_80', 10]],
   },
   {
     name: 'sin-heavy',
-    weaponGrade: [['nirvana', 15], ['r8r', 25], ['cgd', 25], ['r9', 10], ['r9r1', 8], ['rcgd', 10], ['r9r2', 7]],
-    weaponRefine: [['w0_5', 5], ['w6_7', 10], ['w8_9', 20], ['w10', 35], ['w11', 15], ['w12', 15]],
-    weaponPz: 0.5,
-    armorSet: [['nirvana', 15], ['nirvana_r8_mix', 15], ['r8', 25], ['r8r', 45]],
-    armorRefine: [['a0_4', 5], ['a5', 10], ['a6', 10], ['a7', 15], ['a8', 20], ['a9', 15], ['a10', 15], ['a11', 5], ['a12', 5]],
-    gems: [['g0_9', 10], ['g10', 15], ['g11', 15], ['xuan', 20], ['xuan_pa', 15], ['pa', 10], ['xuan_camp', 10], ['camp', 5]],
-    sets: [[[], 35], [['aspd'], 15], [['pa'], 15], [['pz'], 15], [['pz', 'pa'], 10], [['pz', 'pa', 'aspd'], 10]],
-    tract: [['t1_3', 15], ['t4_5', 15], ['t6', 20], ['t7', 20], ['t8', 20], ['emperor', 10]],
-    genieTop: 0.4,
+    ...MIXED,
     // 30 % сінів — клас з N_c > K, дублі неминучі
     classes: [['assassin', 30], ...CLASS_ORDER.filter((c) => c !== 'assassin').map((c): [CharClass, number] => [c, 70 / 9])],
   },
@@ -91,6 +84,9 @@ function pick<T>(rng: () => number, table: Weighted<T>): T {
 }
 
 function synthPlayer(rng: () => number, i: number, p: Profile): BalancePlayer {
+  const specialSets = pick(rng, p.sets);
+  const specialSetGems: Partial<Record<SpecialSet, Gems>> = {};
+  for (const s of specialSets) specialSetGems[s] = pick(rng, p.gems);
   const gear: PlayerGear = {
     charClass: pick(rng, p.classes ?? uniformClasses),
     weaponGrade: pick(rng, p.weaponGrade),
@@ -99,9 +95,10 @@ function synthPlayer(rng: () => number, i: number, p: Profile): BalancePlayer {
     armorSet: pick(rng, p.armorSet),
     armorRefine: pick(rng, p.armorRefine) as ArmorRefine,
     gems: pick(rng, p.gems),
-    specialSets: pick(rng, p.sets),
+    specialSets,
+    specialSetGems,
     tract: pick(rng, p.tract),
-    genie: (rng() < p.genieTop ? 'top' : 'lower') as Genie,
+    genie: pick(rng, p.genie),
   };
   return { id: `p${String(i).padStart(3, '0')}`, nickname: `N${i}`, cls: gear.charClass, score: computeGearScore(gear), createdAt: String(i).padStart(4, '0') };
 }

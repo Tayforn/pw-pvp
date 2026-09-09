@@ -1,30 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_RULES_VERSION, computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, maxGearScore,
-  nextRulesVersion, normalizeRules, registerRules, rulesFor, serializeRules, specialSetsScore, tierFor,
+  nextRulesVersion, normalizeRules, registerRules, rulesFor, serializeRules, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { PlayerGear } from '../types';
 
 const base: PlayerGear = {
   charClass: 'cleric', weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
-  armorSet: 'nirvana', armorRefine: 'a5', gems: 'g0_9', specialSets: [], tract: 't1_3', genie: 'lower',
+  armorSet: 'nirvana', armorRefine: 'a5', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't1_3', genie: 'g60',
 };
 const gear = (over: Partial<PlayerGear>): PlayerGear => ({ ...base, ...over });
 
 describe('balance-v1.0: шкала', () => {
-  it('максимум 255, реалістичний (без R9-броні) 242', () => {
-    expect(maxGearScore()).toBe(255);
+  it('максимум 275, реалістичний (без R9-броні) 262', () => {
+    expect(maxGearScore()).toBe(275);
     const r = rulesFor();
-    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(242);
+    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(262);
   });
 
-  it('архетипи з документа (§3.1)', () => {
-    expect(computeGearScore(gear({ weaponGrade: 'r9r2', weaponRefine: 'w12', armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], tract: 'emperor', genie: 'top' }))).toBe(227);
-    expect(computeGearScore(gear({ weaponGrade: 'r9r1', weaponRefine: 'w11', armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], tract: 't8', genie: 'top' }))).toBe(178);
-    expect(computeGearScore(gear({ weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], tract: 't7' }))).toBe(120);
-    expect(computeGearScore(gear({ weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'r8', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], tract: 't6' }))).toBe(86);
-    expect(computeGearScore(gear({ weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', tract: 't4_5' }))).toBe(46);
+  it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі', () => {
+    expect(computeGearScore(gear({ charClass: 'assassin', weaponGrade: 'r9r2', weaponRefine: 'w12', armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100' }))).toBe(247);
+    expect(computeGearScore(gear({ charClass: 'archer', weaponGrade: 'r9r1', weaponRefine: 'w11', armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100' }))).toBe(208);
+    expect(computeGearScore(gear({ charClass: 'wizard', weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7' }))).toBe(127);
+    expect(computeGearScore(gear({ weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6' }))).toBe(87);
+    expect(computeGearScore(gear({ charClass: 'barbarian', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', tract: 't4_5' }))).toBe(46);
     expect(computeGearScore(base)).toBe(13);
+  });
+
+  it('зброя за класами: у фізиків R9R1 > РЦГД, у інтовиків навпаки; ЦГД/РЦГД/R9R2 однакові', () => {
+    const r = rulesFor();
+    expect(weaponGradeScore('archer', 'r9r1', r)).toBe(50);
+    expect(weaponGradeScore('archer', 'rcgd', r)).toBe(45);
+    expect(weaponGradeScore('wizard', 'r9r1', r)).toBe(38);
+    expect(weaponGradeScore('wizard', 'rcgd', r)).toBe(45);
+    expect(weaponGradeScore('archer', 'cgd', r)).toBe(weaponGradeScore('wizard', 'cgd', r));
+    expect(weaponGradeScore('assassin', 'r9r2', r)).toBe(60);
+    expect(computeGearScore(gear({ charClass: 'archer', weaponGrade: 'r9r1' })) - computeGearScore(gear({ charClass: 'wizard', weaponGrade: 'r9r1' }))).toBe(12);
   });
 
   it('ПЗ-зброя (запасна зброя для свапу) дає +15 незалежно від грейду основної', () => {
@@ -42,6 +53,19 @@ describe('balance-v1.0: шкала', () => {
     expect(computeGearScore(gear({ gems: 'camp' })) - computeGearScore(base)).toBe(40);
   });
 
+  it('камені у свап-сетах: 50 % таблиці за кожен сет, стеля 20; сет без запису = 0–9', () => {
+    const r = rulesFor();
+    expect(specialSetGemsScore({ specialSets: [], specialSetGems: {} }, r)).toBe(0);
+    expect(specialSetGemsScore({ specialSets: ['pz'], specialSetGems: {} }, r)).toBe(0);
+    expect(specialSetGemsScore({ specialSets: ['pz'], specialSetGems: { pz: 'pa' } }, r)).toBe(13);
+    expect(specialSetGemsScore({ specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' } }, r)).toBe(20);
+    expect(specialSetGemsScore({ specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' } }, r)).toBe(20);
+    // «сет, затиканий бурштинками» проти «сет із фул ПЗ-камінням»
+    const amber = computeGearScore(gear({ specialSets: ['pz'], specialSetGems: { pz: 'g0_9' } }));
+    const full = computeGearScore(gear({ specialSets: ['pz'], specialSetGems: { pz: 'camp' } }));
+    expect(full - amber).toBe(20);
+  });
+
   it('спецсети: min(20, max + 5·(n−1))', () => {
     const r = rulesFor();
     expect(specialSetsScore([], r)).toBe(0);
@@ -55,13 +79,18 @@ describe('balance-v1.0: шкала', () => {
     expect(specialSetsScore(['pz', 'pz'], r)).toBe(15); // дубль не рахується двічі
   });
 
-  it('tier: S ≥ 200 · A 160 · B 115 · C 75 · D', () => {
-    expect(tierFor(227)).toBe('S');
-    expect(tierFor(200)).toBe('S');
-    expect(tierFor(199)).toBe('A');
-    expect(tierFor(160)).toBe('A');
-    expect(tierFor(120)).toBe('B');
-    expect(tierFor(86)).toBe('C');
+  it('джин за рівнем: 0 / 2 / 4 / 6 / 8 / 10', () => {
+    const g = rulesFor().genie;
+    expect([g.g60, g.g61_70, g.g71_80, g.g81_90, g.g91_99, g.g100]).toEqual([0, 2, 4, 6, 8, 10]);
+  });
+
+  it('tier: S ≥ 215 · A 170 · B 125 · C 80 · D', () => {
+    expect(tierFor(247)).toBe('S');
+    expect(tierFor(215)).toBe('S');
+    expect(tierFor(214)).toBe('A');
+    expect(tierFor(170)).toBe('A');
+    expect(tierFor(127)).toBe('B');
+    expect(tierFor(87)).toBe('C');
     expect(tierFor(46)).toBe('D');
     expect(tierFor(0)).toBe('D');
   });
@@ -95,13 +124,15 @@ describe('balance-v1.0: шкала', () => {
   });
 
   it('normalizeRules: зламані/неповні поля беруться з вбудованої', () => {
-    const r = normalizeRules({ weaponGrade: { r9r2: 99, bogus: 1 }, gems: 'oops', tiers: [{ tier: 'S', min: 10 }], balance: { epsilon: 7 } });
+    const r = normalizeRules({ weaponGrade: { r9r2: 99, bogus: 1 }, gems: 'oops', tiers: [{ tier: 'S', min: 10 }], balance: { epsilon: 7 }, weaponGradeByClass: { wizard: { r9r1: 1, bogus: 5 }, nope: { r9: 3 } } });
     expect(r.weaponGrade.r9r2).toBe(99);
     expect(r.weaponGrade.cgd).toBe(rulesFor(BUILTIN_RULES_VERSION).weaponGrade.cgd);
     expect(r.gems).toEqual(rulesFor(BUILTIN_RULES_VERSION).gems);
     expect(r.tiers).toEqual(rulesFor(BUILTIN_RULES_VERSION).tiers); // неповні пороги → вбудовані
     expect(r.balance.epsilon).toBe(7);
     expect(r.balance.T0).toBe(rulesFor(BUILTIN_RULES_VERSION).balance.T0);
+    expect(r.weaponGradeByClass.wizard).toEqual({ r9r1: 1 });
+    expect(r.weaponGradeByClass.archer).toEqual({}); // передано об'єкт без archer → без перевизначень
     expect(computeGearScoreWith(gear({ weaponGrade: 'r9r2' }), r)).toBe(13 - 5 + 99);
   });
 
@@ -118,9 +149,9 @@ describe('balance-v1.0: шкала', () => {
     registerRules({ version: BUILTIN_RULES_VERSION, note: null, createdAt: null, builtin: true }, rulesFor(BUILTIN_RULES_VERSION), true);
   });
 
-  it('gearSummary — компактний рядок українською', () => {
-    expect(gearSummary(gear({ weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a8', gems: 'pa', specialSets: ['pz'], tract: 't8', genie: 'top' })))
-      .toBe('ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет · Тракт 8 · Джин 100/100');
-    expect(gearSummary(gear({ weaponPz: true, gems: 'xuan_camp' }))).toBe('Нірвана +0–5 + ПЗ-зброя · Нірвана +5 · Камні Сюаньки / Лагеря · Тракт 1–3 · Джин 100−');
+  it('gearSummary — компактний рядок українською, з камінням у сетах', () => {
+    expect(gearSummary(gear({ weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a8', gems: 'pa', specialSets: ['pz'], specialSetGems: { pz: 'camp' }, tract: 't8', genie: 'g100' })))
+      .toBe('ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря) · Тракт 8 · Джин 100/100');
+    expect(gearSummary(gear({ weaponPz: true, gems: 'xuan_camp' }))).toBe('Нірвана +0–5 + ПЗ-зброя · Нірвана +5 · Камні Сюаньки / Лагеря · Тракт 1–3 · Джин до 60');
   });
 });

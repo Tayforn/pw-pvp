@@ -27,19 +27,21 @@ export type RegistrationKind = 'player' | 'team';
 export type CharClass = 'blademaster' | 'wizard' | 'cleric' | 'archer' | 'venomancer' | 'barbarian' | 'assassin' | 'psychic' | 'seeker' | 'mystic';
 export type WeaponGrade = 'other' | 'nirvana' | 'r8r' | 'cgd' | 'r9' | 'r9r1' | 'rcgd' | 'r9r2';
 export type WeaponRefine = 'w0_5' | 'w6_7' | 'w8_9' | 'w10' | 'w11' | 'w12';
-export type ArmorSet = 'other' | 'nirvana' | 'nirvana_r8_mix' | 'r8' | 'r8r' | 'r9';
+/** Чистий R8 прибрано (0020): без рекасту він гірший за Нірвану, ніхто його не носить. */
+export type ArmorSet = 'other' | 'nirvana' | 'nirvana_r8_mix' | 'r8r' | 'r9';
 /** «Круг точки» — рівень заточки всього круга: броня + біжутерія + кільця. */
 export type ArmorRefine = 'a0_4' | 'a5' | 'a6' | 'a7' | 'a8' | 'a9' | 'a10' | 'a11' | 'a12';
 export type SpecialSet = 'pz' | 'pa' | 'aspd';
 export type Tract = 't1_3' | 't4_5' | 't6' | 't7' | 't8' | 'emperor';
-export type Genie = 'top' | 'lower';
+/** Джин за рівнем (0020): до 60 · 61–70 · 71–80 · 81–90 · 91–99 · 100/100. */
+export type Genie = 'g60' | 'g61_70' | 'g71_80' | 'g81_90' | 'g91_99' | 'g100';
 /** Камені у броні (до 6 шмоток × 4 дірки = 24 камені), за вартістю по зростанню:
  * рівневі 0–9 / 10 / 11 → Сюаньки → Сюаньки/ПА → ПА → Сюаньки/Лагеря → Лагеря (2 ПЗ кожен, до 48 ПЗ). */
 export type Gems = 'g0_9' | 'g10' | 'g11' | 'xuan' | 'xuan_pa' | 'pa' | 'xuan_camp' | 'camp';
 export type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
 
-/** Усі 10 полів завжди присутні (constraint registrations_gear_all_or_none):
- * невідмічений чекбокс — це false / [], а не null. */
+/** Усі поля завжди присутні (constraint registrations_gear_all_or_none):
+ * невідмічений чекбокс — це false / [] / {}, а не null. */
 export interface PlayerGear {
   charClass: CharClass;
   weaponGrade: WeaponGrade;
@@ -48,8 +50,11 @@ export interface PlayerGear {
   weaponPz: boolean;
   armorSet: ArmorSet;
   armorRefine: ArmorRefine;
+  /** камені в основному сеті */
   gems: Gems;
   specialSets: SpecialSet[];
+  /** камені в кожному відміченому свап-сеті (ключ = сет); сет без запису = камені 0–9 */
+  specialSetGems: Partial<Record<SpecialSet, Gems>>;
   tract: Tract;
   genie: Genie;
 }

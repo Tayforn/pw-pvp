@@ -9,24 +9,28 @@
 // стару в чернетку.
 // =========================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../../app/errorMessage';
-import type { ArmorSet, PlayerGear, Tier } from '../../data/types';
+import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../data/types';
 import {
-  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER,
-  SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER, WEAPON_REFINE_LABELS,
-  WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, tierForWith, type GearRules,
+  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
+  GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
+  WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, tierForWith,
+  type GearRules,
 } from '../../data/gearRules';
 import { saveRulesVersion, useRules } from '../../data/rulesStore';
 
 /** Контрольні архетипи — щоб одразу бачити, куди зсунуться tier після правки. */
 const ARCHETYPES: { name: string; gear: PlayerGear }[] = [
-  { name: 'Топ: R9R2 +12, R8R +12, Лагеря, всі сети, Імператор, джин', gear: { charClass: 'assassin', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], tract: 'emperor', genie: 'top' } },
-  { name: 'Сильний: R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА, Гегемонія, джин', gear: { charClass: 'archer', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], tract: 't8', genie: 'top' } },
-  { name: 'Типовий: ЦГД +10, R8R +10, Сюаньки, ПА-сет, трактат 7', gear: { charClass: 'wizard', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], tract: 't7', genie: 'lower' } },
-  { name: 'Середній: R8R +10 з ПЗ-зброєю, R8 +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'r8', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], tract: 't6', genie: 'lower' } },
-  { name: 'Слабкий: Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], tract: 't4_5', genie: 'lower' } },
+  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100' } },
+  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100' } },
+  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60' } },
+  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60' } },
+  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60' } },
 ];
+
+/** Грейди, для яких є сенс у перевизначенні за класом (R9-лінійка й ЦГД/РЦГД). */
+const OVERRIDE_GRADES: WeaponGrade[] = ['cgd', 'r9', 'r9r1', 'rcgd', 'r9r2'];
 
 const tierClass = (t: Tier) => (t === 'S' || t === 'A' ? 'warn' : 'mute');
 
@@ -119,6 +123,11 @@ export default function RulesEditor() {
   };
 
   const setTier = (i: number, min: number) => patch({ tiers: draft.tiers.map((t, idx) => (idx === i ? { ...t, min } : t)) });
+  const setOverride = (c: CharClass, g: WeaponGrade, v: number | undefined) => {
+    const cur = { ...(draft.weaponGradeByClass[c] ?? {}) };
+    if (v === undefined) delete cur[g]; else cur[g] = v;
+    patch({ weaponGradeByClass: { ...draft.weaponGradeByClass, [c]: cur } });
+  };
   const toggleHidden = (s: ArmorSet, hidden: boolean) =>
     patch({ hiddenArmorSets: hidden ? Array.from(new Set([...draft.hiddenArmorSets, s])) : draft.hiddenArmorSets.filter((x) => x !== s) });
 
@@ -172,7 +181,46 @@ export default function RulesEditor() {
         </div>
       </div>
 
-      <NumTable title="Зброя" hint="ПА лінійки ЦГД / R9 уже вшитий у бали грейду." order={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} values={draft.weaponGrade} onChange={(v) => patch({ weaponGrade: v })} />
+      <NumTable title="Зброя (за замовчуванням)" hint="ПА лінійки ЦГД / R9 уже вшитий у бали грейду. Для класів, де це не так, — таблиця нижче." order={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} values={draft.weaponGrade} onChange={(v) => patch({ weaponGrade: v })} />
+
+      <div className="card" style={{ padding: 14 }}>
+        <b>Зброя за класами</b>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Порожня клітинка = значення з таблиці «Зброя» вище. R9-лінійка нерівна за класами: у фізиків (лук, танк, сін…) R9 / R9R1 з абілкою
+          вигідніші за +ПА РЦГД, у інтовиків стати R9R1 слабкі й РЦГД вигідніша — тому дефолти для R9 / R9R1 тут різні.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `110px repeat(${OVERRIDE_GRADES.length}, minmax(76px, 1fr))`, gap: 6, alignItems: 'center', minWidth: 520 }}>
+            <span />
+            {OVERRIDE_GRADES.map((g) => (
+              <span key={g} className="hint" style={{ margin: 0, textAlign: 'center' }}>{WEAPON_GRADE_LABELS[g]} <span style={{ opacity: 0.7 }}>({draft.weaponGrade[g]})</span></span>
+            ))}
+            {CLASS_ORDER.map((c) => (
+              <Fragment key={c}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{CLASS_LABELS[c]}</span>
+                {OVERRIDE_GRADES.map((g) => {
+                  const v = draft.weaponGradeByClass[c]?.[g];
+                  return (
+                    <span key={g} className="field">
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={v ?? ''}
+                        placeholder={String(draft.weaponGrade[g])}
+                        title={v === undefined ? 'як у таблиці «Зброя»' : 'перевизначено для цього класу'}
+                        style={{ padding: '6px 8px', fontSize: 13, textAlign: 'center', ...(v === undefined ? { opacity: 0.55 } : { borderColor: 'var(--accent)' }) }}
+                        onChange={(e) => setOverride(c, g, e.target.value === '' ? undefined : Math.max(0, Math.round(Number(e.target.value))))}
+                      />
+                    </span>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <NumTable title="Заточка зброї" order={WEAPON_REFINE_ORDER} labels={WEAPON_REFINE_LABELS} values={draft.weaponRefine} onChange={(v) => patch({ weaponRefine: v })} />
 
       <div className="card" style={{ padding: 14 }}>
@@ -192,7 +240,21 @@ export default function RulesEditor() {
         ))}
       </div>
       <NumTable title="Круг точки (броня, біжа, кільця)" order={ARMOR_REFINE_ORDER} labels={ARMOR_REFINE_LABELS} values={draft.armorRefine} onChange={(v) => patch({ armorRefine: v })} />
-      <NumTable title="Камні" hint="За вартістю по зростанню; до 24 каменів, Лагеря — по 2 ПЗ (до 48 ПЗ)." order={GEMS_ORDER} labels={GEMS_LABELS} values={draft.gems} onChange={(v) => patch({ gems: v })} />
+      <NumTable title="Камні (основний сет)" hint="За вартістю по зростанню; до 24 каменів, Лагеря — по 2 ПЗ (до 48 ПЗ). Та сама таблиця рахує камені у свап-сетах — з коефіцієнтом і стелею нижче." order={GEMS_ORDER} labels={GEMS_LABELS} values={draft.gems} onChange={(v) => patch({ gems: v })} />
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <b>Камні у свап-сетах</b>
+          <span className="badge mute">max {draft.specialSetGemsCap}</span>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          За кожен відмічений сет: {Math.round(draft.specialSetGemsFactor * 100)} % від таблиці каменів за його камені; сума по всіх сетах — не більше стелі.
+          Так «сет, затиканий бурштинками» і «сет із фул ПЗ-камінням» дають різні бали.
+        </p>
+        <div className="field-row" style={{ gap: 10 }}>
+          <NumInput label="Частка від таблиці, %" value={Math.round(draft.specialSetGemsFactor * 100)} onChange={(v) => patch({ specialSetGemsFactor: Math.min(100, v) / 100 })} width={160} />
+          <NumInput label="Стеля" value={draft.specialSetGemsCap} onChange={(v) => patch({ specialSetGemsCap: v })} />
+        </div>
+      </div>
 
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
@@ -214,7 +276,7 @@ export default function RulesEditor() {
       </div>
 
       <NumTable title="Трактат" order={TRACT_ORDER} labels={TRACT_LABELS} values={draft.tract} onChange={(v) => patch({ tract: v })} />
-      <NumTable title="Джин" order={GENIE_ORDER} labels={GENIE_LABELS} values={draft.genie} onChange={(v) => patch({ genie: v })} />
+      <NumTable title="Джин (за рівнем)" order={GENIE_ORDER} labels={GENIE_LABELS} values={draft.genie} onChange={(v) => patch({ genie: v })} />
 
       <div className="card" style={{ padding: 14 }}>
         <b>Пороги tier</b>

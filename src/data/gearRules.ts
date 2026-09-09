@@ -43,7 +43,11 @@ export interface BalanceRules {
 
 /** Таблиці балів — те, що редагує адмін. */
 export interface ScoringRules {
+  /** бали за грейд зброї за замовчуванням (для класів без окремого значення) */
   weaponGrade: Record<WeaponGrade, number>;
+  /** перевизначення за класом: R9-лінійка нерівна між класами (абілки на фізичних
+   * R9/R9R1 важать більше за +ПА РЦГД, у інтовиків — навпаки); порожньо = дефолт */
+  weaponGradeByClass: Record<CharClass, Partial<Record<WeaponGrade, number>>>;
   weaponRefine: Record<WeaponRefine, number>;
   /** бали за ПЗ-зброю — запасну зброю з показником захисту, на яку свапаються,
    * щоб отримувати менше шкоди; не залежить від грейду основної зброї */
@@ -52,8 +56,12 @@ export interface ScoringRules {
   /** сети, які в формі не показуються, поки ні в кого немає (feature flag) */
   hiddenArmorSets: ArmorSet[];
   armorRefine: Record<ArmorRefine, number>;
-  /** камені у броні — за вартістю по зростанню; максимум = 24 камені по 2 ПЗ */
+  /** камені в основному сеті — за вартістю по зростанню; максимум = 24 камені по 2 ПЗ */
   gems: Record<Gems, number>;
+  /** камені у свап-сетах: частка від таблиці gems за кожен відмічений сет … */
+  specialSetGemsFactor: number;
+  /** … і стеля на їх суму */
+  specialSetGemsCap: number;
   specialSets: Record<SpecialSet, number>;
   /** бонус за кожен додатковий сет понад найсильніший (гнучкість свапу) */
   specialSetsExtra: number;
@@ -71,30 +79,49 @@ export interface GearRules extends ScoringRules {
 /** Вбудована версія — фолбек і шаблон для нових версій. */
 export const BUILTIN_RULES_VERSION = 'balance-v1.0';
 
+/** Фізичні класи: на їхніх R9 / R9R1 абілка важить більше, ніж +ПА РЦГД. */
+export const PHYSICAL_CLASSES: CharClass[] = ['archer', 'barbarian', 'assassin', 'blademaster', 'seeker'];
+const CASTER_CLASSES: CharClass[] = ['wizard', 'cleric', 'psychic', 'venomancer', 'mystic'];
+
+const byClass = (physical: Partial<Record<WeaponGrade, number>>, caster: Partial<Record<WeaponGrade, number>>): Record<CharClass, Partial<Record<WeaponGrade, number>>> => {
+  const out = {} as Record<CharClass, Partial<Record<WeaponGrade, number>>>;
+  for (const c of PHYSICAL_CLASSES) out[c] = { ...physical };
+  for (const c of CASTER_CLASSES) out[c] = { ...caster };
+  return out;
+};
+
 const BUILTIN: GearRules = {
   // ПА фіксований за грейдом (ЦГД 30, РЦГД 50, R9 30, R9R1 40, R9R2 50) — вшито в бали.
   // Рідкість на сервері (8 міс.): ЦГД ~5, РЦГД ~20, R9 1, R9R1 2, R9R2 2 — тому
   // великі розриви R8R → ЦГД (+15) і РЦГД → R9R2 (+15), решта лінійки між ними.
   weaponGrade: { other: 0, nirvana: 5, r8r: 10, cgd: 25, r9: 32, r9r1: 40, rcgd: 45, r9r2: 60 },
+  // Відгук гільдії: R9-лінійка нерівна за класами — у фізиків (лук/танк/сін…) R9R1 з
+  // абілкою вигідніша за РЦГД, у інтовиків стати R9R1 слабкі й РЦГД вигідніша.
+  weaponGradeByClass: byClass({ r9: 36, r9r1: 50 }, { r9: 30, r9r1: 38 }),
   weaponRefine: { w0_5: 0, w6_7: 4, w8_9: 8, w10: 12, w11: 18, w12: 25 },
   weaponPz: 15,
-  armorSet: { other: 0, nirvana: 5, nirvana_r8_mix: 10, r8: 15, r8r: 22, r9: 35 },
+  // чистий R8 прибрано (гірший за Нірвану); мікс = Нірвана з частинами R8R — посередині між ними
+  armorSet: { other: 0, nirvana: 5, nirvana_r8_mix: 14, r8r: 22, r9: 35 },
   hiddenArmorSets: ['r9'],
   armorRefine: { a0_4: 0, a5: 3, a6: 7, a7: 11, a8: 17, a9: 23, a10: 27, a11: 29, a12: 30 },
   // 24 камені; повні Лагеря = 48 ПЗ (≈ різниця між топовим і слабким грейдом зброї) → max 40
   gems: { g0_9: 0, g10: 4, g11: 8, xuan: 14, xuan_pa: 20, pa: 26, xuan_camp: 33, camp: 40 },
+  // камені у свап-сетах: половина таблиці за кожен сет, разом не більше 20
+  specialSetGemsFactor: 0.5,
+  specialSetGemsCap: 20,
   // свап-комплекти в тих самих слотах: активний один, решта — гнучкість
   specialSets: { pz: 15, pa: 12, aspd: 8 },
   specialSetsExtra: 5,
   specialSetsCap: 20,
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
-  genie: { top: 10, lower: 0 },
-  // max 255 → S ≥ 200 · A 160 · B 115 · C 75 · D
+  // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
+  genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
+  // max 275 → S ≥ 215 · A 170 · B 125 · C 80 · D
   tiers: [
-    { min: 200, tier: 'S' },
-    { min: 160, tier: 'A' },
-    { min: 115, tier: 'B' },
-    { min: 75, tier: 'C' },
+    { min: 215, tier: 'S' },
+    { min: 170, tier: 'A' },
+    { min: 125, tier: 'B' },
+    { min: 80, tier: 'C' },
     { min: -Infinity, tier: 'D' },
   ],
   balance: {
@@ -191,14 +218,31 @@ export function normalizeRules(raw: unknown): GearRules {
   }
   const validTiers = tiers.length === 5 && tiers[4].tier === 'D' && tiers.every((t, i) => i === 0 || t.min < tiers[i - 1].min);
   const hidden = Array.isArray(r.hiddenArmorSets) ? (r.hiddenArmorSets.filter((s) => typeof s === 'string' && s in BUILTIN.armorSet) as ArmorSet[]) : BUILTIN.hiddenArmorSets;
+  // перевизначення за класом: беремо лише числа для відомих класів/грейдів; відсутнє = дефолт
+  const byCls = {} as Record<CharClass, Partial<Record<WeaponGrade, number>>>;
+  const rawByCls = (r.weaponGradeByClass && typeof r.weaponGradeByClass === 'object' ? r.weaponGradeByClass : BUILTIN.weaponGradeByClass) as Record<string, unknown>;
+  for (const c of Object.keys(BUILTIN.balance.roleOf) as CharClass[]) {
+    const src = rawByCls[c];
+    const out: Partial<Record<WeaponGrade, number>> = {};
+    if (src && typeof src === 'object') {
+      for (const g of Object.keys(BUILTIN.weaponGrade) as WeaponGrade[]) {
+        const v = (src as Record<string, unknown>)[g];
+        if (isNum(v)) out[g] = v;
+      }
+    }
+    byCls[c] = out;
+  }
   return {
     weaponGrade: numTable(r.weaponGrade, BUILTIN.weaponGrade),
+    weaponGradeByClass: byCls,
     weaponRefine: numTable(r.weaponRefine, BUILTIN.weaponRefine),
     weaponPz: isNum(r.weaponPz) ? r.weaponPz : BUILTIN.weaponPz,
     armorSet: numTable(r.armorSet, BUILTIN.armorSet),
     hiddenArmorSets: hidden,
     armorRefine: numTable(r.armorRefine, BUILTIN.armorRefine),
     gems: numTable(r.gems, BUILTIN.gems),
+    specialSetGemsFactor: isNum(r.specialSetGemsFactor) ? r.specialSetGemsFactor : BUILTIN.specialSetGemsFactor,
+    specialSetGemsCap: isNum(r.specialSetGemsCap) ? r.specialSetGemsCap : BUILTIN.specialSetGemsCap,
     specialSets: numTable(r.specialSets, BUILTIN.specialSets),
     specialSetsExtra: isNum(r.specialSetsExtra) ? r.specialSetsExtra : BUILTIN.specialSetsExtra,
     specialSetsCap: isNum(r.specialSetsCap) ? r.specialSetsCap : BUILTIN.specialSetsCap,
@@ -235,14 +279,26 @@ export function specialSetsScore(sets: SpecialSet[], rules: ScoringRules): numbe
   return Math.min(rules.specialSetsCap, best + rules.specialSetsExtra * (uniq.length - 1));
 }
 
+/** Бали за грейд зброї для конкретного класу: перевизначення або дефолт. */
+export function weaponGradeScore(cls: CharClass, grade: WeaponGrade, r: ScoringRules): number {
+  return r.weaponGradeByClass[cls]?.[grade] ?? r.weaponGrade[grade];
+}
+
+/** Камені у свап-сетах: factor × таблиця за кожен відмічений сет, разом ≤ cap. */
+export function specialSetGemsScore(g: Pick<PlayerGear, 'specialSets' | 'specialSetGems'>, r: ScoringRules): number {
+  const sum = Array.from(new Set(g.specialSets)).reduce((s, set) => s + r.specialSetGemsFactor * r.gems[g.specialSetGems[set] ?? 'g0_9'], 0);
+  return Math.min(r.specialSetGemsCap, Math.round(sum));
+}
+
 export function computeGearScoreWith(g: PlayerGear, r: ScoringRules): number {
   return (
-    r.weaponGrade[g.weaponGrade] +
+    weaponGradeScore(g.charClass, g.weaponGrade, r) +
     r.weaponRefine[g.weaponRefine] +
     (g.weaponPz ? r.weaponPz : 0) +
     r.armorSet[g.armorSet] +
     r.armorRefine[g.armorRefine] +
     r.gems[g.gems] +
+    specialSetGemsScore(g, r) +
     specialSetsScore(g.specialSets, r) +
     r.tract[g.tract] +
     r.genie[g.genie]
@@ -255,7 +311,8 @@ export function computeGearScore(g: PlayerGear, version?: string | null): number
 
 export function maxGearScoreOf(r: ScoringRules): number {
   const mx = (o: Record<string, number>) => Math.max(...Object.values(o));
-  return mx(r.weaponGrade) + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetsCap + mx(r.tract) + mx(r.genie);
+  const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
+  return maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie);
 }
 
 export function maxGearScore(version?: string | null): number {
@@ -287,9 +344,9 @@ export const WEAPON_REFINE_LABELS: Record<WeaponRefine, string> = { w0_5: '+0–
 export const WEAPON_REFINE_ORDER: WeaponRefine[] = ['w0_5', 'w6_7', 'w8_9', 'w10', 'w11', 'w12'];
 
 export const ARMOR_SET_LABELS: Record<ArmorSet, string> = {
-  other: 'Інше / нижче Нірвани', nirvana: 'Нірвана', nirvana_r8_mix: 'Нірвана / R8 (мікс)', r8: 'R8', r8r: 'R8R', r9: 'R9',
+  other: 'Інше / нижче Нірвани', nirvana: 'Нірвана', nirvana_r8_mix: 'Нірвана / R8R (мікс)', r8r: 'R8R', r9: 'R9',
 };
-export const ARMOR_SET_ORDER: ArmorSet[] = ['other', 'nirvana', 'nirvana_r8_mix', 'r8', 'r8r', 'r9'];
+export const ARMOR_SET_ORDER: ArmorSet[] = ['other', 'nirvana', 'nirvana_r8_mix', 'r8r', 'r9'];
 
 export const ARMOR_REFINE_LABELS: Record<ArmorRefine, string> = {
   a0_4: '+0–4', a5: '+5', a6: '+6', a7: '+7', a8: '+8', a9: '+9', a10: '+10', a11: '+11', a12: '+12',
@@ -315,19 +372,24 @@ export const TRACT_LABELS: Record<Tract, string> = {
 };
 export const TRACT_ORDER: Tract[] = ['t1_3', 't4_5', 't6', 't7', 't8', 'emperor'];
 
-export const GENIE_LABELS: Record<Genie, string> = { top: '100/100', lower: '100−' };
-export const GENIE_ORDER: Genie[] = ['top', 'lower'];
+export const GENIE_LABELS: Record<Genie, string> = { g60: 'до 60', g61_70: '61–70', g71_80: '71–80', g81_90: '81–90', g91_99: '91–99', g100: '100/100' };
+export const GENIE_ORDER: Genie[] = ['g60', 'g61_70', 'g71_80', 'g81_90', 'g91_99', 'g100'];
 
 export const ROLE_LABELS: Record<Role, string> = { support: 'Сапорт', tank: 'Танк', ranged: 'Дальній ДД', melee: 'Ближній ДД', control: 'Контроль' };
 
-/** Компактний рядок для адмінки/публічної сторінки: «ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет · Тракт 8 · Джин 100/100». */
+const shortGems = (gems: Gems) => GEMS_LABELS[gems].replace(/ \(.*\)$/, '');
+
+/** Компактний рядок для адмінки/публічної сторінки:
+ * «ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря), Спів / Аспід (0–9) · Тракт 8 · Джин 100/100». */
 export function gearSummary(g: PlayerGear, version?: string | null): string {
   void version;
   const parts: string[] = [];
   parts.push(`${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}`);
   parts.push(`${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}`);
-  parts.push(`Камні ${GEMS_LABELS[g.gems].replace(/ \(.*\)$/, '')}`);
-  if (g.specialSets.length) parts.push(SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s)).map((s) => SPECIAL_SET_LABELS[s]).join(', '));
+  parts.push(`Камні ${shortGems(g.gems)}`);
+  if (g.specialSets.length) {
+    parts.push(SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s)).map((s) => `${SPECIAL_SET_LABELS[s]} (${shortGems(g.specialSetGems[s] ?? 'g0_9')})`).join(', '));
+  }
   parts.push(`Тракт ${TRACT_LABELS[g.tract].replace(/ \(.*\)$/, '').replace(' грейд', '')}`);
   parts.push(`Джин ${GENIE_LABELS[g.genie]}`);
   return parts.join(' · ');
