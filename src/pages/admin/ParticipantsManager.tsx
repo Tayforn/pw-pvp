@@ -2,15 +2,29 @@
 // Адмінка: список учасників по всій історії турнірів (не по одному турніру,
 // як RegistrationsPanel) — кількість заявок, призові місця, перейменування/
 // об'єднання ніків (перейменування на вже наявний нік — і є об'єднання).
+// Колонка «Ело» — рейтинг з матчів фул-рандому (src/data/ratings.ts),
+// необов'язкова: якщо не завантажилась, показуємо «—», без alert.
 // =========================================================
 
 import { useEffect, useState } from 'react';
 import { errorMessage, reportError } from '../../app/errorMessage';
 import { subscribeToTournamentChanges } from '../../data/tournaments';
 import { fetchParticipantStats, renameParticipant, type ParticipantStat } from '../../data/participants';
+import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
+
+/** 1 гра · 2–4 гри · 5+ ігор (11–14 — ігор). */
+function gamesWord(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'гра';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'гри';
+  return 'ігор';
+}
+
+const eloLabel = (r: PlayerRating | undefined) => (r && r.games > 0 ? `${Math.round(r.rating)} · ${r.games} ${gamesWord(r.games)}` : '—');
 
 export default function ParticipantsManager() {
   const [stats, setStats] = useState<ParticipantStat[]>([]);
+  const [ratings, setRatings] = useState<Map<string, PlayerRating> | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -18,9 +32,12 @@ export default function ParticipantsManager() {
   const [busy, setBusy] = useState(false);
 
   const reload = () => fetchParticipantStats().then(setStats).catch(reportError).finally(() => setLoading(false));
+  // force — на живу зміну кеш fetchRatings (60 с) уже застарілий.
+  const reloadRatings = (force = false) => fetchRatings(force).then(setRatings).catch(() => setRatings(null));
   useEffect(() => {
     reload();
-    return subscribeToTournamentChanges(reload);
+    reloadRatings();
+    return subscribeToTournamentChanges(() => { reload(); reloadRatings(true); });
   }, []);
 
   const q = query.trim().toLowerCase();
@@ -55,7 +72,7 @@ export default function ParticipantsManager() {
     }
   };
 
-  const cols = 'minmax(140px,2fr) 90px 160px 170px';
+  const cols = 'minmax(140px,2fr) 90px 130px 160px 170px';
 
   return (
     <div>
@@ -79,6 +96,7 @@ export default function ParticipantsManager() {
           >
             <span>Нік</span>
             <span>Заявок</span>
+            <span>Ело</span>
             <span>Призові місця</span>
             <span />
           </div>
@@ -104,6 +122,9 @@ export default function ParticipantsManager() {
                 <>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.nickname}</span>
                   <span className="hint" style={{ margin: 0 }}>{s.registrations}</span>
+                  <span className="hint" style={{ margin: 0, whiteSpace: 'nowrap' }} title="Ело-рейтинг з матчів фул-рандому — вкладка «Звіт балансу»">
+                    {eloLabel(ratings ? ratingOf(ratings, s.nickname) : undefined)}
+                  </span>
                   <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {s.wins > 0 && <span className="badge good" title="1-ші місця">🥇 {s.wins}</span>}
                     {s.second > 0 && <span className="badge mute" title="2-гі місця">🥈 {s.second}</span>}

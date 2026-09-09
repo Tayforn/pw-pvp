@@ -1,16 +1,36 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PageMeta from '../app/PageMeta';
 import { routeUrl } from '../app/useRoute';
 import { errorMessage } from '../app/errorMessage';
 import { hasRegistered, markRegistered } from '../app/registeredTournaments';
 import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
-import { fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
+import { fetchLastGearByNickname, fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 import GearFields, { isGearComplete } from '../components/GearFields';
 
 /** Суфікс до назви турніру у виборі/підписі — формат командного турніру. */
 function teamSuffix(t: Tournament): string {
   if (!t.teamSize) return '';
   return isBalancedRandom(t) ? ` (фул-рандом, команди по ${t.teamSize})` : ` (команди по ${t.teamSize})`;
+}
+
+/** Останній нікнейм, з яким подавали заявку з цього браузера — гравець без
+ * акаунта, тож це єдиний спосіб не змушувати вводити нік щоразу. */
+const LAST_NICK_KEY = 'pw-pvp:lastNickname';
+
+function readLastNickname(): string {
+  try {
+    return localStorage.getItem(LAST_NICK_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function saveLastNickname(nick: string): void {
+  try {
+    localStorage.setItem(LAST_NICK_KEY, nick);
+  } catch {
+    /* сховище недоступне (приватний режим тощо) — не критично */
+  }
 }
 
 export default function RegisterPage() {
@@ -28,6 +48,19 @@ export default function RegisterPage() {
   const [gear, setGear] = useState<Partial<PlayerGear>>({});
   const [attackLevel, setAttackLevel] = useState<number | null>(null);
   const [defenseLevel, setDefenseLevel] = useState<number | null>(null);
+  // Звідки підтягнуто анкету (попередня заявка за цим ніком) — підказка над
+  // полями; null = заповнюють з нуля.
+  const [prefilledFrom, setPrefilledFrom] = useState<{ nick: string; tournamentName: string | null; eventDate: string | null } | null>(null);
+  // Актуальна анкета для async-колбеку пошуку (стан у замиканні застарілий).
+  const gearRef = useRef(gear);
+  gearRef.current = gear;
+  // Що саме підставлено автоматично (нік + об'єкт анкети): поки в стані той
+  // самий об'єкт — людина нічого не міняла (GearFields віддає новий об'єкт на
+  // кожну зміну), і при зміні ніка його можна скинути й пошукати анкету вже
+  // нового ніка. Інакше на спільному ПК Bob подав би заявку з анкетою Alice.
+  const prefilledRef = useRef<{ nick: string; gear: Partial<PlayerGear> } | null>(null);
+  // Лічильник запитів: відповідь застарілого (змінили нік/турнір) ігноруємо.
+  const lookupSeq = useRef(0);
   const [rulesAck, setRulesAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -54,13 +87,61 @@ export default function RegisterPage() {
   const isBalanced = tournament ? isBalancedRandom(tournament) : false;
   const isTeam = !!tournament?.teamSize && !isBalanced;
 
+  const clearGear = () => {
+    setGear({});
+    gearRef.current = {};
+    setAttackLevel(null);
+    setDefenseLevel(null);
+    setPrefilledFrom(null);
+    prefilledRef.current = null;
+    lookupSeq.current++;
+  };
+
+  // Підтягнути анкету з попередньої заявки за ніком. Заповнену руками анкету
+  // не чіпаємо; свою ж автопідстановку для іншого ніка — скидаємо і шукаємо
+  // заново. Помилки ковтаємо: це підказка, форма працює й без неї.
+  const prefillGear = (rawNick: string) => {
+    const nick = rawNick.trim();
+    if (!isBalanced || !nick) return;
+    if (gearRef.current.charClass) {
+      const pf = prefilledRef.current;
+      if (!pf || pf.gear !== gearRef.current || pf.nick.toLowerCase() === nick.toLowerCase()) return;
+      clearGear();
+    }
+    const seq = ++lookupSeq.current;
+    fetchLastGearByNickname(nick)
+      .then((found) => {
+        if (!found || seq !== lookupSeq.current || gearRef.current.charClass) return;
+        prefilledRef.current = { nick, gear: found.gear };
+        setGear(found.gear);
+        setAttackLevel(found.attackLevel);
+        setDefenseLevel(found.defenseLevel);
+        setPrefilledFrom({ nick, tournamentName: found.tournamentName, eventDate: found.eventDate });
+      })
+      .catch(() => {
+        /* немає попередньої анкети або мережа — просто без підказки */
+      });
+  };
+
   useEffect(() => {
     setMembers(tournament?.teamSize ? Array.from({ length: tournament.teamSize }, () => '') : []);
     // Анкета прив'язана до турніру — при зміні вибору починаємо з чистої.
-    setGear({});
-    setAttackLevel(null);
-    setDefenseLevel(null);
+    clearGear();
+    // Збережений нік — лише для індивідуальної заявки: у fixed-командному
+    // турнірі це поле — назва команди, свій нік туди підставляти не можна
+    // (а якщо він уже стоїть зі сховища — прибираємо).
+    const stored = readLastNickname();
+    const nick = isTeam ? (nickname === stored ? '' : nickname) : nickname || stored;
+    if (nick !== nickname) setNickname(nick);
+    // Нік уже відомий (зі сховища або набраний) → підтягуємо анкету одразу,
+    // не чекаючи blur; prefillGear сам перевіряє, що турнір балансний.
+    prefillGear(nick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament?.teamSize, tournamentId]);
+
+  const prefillHint = prefilledFrom
+    ? `Анкету для «${prefilledFrom.nick}» підтягнуто з ${prefilledFrom.tournamentName ? `заявки на «${prefilledFrom.tournamentName}»${prefilledFrom.eventDate ? ` (${prefilledFrom.eventDate})` : ''}` : 'попередньої заявки'} — перевір, чи нічого не змінилось.`
+    : null;
 
   const membersValid = !isTeam || members.every((m) => m.trim());
   const gearValid = !isBalanced || isGearComplete(gear);
@@ -83,6 +164,8 @@ export default function RegisterPage() {
         ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
       });
       markRegistered(tournamentId);
+      // У fixed-командному поле — назва команди, не нік; його не запам'ятовуємо.
+      if (!isTeam) saveLastNickname(nickname.trim());
       setDone(true);
     } catch (e) {
       const msg = errorMessage(e, String(e));
@@ -187,6 +270,7 @@ export default function RegisterPage() {
               maxLength={40}
               required
               onChange={(e) => setNickname(e.target.value)}
+              onBlur={isBalanced ? () => prefillGear(nickname) : undefined}
               placeholder={isTeam ? 'Назва твоєї команди' : 'Твій нікнейм у грі'}
             />
           </label>
@@ -206,6 +290,9 @@ export default function RegisterPage() {
                 ))}
               </div>
             </div>
+          )}
+          {isBalanced && prefillHint && (
+            <p className="hint" style={{ margin: 0 }}>{prefillHint}</p>
           )}
           {isBalanced && (
             <GearFields

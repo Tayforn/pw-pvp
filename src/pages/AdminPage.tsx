@@ -1,6 +1,7 @@
 // =========================================================
 // Адмінка: логін (Supabase Auth, спільний з pw-events) + керування
-// турнірами, верифікацією заявок, сіткою, учасниками і ГМ-акаунтами.
+// турнірами, верифікацією заявок, сіткою, учасниками, звітом балансу
+// фул-рандому і ГМ-акаунтами.
 // Керування серіями прибрано з UI (див. коментар у TournamentEditor.tsx) —
 // SeriesManager.tsx лишається в коді, просто не рендериться тут.
 //
@@ -24,6 +25,7 @@ import BracketPanel from './admin/BracketPanel';
 import AdminsManager from './admin/AdminsManager';
 import ParticipantsManager from './admin/ParticipantsManager';
 import RulesEditor from './admin/RulesEditor';
+import BalanceReport from './admin/BalanceReport';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -240,7 +242,7 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
 
 export default function AdminPage({ series }: { series: TournamentSeries[] }) {
   const { session, isAdmin, role, loading } = useAuth();
-  const [tab, setTab] = useState<'tournaments' | 'participants' | 'rules'>('tournaments');
+  const [tab, setTab] = useState<'tournaments' | 'participants' | 'report' | 'rules'>('tournaments');
 
   if (loading) return <p className="hint">Перевірка сесії…</p>;
   if (!session) return <LoginForm />;
@@ -273,6 +275,9 @@ export default function AdminPage({ series }: { series: TournamentSeries[] }) {
         <button type="button" className={'btn btn-sm ' + (tab === 'participants' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('participants')}>
           Учасники
         </button>
+        <button type="button" className={'btn btn-sm ' + (tab === 'report' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('report')}>
+          Звіт балансу
+        </button>
         {isSuperadmin && (
           // Шкала балів фул-рандому — глобальна для всіх турнірів, тому лише суперадмін.
           <button type="button" className={'btn btn-sm ' + (tab === 'rules' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('rules')}>
@@ -283,6 +288,8 @@ export default function AdminPage({ series }: { series: TournamentSeries[] }) {
 
       {tab === 'tournaments' ? (
         <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />
+      ) : tab === 'report' ? (
+        <BalanceReport />
       ) : tab === 'rules' && isSuperadmin ? (
         <RulesEditor />
       ) : (

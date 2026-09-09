@@ -290,6 +290,21 @@ export default function RulesEditor() {
       </div>
 
       <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <b>Рейтинг гравців</b>
+          <span className="badge mute">± {draft.ratingCap}</span>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Ело-рейтинг з результатів матчів (вкладка «Звіт балансу»): + вага × (рейтинг − 1000)/100, не більше ± стелі. 0 = вимкнути.
+          Додається поверх гір-скору, у «максимум» вище не входить.
+        </p>
+        <div className="field-row" style={{ gap: 10 }}>
+          <NumInput label="Балів за 100 Ело" value={draft.ratingWeight} onChange={(v) => patch({ ratingWeight: v })} width={140} />
+          <NumInput label="Стеля ±" value={draft.ratingCap} onChange={(v) => patch({ ratingCap: v })} />
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 14 }}>
         <b>Алгоритм (обережно)</b>
         <p className="hint" style={{ margin: '0 0 8px' }}>
           ε-коридор — на скільки балів штрафу гірший розклад ще вважається «таким самим» і може бути обраний випадково (більше = більше рандому, менше = точніший баланс);

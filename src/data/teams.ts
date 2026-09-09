@@ -5,10 +5,11 @@
 // =========================================================
 
 import { supabase } from '../app/supabaseClient';
-import type { BalanceStats, Registration, Tournament } from './types';
+import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, computeGearScore, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, computeGearScore, ratingBonus, rulesFor, tierFor } from './gearRules';
 import { evaluateTeams, type BalancePlayer, type FormTeamsResult } from './balance';
+import { ratingOf, type PlayerRating } from './ratings';
 
 /** Версія правил, якою рахується цей турнір: зафіксована при формуванні,
  * до формування — поточна. */
@@ -16,12 +17,44 @@ export function rulesVersionFor(t: Pick<Tournament, 'balanceRulesVersion'>): str
   return t.balanceRulesVersion ?? currentRulesVersion();
 }
 
-/** Підтверджені гравці з анкетою → вхід алгоритму (score за версією правил турніру). */
-export function playersForBalance(t: Tournament, regs: Registration[]): BalancePlayer[] {
+/** Складові скору гравця: гір (анкета) + ручна корекція адміна + бонус за Ело. */
+export interface ScoreBreakdown {
+  gear: number;
+  adjust: number;
+  rating: number;
+  total: number;
+}
+
+export function scoreBreakdown(r: Registration, version: string, ratings?: Map<string, PlayerRating>): ScoreBreakdown | null {
+  if (!r.gear) return null;
+  const gear = computeGearScore(r.gear, version);
+  const adjust = r.scoreAdjust ?? 0;
+  const rating = ratings ? ratingBonus(ratingOf(ratings, r.nickname)?.rating, rulesFor(version)) : 0;
+  return { gear, adjust, rating, total: gear + adjust + rating };
+}
+
+/** Скор гравця для жеребки/відображення в адмінці (з корекцією і рейтингом). */
+export function playerScore(r: Registration, version: string, ratings?: Map<string, PlayerRating>): number | null {
+  return scoreBreakdown(r, version, ratings)?.total ?? null;
+}
+
+/** Підтверджені гравці з анкетою → вхід алгоритму (score за версією правил турніру,
+ * з ручною корекцією і бонусом за рейтинг, якщо рейтинги передано). */
+export function playersForBalance(t: Tournament, regs: Registration[], ratings?: Map<string, PlayerRating>): BalancePlayer[] {
   const version = rulesVersionFor(t);
   return regs
     .filter((r) => r.kind === 'player' && r.status === 'confirmed' && r.gear)
-    .map((r) => ({ id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: computeGearScore(r.gear!, version), createdAt: r.createdAt }));
+    .map((r) => ({ id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: playerScore(r, version, ratings)!, createdAt: r.createdAt }));
+}
+
+/** Скори на момент жеребки (зі знімка balance_stats) за id заявки. Після
+ * формування показуємо саме їх: Ело дрейфує з кожним внесеним результатом,
+ * а баланс робився за тодішніми числами. Гравців, яких у знімку немає
+ * (заміни з резерву), рахуємо наживо. */
+export function frozenScores(t: Pick<Tournament, 'balanceStats'>): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const team of t.balanceStats?.teams ?? []) for (const p of team.members) m.set(p.registrationId, p.score);
+  return m;
 }
 
 /** Заявки-гравці без анкети (старі або зламані) — до генерації не допускаються. */
@@ -95,13 +128,20 @@ export async function clearBalancedTeams(tournamentId: string): Promise<void> {
 }
 
 /** Заміна гравця у сформованій команді; inId = null — прибрати без заміни.
- * Вибулий отримує status='rejected' (в UI — «вибув»). */
-export async function substituteTeamMember(teamId: string, outId: string, inId: string | null, reason: 'no_show' | 'disqualified' | 'other' = 'no_show'): Promise<void> {
+ * Вибулий отримує status='rejected' (в UI — «вибув»). Скор і tier заміни
+ * (на момент заміни) йдуть у знімок balance_stats — RPC (0022) оновлює склад
+ * і суму команди, щоб публічна сума не лишалась старою. */
+export async function substituteTeamMember(
+  teamId: string, outId: string, inId: string | null, reason: 'no_show' | 'disqualified' | 'other' = 'no_show',
+  inScore: number | null = null, inTier: Tier | null = null,
+): Promise<void> {
   const { error } = await supabase.rpc('substitute_team_member', {
     p_team_id: teamId,
     p_out_id: outId,
     p_in_id: inId,
     p_reason: reason,
+    p_in_score: inId ? inScore : null,
+    p_in_tier: inId ? inTier : null,
   });
   if (error) throw error;
 }

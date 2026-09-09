@@ -31,6 +31,10 @@ interface RegistrationRow {
   special_set_gems?: Partial<Record<SpecialSet, Gems>> | null; tract?: Tract | null; genie?: Genie | null;
   attack_level?: number | null; defense_level?: number | null;
 }
+/** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
+ * читачу повертається порожньо, у Registration тоді 0 / null. */
+interface AdjustmentRow { registration_id: string; score_adjust: number; note: string | null }
+type Adjustments = Map<string, AdjustmentRow>;
 
 const seriesFromRow = (r: SeriesRow): TournamentSeries => ({ id: r.id, slug: r.slug, name: r.name, isActive: r.is_active, autoWeekday: r.auto_weekday });
 const tournamentFromRow = (r: TournamentRow): Tournament => ({
@@ -49,12 +53,16 @@ const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
     specialSetGems: r.special_set_gems && typeof r.special_set_gems === 'object' ? r.special_set_gems : {}, tract: r.tract, genie: r.genie,
   };
 };
-const registrationFromRow = (r: RegistrationRow): Registration => ({
-  id: r.id, tournamentId: r.tournament_id, nickname: r.nickname, rulesAck: r.rules_ack, status: r.status, createdAt: r.created_at,
-  memberNicknames: r.member_nicknames,
-  kind: r.kind ?? 'player', teamRegistrationId: r.team_registration_id ?? null, gear: gearFromRow(r),
-  attackLevel: r.attack_level ?? null, defenseLevel: r.defense_level ?? null,
-});
+const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
+  const a = adj?.get(r.id);
+  return {
+    id: r.id, tournamentId: r.tournament_id, nickname: r.nickname, rulesAck: r.rules_ack, status: r.status, createdAt: r.created_at,
+    memberNicknames: r.member_nicknames,
+    kind: r.kind ?? 'player', teamRegistrationId: r.team_registration_id ?? null, gear: gearFromRow(r),
+    attackLevel: r.attack_level ?? null, defenseLevel: r.defense_level ?? null,
+    scoreAdjust: a?.score_adjust ?? 0, scoreAdjustNote: a?.note ?? null,
+  };
+};
 const gearToRow = (g: PlayerGear) => ({
   char_class: g.charClass, weapon_grade: g.weaponGrade, weapon_refine: g.weaponRefine, weapon_pz: g.weaponPz,
   armor_set: g.armorSet, armor_refine: g.armorRefine, gems: g.gems, special_sets: g.specialSets, special_set_gems: g.specialSetGems,
@@ -94,10 +102,24 @@ export async function fetchTournament(id: string): Promise<Tournament | null> {
   return data ? tournamentFromRow(data as TournamentRow) : null;
 }
 
+async function fetchAdjustments(tournamentId: string): Promise<Adjustments> {
+  const { data, error } = await supabase.from('registration_adjustments').select('registration_id, score_adjust, note').eq('tournament_id', tournamentId);
+  if (error) {
+    // До застосування міграції 0021 таблиці немає (PGRST205 / 42P01) —
+    // публічні сторінки від цього падати не повинні; решта помилок — нагору.
+    if (/PGRST205|42P01/.test(error.code ?? '')) { console.warn('registration_adjustments: таблиці ще немає (міграція 0021)'); return new Map(); }
+    throw error;
+  }
+  return new Map((data as AdjustmentRow[]).map((a) => [a.registration_id, a] as const));
+}
+
 export async function fetchRegistrations(tournamentId: string): Promise<Registration[]> {
-  const { data, error } = await supabase.from('registrations').select('*').eq('tournament_id', tournamentId).order('created_at', { ascending: true });
+  const [{ data, error }, adj] = await Promise.all([
+    supabase.from('registrations').select('*').eq('tournament_id', tournamentId).order('created_at', { ascending: true }),
+    fetchAdjustments(tournamentId),
+  ]);
   if (error) throw error;
-  return (data as RegistrationRow[]).map(registrationFromRow);
+  return (data as RegistrationRow[]).map((r) => registrationFromRow(r, adj));
 }
 
 export async function submitRegistration(input: {
@@ -127,6 +149,47 @@ export async function submitRegistration(input: {
 export async function updateRegistrationGear(id: string, gear: PlayerGear, attackLevel: number | null, defenseLevel: number | null): Promise<void> {
   const { error } = await supabase.from('registrations').update({ ...gearToRow(gear), attack_level: attackLevel, defense_level: defenseLevel }).eq('id', id);
   if (error) throw error;
+}
+
+/** Ручна корекція скору (± бали) з причиною — лише адмін (0021). */
+/** Корекція адміна: 0 без причини — рядок видаляється (корекції немає), інакше upsert. */
+export async function updateRegistrationAdjust(id: string, tournamentId: string, adjust: number, note: string): Promise<void> {
+  const a = Math.max(-100, Math.min(100, Math.round(adjust)));
+  const n = note.trim() || null;
+  const { error } = a === 0 && !n
+    ? await supabase.from('registration_adjustments').delete().eq('registration_id', id)
+    : await supabase.from('registration_adjustments').upsert({ registration_id: id, tournament_id: tournamentId, score_adjust: a, note: n }, { onConflict: 'registration_id' });
+  if (error) throw error;
+}
+
+/** Літерал для like/ilike: `%`, `_`, `\` і `*` (PostgREST міняє його на `%`)
+ * у ніку — символи, а не шаблон. Інакше «Dark_Lord» підтягнув би анкету
+ * «Dark-Lord». */
+export function likePattern(s: string): string {
+  return s.replace(/[\\%_*]/g, (c) => '\\' + c);
+}
+
+/** Остання анкета гравця з попередніх заявок (за ніком, без урахування регістру) —
+ * щоб на новий турнір не вводити все заново. Гравець без акаунта, тож це
+ * просто підказка: форма підтягує значення, людина перевіряє. */
+export async function fetchLastGearByNickname(nickname: string): Promise<{ gear: PlayerGear; attackLevel: number | null; defenseLevel: number | null; tournamentName: string | null; eventDate: string | null } | null> {
+  const nick = nickname.trim();
+  if (!nick) return null;
+  const { data, error } = await supabase
+    .from('registrations')
+    .select('*, tournaments(name, event_date)')
+    .eq('kind', 'player')
+    .ilike('nickname', likePattern(nick))
+    .not('char_class', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as RegistrationRow & { tournaments?: { name: string; event_date: string } | null };
+  const gear = gearFromRow(row);
+  if (!gear) return null;
+  return { gear, attackLevel: row.attack_level ?? null, defenseLevel: row.defense_level ?? null, tournamentName: row.tournaments?.name ?? null, eventDate: row.tournaments?.event_date ?? null };
 }
 
 export async function setRegistrationStatus(id: string, status: RegistrationStatus): Promise<void> {

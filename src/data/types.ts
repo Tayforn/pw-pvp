@@ -141,6 +141,9 @@ export interface Registration {
   /** Калібрувальні поля (не рахуються у v1.0): показник атаки/захисту без бафів. */
   attackLevel: number | null;
   defenseLevel: number | null;
+  /** Ручна корекція скору адміном (± бали) з причиною — лише адмінам (0021). */
+  scoreAdjust: number;
+  scoreAdjustNote: string | null;
 }
 
 /** Балансний фул-рандом = командний турнір з індивідуальною реєстрацією. */

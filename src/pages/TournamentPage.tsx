@@ -31,16 +31,21 @@ function classCountsLine(players: Registration[]): string {
  * (число без контексту породжує суперечки, публічна «D» — стигма). */
 function BalancedTeams({ tournament, registrations }: { tournament: Tournament; registrations: Registration[] }) {
   const version = rulesVersionFor(tournament);
+  // Сума команди — зі знімка формування (balance_stats): там уже враховані
+  // корекції адміна й рейтинг на момент жеребки, а заміни оновлюють знімок
+  // (RPC substitute_team_member, 0022). Перерахунок з анкет — лише якщо
+  // знімка немає (старі турніри): корекцій і рейтингу анонім не бачить.
+  const statTotals = new Map((tournament.balanceStats?.teams ?? []).map((x) => [x.name, x.total] as const));
   const teams = teamRows(tournament, registrations).map((team) => {
     const members = teamMembers(team, registrations);
-    const total = members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version) : 0), 0);
+    const total = statTotals.get(team.nickname) ?? members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version) : 0), 0);
     return { team, members, total };
   });
   // Резерв — підтверджені з анкетою, кого не взяли в жодну команду.
   const reserve = gearedPlayers(registrations).filter((r) => !r.teamRegistrationId);
   const totals = teams.map((t) => t.total);
   const spread = totals.length ? Math.max(...totals) - Math.min(...totals) : 0;
-  const trust = [`Розкид сумарного гіру між командами: ${spread} балів`];
+  const trust = [`Розкид сум балів між командами: ${spread}`];
   if (tournament.balanceSeed) trust.push(`seed ${tournament.balanceSeed}`);
   if (tournament.balanceRulesVersion) trust.push(tournament.balanceRulesVersion);
 
@@ -50,7 +55,7 @@ function BalancedTeams({ tournament, registrations }: { tournament: Tournament; 
         {teams.map(({ team, members, total }) => (
           <div key={team.id} className="card" style={{ padding: 14 }}>
             <b>{team.nickname}</b>
-            <span className="hint">сумарний гір {total}</span>
+            <span className="hint">сума балів {total}</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
               {members.map((m) => (
                 <span key={m.id} className="badge mute">

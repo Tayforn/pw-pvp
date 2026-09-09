@@ -337,6 +337,19 @@ export function formTeams(input: BalancePlayer[], opts: FormTeamsOptions): FormT
   };
 }
 
+/** Розкид сум команд (max − min) — головна метрика «наскільки збалансовано». */
+export function spreadOf(teams: BalancePlayer[][]): number {
+  const totals = teams.map((t) => t.reduce((s, p) => s + p.score, 0));
+  return totals.length ? Math.max(...totals) - Math.min(...totals) : 0;
+}
+
+/** Оцінка межі для пулу: скільки різних seed дають який розкид (щоб адмін бачив,
+ * чи є сенс крутити «Перегенерувати»). Бюджет зменшений; викликати чанками
+ * (див. TeamsPanel), бо formTeams блокує потік. */
+export function estimateSpread(players: BalancePlayer[], opts: Omit<FormTeamsOptions, 'seed'>, seeds: string[]): number[] {
+  return seeds.map((seed) => spreadOf(formTeams(players, { ...opts, seed, restarts: opts.restarts ?? 1, iterations: opts.iterations ?? 8000 }).teams));
+}
+
 /** Кандидати на заміну вибулого: спочатку той самий клас, потім клас, якого
  * нема в команді, потім решта; всередині — найближчі за score, далі за
  * порядком у резерві (перший у резерві — перший на заміну). */

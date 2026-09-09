@@ -72,6 +72,11 @@ export interface ScoringRules {
   specialSetsCap: number;
   tract: Record<Tract, number>;
   genie: Record<Genie, number>;
+  /** Ело-рейтинг з результатів матчів (src/data/ratings.ts): бали за кожні 100
+   * пунктів рейтингу понад/нижче 1000 … */
+  ratingWeight: number;
+  /** … але не більше ± цього (щоб рейтинг не переважив гір, поки історії мало) */
+  ratingCap: number;
   /** пороги tier, за спаданням; останній — D з min = -Infinity (у JSON — null) */
   tiers: { min: number; tier: Tier }[];
 }
@@ -122,6 +127,9 @@ const BUILTIN: GearRules = {
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
   // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
   genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
+  // Ело: +5 балів за кожні 100 пунктів понад 1000, не більше ±20 (рейтинг росте повільно: K=32)
+  ratingWeight: 5,
+  ratingCap: 20,
   // max 285 → S ≥ 225 · A 175 · B 130 · C 85 · D
   tiers: [
     { min: 225, tier: 'S' },
@@ -255,6 +263,8 @@ export function normalizeRules(raw: unknown): GearRules {
     specialSetsCap: isNum(r.specialSetsCap) ? r.specialSetsCap : BUILTIN.specialSetsCap,
     tract: numTable(r.tract, BUILTIN.tract),
     genie: numTable(r.genie, BUILTIN.genie),
+    ratingWeight: isNum(r.ratingWeight) ? r.ratingWeight : BUILTIN.ratingWeight,
+    ratingCap: isNum(r.ratingCap) ? r.ratingCap : BUILTIN.ratingCap,
     tiers: validTiers ? tiers : BUILTIN.tiers.map((t) => ({ ...t })),
     balance: {
       roleOf: { ...BUILTIN.balance.roleOf, ...((b.roleOf && typeof b.roleOf === 'object' ? b.roleOf : {}) as Partial<Record<CharClass, Role>>) },
@@ -325,6 +335,13 @@ export function maxGearScoreOf(r: ScoringRules): number {
 
 export function maxGearScore(version?: string | null): number {
   return maxGearScoreOf(rulesFor(version));
+}
+
+/** Бонус до скору за Ело-рейтинг: (rating − 1000) / 100 × ratingWeight, обмежено ± ratingCap. */
+export function ratingBonus(rating: number | undefined, r: ScoringRules): number {
+  if (rating === undefined || r.ratingWeight === 0) return 0;
+  const raw = ((rating - 1000) / 100) * r.ratingWeight;
+  return Math.round(Math.max(-r.ratingCap, Math.min(r.ratingCap, raw)));
 }
 
 export function tierForWith(score: number, r: ScoringRules): Tier {
