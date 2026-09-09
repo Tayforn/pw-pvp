@@ -175,8 +175,8 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
           {teamMode && (
             <>
               <div className="field-row">
-                <label className="field" style={{ flex: '0 1 220px', ...lockedStyle }}>
-                  <span>Кількість людей в команді</span>
+                <label className="field" style={{ flex: '0 0 170px', ...lockedStyle }}>
+                  <span>Людей у команді</span>
                   <input
                     type="number"
                     min={2}
@@ -190,7 +190,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
                   <span>Формування команд</span>
                   <select value={teamModeSel} disabled={locked} onChange={(e) => setTeamModeSel(e.target.value as TeamMode)}>
                     <option value="fixed">Готові команди</option>
-                    <option value="balanced_random">Балансний фул-рандом (випадкові збалансовані команди)</option>
+                    <option value="balanced_random">Балансний фул-рандом</option>
                   </select>
                 </label>
               </div>

@@ -384,11 +384,12 @@ html[data-theme="light"] .theme-ico-moon { display: inline; }
   background: var(--bg-3);
   color: var(--accent-3);
 }
+/* Поля в рядку: підписи в один рядок (довгий — обрізається трьома крапками) —
+   інакше довший підпис переносився й «зсував» свій інпут нижче за сусідні
+   (редактор турніру, анкета). */
 .field-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .field-row > .field { flex: 1 1 220px; }
-/* Анкета спорядження (GearFields): підписи полів у рядку — в один рядок,
-   щоб селекти сусідніх колонок стояли на одній висоті. */
-.gear-fields .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.field-row .field > span, .gear-fields .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .checkbox-row { display: flex; align-items: center; gap: 9px; font-size: 14.5px; cursor: pointer; }
 .checkbox-row input { accent-color: var(--accent); width: 17px; height: 17px; cursor: pointer; }
 
