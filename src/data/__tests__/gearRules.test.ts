@@ -12,19 +12,27 @@ const base: PlayerGear = {
 const gear = (over: Partial<PlayerGear>): PlayerGear => ({ ...base, ...over });
 
 describe('balance-v1.0: шкала', () => {
-  it('максимум 275, реалістичний (без R9-броні) 262', () => {
-    expect(maxGearScore()).toBe(275);
+  it('максимум 285, реалістичний (без R9-броні) 272', () => {
+    expect(maxGearScore()).toBe(285);
     const r = rulesFor();
-    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(262);
+    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(272);
   });
 
-  it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі', () => {
-    expect(computeGearScore(gear({ charClass: 'assassin', weaponGrade: 'r9r2', weaponRefine: 'w12', armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100' }))).toBe(247);
-    expect(computeGearScore(gear({ charClass: 'archer', weaponGrade: 'r9r1', weaponRefine: 'w11', armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100' }))).toBe(208);
-    expect(computeGearScore(gear({ charClass: 'wizard', weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7' }))).toBe(127);
-    expect(computeGearScore(gear({ weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6' }))).toBe(87);
-    expect(computeGearScore(gear({ charClass: 'barbarian', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', tract: 't4_5' }))).toBe(46);
-    expect(computeGearScore(base)).toBe(13);
+  it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі (з балами класу)', () => {
+    expect(computeGearScore(gear({ charClass: 'assassin', weaponGrade: 'r9r2', weaponRefine: 'w12', armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100' }))).toBe(257);
+    expect(computeGearScore(gear({ charClass: 'archer', weaponGrade: 'r9r1', weaponRefine: 'w11', armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100' }))).toBe(216);
+    expect(computeGearScore(gear({ charClass: 'wizard', weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7' }))).toBe(134);
+    expect(computeGearScore(gear({ weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6' }))).toBe(94);
+    expect(computeGearScore(gear({ charClass: 'barbarian', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', tract: 't4_5' }))).toBe(52);
+    expect(computeGearScore(base)).toBe(20); // 13 за гір + 7 за клас (прист)
+  });
+
+  it('бали за клас: додаються до скору; нулі вимикають', () => {
+    const r = rulesFor();
+    expect(r.classPoints.assassin).toBe(10);
+    expect(computeGearScore(gear({ charClass: 'assassin' })) - computeGearScore(gear({ charClass: 'blademaster' }))).toBe(5);
+    const off = normalizeRules({ ...serializeRules(r) as object, classPoints: Object.fromEntries(Object.keys(r.classPoints).map((c) => [c, 0])) });
+    expect(computeGearScoreWith(base, off)).toBe(13);
   });
 
   it('зброя за класами: у фізиків R9R1 > РЦГД, у інтовиків навпаки; ЦГД/РЦГД/R9R2 однакові', () => {
@@ -35,7 +43,8 @@ describe('balance-v1.0: шкала', () => {
     expect(weaponGradeScore('wizard', 'rcgd', r)).toBe(45);
     expect(weaponGradeScore('archer', 'cgd', r)).toBe(weaponGradeScore('wizard', 'cgd', r));
     expect(weaponGradeScore('assassin', 'r9r2', r)).toBe(60);
-    expect(computeGearScore(gear({ charClass: 'archer', weaponGrade: 'r9r1' })) - computeGearScore(gear({ charClass: 'wizard', weaponGrade: 'r9r1' }))).toBe(12);
+    // 12 за зброю (50 − 38) + 1 за клас (лук 8 − маг 7)
+    expect(computeGearScore(gear({ charClass: 'archer', weaponGrade: 'r9r1' })) - computeGearScore(gear({ charClass: 'wizard', weaponGrade: 'r9r1' }))).toBe(13);
   });
 
   it('ПЗ-зброя (запасна зброя для свапу) дає +15 незалежно від грейду основної', () => {
@@ -84,14 +93,14 @@ describe('balance-v1.0: шкала', () => {
     expect([g.g60, g.g61_70, g.g71_80, g.g81_90, g.g91_99, g.g100]).toEqual([0, 2, 4, 6, 8, 10]);
   });
 
-  it('tier: S ≥ 215 · A 170 · B 125 · C 80 · D', () => {
-    expect(tierFor(247)).toBe('S');
-    expect(tierFor(215)).toBe('S');
-    expect(tierFor(214)).toBe('A');
-    expect(tierFor(170)).toBe('A');
-    expect(tierFor(127)).toBe('B');
-    expect(tierFor(87)).toBe('C');
-    expect(tierFor(46)).toBe('D');
+  it('tier: S ≥ 225 · A 175 · B 130 · C 85 · D', () => {
+    expect(tierFor(257)).toBe('S');
+    expect(tierFor(225)).toBe('S');
+    expect(tierFor(224)).toBe('A');
+    expect(tierFor(175)).toBe('A');
+    expect(tierFor(134)).toBe('B');
+    expect(tierFor(94)).toBe('C');
+    expect(tierFor(52)).toBe('D');
     expect(tierFor(0)).toBe('D');
   });
 
@@ -133,7 +142,7 @@ describe('balance-v1.0: шкала', () => {
     expect(r.balance.T0).toBe(rulesFor(BUILTIN_RULES_VERSION).balance.T0);
     expect(r.weaponGradeByClass.wizard).toEqual({ r9r1: 1 });
     expect(r.weaponGradeByClass.archer).toEqual({}); // передано об'єкт без archer → без перевизначень
-    expect(computeGearScoreWith(gear({ weaponGrade: 'r9r2' }), r)).toBe(13 - 5 + 99);
+    expect(computeGearScoreWith(gear({ weaponGrade: 'r9r2' }), r)).toBe(20 - 5 + 99);
   });
 
   it('реєстр версій: нова версія стає поточною, старі турніри рахуються по-старому; nextRulesVersion інкрементує мінор', () => {
@@ -142,9 +151,9 @@ describe('balance-v1.0: шкала', () => {
     registerRules({ version: 'balance-v1.1', note: 'тест', createdAt: '2026-09-09T00:00:00Z', builtin: false }, v11, true);
     expect(currentRulesVersion()).toBe('balance-v1.1');
     expect(nextRulesVersion()).toBe('balance-v1.2');
-    expect(computeGearScore(gear({ weaponPz: true }), 'balance-v1.0')).toBe(28);
-    expect(computeGearScore(gear({ weaponPz: true }), 'balance-v1.1')).toBe(43);
-    expect(computeGearScore(gear({ weaponPz: true }))).toBe(43); // без версії — поточна
+    expect(computeGearScore(gear({ weaponPz: true }), 'balance-v1.0')).toBe(35);
+    expect(computeGearScore(gear({ weaponPz: true }), 'balance-v1.1')).toBe(50);
+    expect(computeGearScore(gear({ weaponPz: true }))).toBe(50); // без версії — поточна
     // повертаємо вбудовану як поточну, щоб не впливати на інші тести
     registerRules({ version: BUILTIN_RULES_VERSION, note: null, createdAt: null, builtin: true }, rulesFor(BUILTIN_RULES_VERSION), true);
   });

@@ -43,6 +43,10 @@ export interface BalanceRules {
 
 /** Таблиці балів — те, що редагує адмін. */
 export interface ScoringRules {
+  /** бали за сам клас (сила класу в ПвП цієї версії); спека це не радила, бо сила
+   * класу залежить від складу пачки, але власник хоче балансувати і за цим —
+   * усі нулі = вимкнено */
+  classPoints: Record<CharClass, number>;
   /** бали за грейд зброї за замовчуванням (для класів без окремого значення) */
   weaponGrade: Record<WeaponGrade, number>;
   /** перевизначення за класом: R9-лінійка нерівна між класами (абілки на фізичних
@@ -91,6 +95,8 @@ const byClass = (physical: Partial<Record<WeaponGrade, number>>, caster: Partial
 };
 
 const BUILTIN: GearRules = {
+  // стартова оцінка сили класу в ПвП 1.4.6 (до 10) — власник підправляє в адмінці
+  classPoints: { assassin: 10, psychic: 8, archer: 8, wizard: 7, cleric: 7, barbarian: 6, seeker: 6, mystic: 6, venomancer: 5, blademaster: 5 },
   // ПА фіксований за грейдом (ЦГД 30, РЦГД 50, R9 30, R9R1 40, R9R2 50) — вшито в бали.
   // Рідкість на сервері (8 міс.): ЦГД ~5, РЦГД ~20, R9 1, R9R1 2, R9R2 2 — тому
   // великі розриви R8R → ЦГД (+15) і РЦГД → R9R2 (+15), решта лінійки між ними.
@@ -116,12 +122,12 @@ const BUILTIN: GearRules = {
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
   // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
   genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
-  // max 275 → S ≥ 215 · A 170 · B 125 · C 80 · D
+  // max 285 → S ≥ 225 · A 175 · B 130 · C 85 · D
   tiers: [
-    { min: 215, tier: 'S' },
-    { min: 170, tier: 'A' },
-    { min: 125, tier: 'B' },
-    { min: 80, tier: 'C' },
+    { min: 225, tier: 'S' },
+    { min: 175, tier: 'A' },
+    { min: 130, tier: 'B' },
+    { min: 85, tier: 'C' },
     { min: -Infinity, tier: 'D' },
   ],
   balance: {
@@ -233,6 +239,7 @@ export function normalizeRules(raw: unknown): GearRules {
     byCls[c] = out;
   }
   return {
+    classPoints: numTable(r.classPoints, BUILTIN.classPoints),
     weaponGrade: numTable(r.weaponGrade, BUILTIN.weaponGrade),
     weaponGradeByClass: byCls,
     weaponRefine: numTable(r.weaponRefine, BUILTIN.weaponRefine),
@@ -292,6 +299,7 @@ export function specialSetGemsScore(g: Pick<PlayerGear, 'specialSets' | 'special
 
 export function computeGearScoreWith(g: PlayerGear, r: ScoringRules): number {
   return (
+    r.classPoints[g.charClass] +
     weaponGradeScore(g.charClass, g.weaponGrade, r) +
     r.weaponRefine[g.weaponRefine] +
     (g.weaponPz ? r.weaponPz : 0) +
@@ -312,7 +320,7 @@ export function computeGearScore(g: PlayerGear, version?: string | null): number
 export function maxGearScoreOf(r: ScoringRules): number {
   const mx = (o: Record<string, number>) => Math.max(...Object.values(o));
   const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
-  return maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie);
+  return mx(r.classPoints) + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie);
 }
 
 export function maxGearScore(version?: string | null): number {

@@ -181,6 +181,7 @@ export default function RulesEditor() {
         </div>
       </div>
 
+      <NumTable title="Клас" hint="Сила самого класу в ПвП — додається до скору гравця, тож команди балансуються і за класами. Усі нулі = вимкнути." order={CLASS_ORDER} labels={CLASS_LABELS} values={draft.classPoints} onChange={(v) => patch({ classPoints: v })} />
       <NumTable title="Зброя (за замовчуванням)" hint="ПА лінійки ЦГД / R9 уже вшитий у бали грейду. Для класів, де це не так, — таблиця нижче." order={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} values={draft.weaponGrade} onChange={(v) => patch({ weaponGrade: v })} />
 
       <div className="card" style={{ padding: 14 }}>
