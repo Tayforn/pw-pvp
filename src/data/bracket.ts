@@ -15,6 +15,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BracketMatch, BracketSide } from './types';
 import { setTournamentStatus } from './tournaments';
+import { createRng } from './balance';
 
 interface BracketRow {
   id: string;
@@ -86,6 +87,10 @@ export interface Podium {
   first: string;
   second: string | null;
   third: string | null;
+  /** Склади згенерованих команд балансного фул-рандому (kind='team') — ніки
+   * гравців з player-рядків за team_registration_id; null для звичайних
+   * заявок (соло або готова команда). Головна зараховує перемогу кожному. */
+  members: { first: string[] | null; second: string[] | null; third: string[] | null };
 }
 
 /** Топ-3 турніру — для п'єдесталу на Головній. 2-ге місце — програний
@@ -101,22 +106,66 @@ export async function fetchPodium(tournamentId: string): Promise<Podium | null> 
   const thirdId = matches.find((m) => m.bracketSide === 'third_place')?.winnerId ?? null;
 
   const ids = [firstId, secondId, thirdId].filter((id): id is string => !!id);
-  const { data, error } = await supabase.from('registrations').select('id, nickname').in('id', ids);
+  // select('*'), а не перелік колонок: до застосування міграції 0017 колонки
+  // kind ще немає, а явний select з нею — це 400 і зламана головна.
+  const { data, error } = await supabase.from('registrations').select('*').in('id', ids);
   if (error) throw error;
-  const nickOf = (id: string | null) => (id ? ((data as { id: string; nickname: string }[]).find((r) => r.id === id)?.nickname ?? null) : null);
+  const rows = data as { id: string; nickname: string; kind?: 'player' | 'team' | null }[];
+  const nickOf = (id: string | null) => (id ? (rows.find((r) => r.id === id)?.nickname ?? null) : null);
 
   const first = nickOf(firstId);
   if (!first) return null;
-  return { first, second: nickOf(secondId), third: nickOf(thirdId) };
+
+  // Склади team-рядків — з player-рядків (member_nicknames — лише кеш, застаріває при перейменуванні).
+  const teamIds = rows.filter((r) => r.kind === 'team').map((r) => r.id);
+  const membersOf = new Map<string, string[]>();
+  if (teamIds.length) {
+    const { data: mData, error: mErr } = await supabase
+      .from('registrations')
+      .select('nickname, team_registration_id')
+      .in('team_registration_id', teamIds)
+      .order('created_at', { ascending: true });
+    if (mErr) throw mErr;
+    for (const m of mData as { nickname: string; team_registration_id: string }[]) {
+      const list = membersOf.get(m.team_registration_id) ?? [];
+      list.push(m.nickname);
+      membersOf.set(m.team_registration_id, list);
+    }
+  }
+  const membersFor = (id: string | null) => (id && membersOf.has(id) ? membersOf.get(id)! : null);
+
+  return {
+    first,
+    second: nickOf(secondId),
+    third: nickOf(thirdId),
+    members: { first: membersFor(firstId), second: membersFor(secondId), third: membersFor(thirdId) },
+  };
 }
 
-function shuffle<T>(arr: T[]): T[] {
+/** Тасування Фішера–Єйтса; з seed — детерміноване (той самий seed + той самий
+ * відсортований список id → той самий посів), без seed — Math.random, як і було. */
+function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+function seededOrder(ids: string[], seed?: string): string[] {
+  if (!seed) return shuffle(ids);
+  return shuffle(ids.slice().sort(), createRng(seed + ':bracket'));
+}
+
+/** Видаляє сітку (усі bracket_matches турніру) і скидає bracket_size. Для
+ * повторної генерації сама генерація і так видаляє стару сітку — це для
+ * кнопки «Видалити сітку» в адмінці (напр. щоб переформувати команди). */
+export async function deleteBracket(tournamentId: string): Promise<void> {
+  const { error } = await supabase.from('bracket_matches').delete().eq('tournament_id', tournamentId);
+  if (error) throw error;
+  const { error: tErr } = await supabase.from('tournaments').update({ bracket_size: null }).eq('id', tournamentId);
+  if (tErr) throw tErr;
 }
 
 function nextPow2(n: number): number {
@@ -147,17 +196,17 @@ export async function bracketHasResults(tournamentId: string): Promise<boolean> 
  * thirdPlaceMatch=true (і рівно 2 півфіналісти-програні) додає окремий матч
  * bracket_side='third_place' — програні півфіналу потрапляють туди так само,
  * як програні прогресують у losers-сітку double_elim (через loser_next_match_id). */
-export async function generateSingleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], thirdPlaceMatch = false): Promise<void> {
+export async function generateSingleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], thirdPlaceMatch = false, seed?: string): Promise<void> {
   if (confirmedRegistrationIds.length < 2) throw new Error('Потрібно щонайменше 2 підтверджені учасники.');
 
   await supabase.from('bracket_matches').delete().eq('tournament_id', tournamentId);
 
   const bracketSize = nextPow2(confirmedRegistrationIds.length);
   const rounds = Math.log2(bracketSize);
-  const shuffled = shuffle(confirmedRegistrationIds);
+  const shuffled = seededOrder(confirmedRegistrationIds, seed);
   const byes = bracketSize - shuffled.length;
 
-  await supabase.from('tournaments').update({ bracket_size: bracketSize }).eq('id', tournamentId);
+  await supabase.from('tournaments').update({ bracket_size: bracketSize, ...(seed ? { bracket_seed: seed } : {}) }).eq('id', tournamentId);
 
   // id для кожного матчу генеруємо заздалегідь — потрібні для взаємних next_match_id
   const idsByRound: string[][] = [];
@@ -245,7 +294,7 @@ export function isPowerOfTwo(n: number): boolean {
  * (k = log2(n)). Останній раунд losers дає чемпіона нижньої сітки, який
  * зустрічається з чемпіоном winners у гранд-фіналі (без бракет-резету).
  */
-export async function generateDoubleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[]): Promise<void> {
+export async function generateDoubleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], seed?: string): Promise<void> {
   const n = confirmedRegistrationIds.length;
   if (!isPowerOfTwo(n)) {
     throw new Error(`Подвійна елімінація підтримує лише кількість учасників = степінь двійки (4, 8, 16, 32…), без байів. Зараз підтверджено: ${n}.`);
@@ -254,9 +303,9 @@ export async function generateDoubleEliminationBracket(tournamentId: string, con
   await supabase.from('bracket_matches').delete().eq('tournament_id', tournamentId);
 
   const k = Math.log2(n);
-  const shuffled = shuffle(confirmedRegistrationIds);
+  const shuffled = seededOrder(confirmedRegistrationIds, seed);
 
-  await supabase.from('tournaments').update({ bracket_size: n }).eq('id', tournamentId);
+  await supabase.from('tournaments').update({ bracket_size: n, ...(seed ? { bracket_seed: seed } : {}) }).eq('id', tournamentId);
 
   const wbIds: string[][] = [];
   for (let r = 1; r <= k; r++) wbIds.push(Array.from({ length: n / 2 ** r }, () => crypto.randomUUID()));

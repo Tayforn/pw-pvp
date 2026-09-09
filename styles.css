@@ -386,6 +386,9 @@ html[data-theme="light"] .theme-ico-moon { display: inline; }
 }
 .field-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .field-row > .field { flex: 1 1 220px; }
+/* Анкета спорядження (GearFields): підписи полів у рядку — в один рядок,
+   щоб селекти сусідніх колонок стояли на одній висоті. */
+.gear-fields .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .checkbox-row { display: flex; align-items: center; gap: 9px; font-size: 14.5px; cursor: pointer; }
 .checkbox-row input { accent-color: var(--accent); width: 17px; height: 17px; cursor: pointer; }
 
@@ -525,7 +528,7 @@ body.modal-open { overflow: hidden; }
 .trn-match.trn-decided { border-color: rgba(var(--accent-3-rgb), 0.4); }
 
 .trn-match-meta {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 6px;
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--text-mute); font-weight: 700; padding: 4px 8px;
   border-bottom: 1px solid var(--line);
@@ -554,3 +557,21 @@ body.modal-open { overflow: hidden; }
 .trn-crown { font-size: 22px; line-height: 1; opacity: 0.45; }
 .trn-champion.has-champion .trn-crown { opacity: 1; }
 .trn-champion span:last-child { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; }
+
+/* ── Балансний фул-рандом: картки команд в адмінці (TeamsPanel) ──────── */
+.teams-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.team-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 8px; }
+.team-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+/* рядки гравців — як маленька таблиця: тонкі роздільники, колонки клас/скор/tier
+   фіксованої ширини (TeamsPanel.PlayerLine), тому все вирівняне між рядками */
+.team-rows { display: flex; flex-direction: column; }
+.team-rows > .player-row + .player-row { box-shadow: inset 0 1px 0 var(--line); }
+.player-row {
+  display: flex; gap: 8px; align-items: center; width: 100%; text-align: left;
+  background: transparent; border: 1px solid transparent; border-radius: 8px;
+  padding: 6px 4px; color: inherit; cursor: pointer; font: inherit; font-size: 13.5px;
+}
+.player-row:hover { background: rgba(var(--accent-3-rgb), 0.08); border-color: var(--line); }
+.player-row.selected { border-color: var(--accent); background: rgba(var(--accent-3-rgb), 0.12); }
+.player-row.static { cursor: default; border-radius: 0; }
+.player-row.static:hover { background: transparent; border-color: transparent; }

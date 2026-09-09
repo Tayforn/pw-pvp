@@ -3,8 +3,15 @@ import PageMeta from '../app/PageMeta';
 import { routeUrl } from '../app/useRoute';
 import { errorMessage } from '../app/errorMessage';
 import { hasRegistered, markRegistered } from '../app/registeredTournaments';
-import { isRegistrationOpen, type Tournament } from '../data/types';
+import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
 import { fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
+import GearFields, { isGearComplete } from '../components/GearFields';
+
+/** Суфікс до назви турніру у виборі/підписі — формат командного турніру. */
+function teamSuffix(t: Tournament): string {
+  if (!t.teamSize) return '';
+  return isBalancedRandom(t) ? ` (фул-рандом, команди по ${t.teamSize})` : ` (команди по ${t.teamSize})`;
+}
 
 export default function RegisterPage() {
   // ?t=<id> — пряме посилання на конкретний турнір (у т.ч. "unlisted" ГМ-турніри,
@@ -17,6 +24,10 @@ export default function RegisterPage() {
   const [tournamentId, setTournamentId] = useState('');
   const [nickname, setNickname] = useState('');
   const [members, setMembers] = useState<string[]>([]);
+  // Анкета спорядження — лише для балансного фул-рандому.
+  const [gear, setGear] = useState<Partial<PlayerGear>>({});
+  const [attackLevel, setAttackLevel] = useState<number | null>(null);
+  const [defenseLevel, setDefenseLevel] = useState<number | null>(null);
   const [rulesAck, setRulesAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -38,13 +49,21 @@ export default function RegisterPage() {
   }, [pinnedId]);
 
   const tournament = pinnedId ? pinned : tournaments.find((t) => t.id === tournamentId);
-  const isTeam = !!tournament?.teamSize;
+  // Балансний фул-рандом — теж командний турнір, але заявка індивідуальна
+  // (нік + анкета спорядження); «готові команди» — назва + N ніків, як було.
+  const isBalanced = tournament ? isBalancedRandom(tournament) : false;
+  const isTeam = !!tournament?.teamSize && !isBalanced;
 
   useEffect(() => {
     setMembers(tournament?.teamSize ? Array.from({ length: tournament.teamSize }, () => '') : []);
+    // Анкета прив'язана до турніру — при зміні вибору починаємо з чистої.
+    setGear({});
+    setAttackLevel(null);
+    setDefenseLevel(null);
   }, [tournament?.teamSize, tournamentId]);
 
   const membersValid = !isTeam || members.every((m) => m.trim());
+  const gearValid = !isBalanced || isGearComplete(gear);
   // Клієнтська перевірка — доповнює серверний unique-індекс (той блокує лише
   // повтор ТОГО САМОГО нікнейму); ця блокує ще одну заявку з ІНШИМ нікнеймом
   // з того самого браузера.
@@ -52,7 +71,7 @@ export default function RegisterPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tournamentId || !nickname.trim() || !rulesAck || !membersValid) return;
+    if (!tournamentId || !nickname.trim() || !rulesAck || !membersValid || !gearValid) return;
     setBusy(true);
     setErr(null);
     try {
@@ -61,6 +80,7 @@ export default function RegisterPage() {
         nickname: nickname.trim(),
         rulesAck,
         memberNicknames: isTeam ? members.map((m) => m.trim()) : undefined,
+        ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
       });
       markRegistered(tournamentId);
       setDone(true);
@@ -90,6 +110,9 @@ export default function RegisterPage() {
             <h2>{pinned.name}</h2>
           </div>
           <p className="hint">{passed ? 'Турнір уже пройшов.' : 'Реєстрація на цей турнір зараз не відкрита.'}</p>
+          <p>
+            <a className="link" href={routeUrl({ name: 'tournament', id: pinned.id })}>Сторінка турніру</a>
+          </p>
         </div>
       );
     }
@@ -108,20 +131,34 @@ export default function RegisterPage() {
       ) : done ? (
         <div className="card">
           <p className="badge good">Заявку подано!</p>
-          <p className="hint">Адмін підтвердить участь перед стартом турніру.</p>
+          {isBalanced ? (
+            <>
+              <p className="hint">
+                Адмін підтвердить участь. Команду дізнаєшся на сторінці турніру після закриття реєстрації — команду собі не обирають.
+                Помилився в анкеті? Напиши адміну.
+              </p>
+              <p style={{ margin: 0 }}>
+                <a className="link" href={routeUrl({ name: 'tournament', id: tournamentId })}>Сторінка турніру</a>
+              </p>
+            </>
+          ) : (
+            <p className="hint">Адмін підтвердить участь перед стартом турніру.</p>
+          )}
         </div>
       ) : alreadyRegistered ? (
         <div className="card">
           <p className="hint" style={{ margin: 0 }}>З цього браузера вже подано заявку на цей турнір.</p>
         </div>
       ) : (
-        <form className="card" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 480 }}>
+        // 560 для анкети: при 480 внутрішня ширина менша за потрібну парі полів
+        // .field-row — пари переносились би в стовпчик навіть на десктопі.
+        <form className="card" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: isBalanced ? 560 : 480 }}>
           {pinnedId ? (
             <div className="field">
               <span>Турнір</span>
               <p style={{ margin: '4px 0 0', fontWeight: 600 }}>
                 {tournament!.name} · {tournament!.eventDate}
-                {tournament!.teamSize ? ` (команди по ${tournament!.teamSize})` : ''}
+                {teamSuffix(tournament!)}
               </p>
             </div>
           ) : (
@@ -131,11 +168,16 @@ export default function RegisterPage() {
                 {tournaments.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} · {t.eventDate}
-                    {t.teamSize ? ` (команди по ${t.teamSize})` : ''}
+                    {teamSuffix(t)}
                   </option>
                 ))}
               </select>
             </label>
+          )}
+          {isBalanced && (
+            <p className="hint" style={{ margin: 0 }}>
+              Команду формує система випадково після закриття реєстрації. Заповни чесно — адмін перевіряє в грі, неправда = дискваліфікація.
+            </p>
           )}
           <label className="field">
             <span>{isTeam ? 'Назва команди' : 'Нікнейм персонажа'}</span>
@@ -165,9 +207,22 @@ export default function RegisterPage() {
               </div>
             </div>
           )}
+          {isBalanced && (
+            <GearFields
+              value={gear}
+              onChange={setGear}
+              attackLevel={attackLevel}
+              defenseLevel={defenseLevel}
+              onExtraChange={(a, d) => {
+                setAttackLevel(a);
+                setDefenseLevel(d);
+              }}
+              showScore
+            />
+          )}
           <label className="checkbox-row">
             <input type="checkbox" checked={rulesAck} onChange={(e) => setRulesAck(e.target.checked)} />
-            З правилами турніру ознайомлений(а)
+            {isBalanced ? 'З правилами ознайомлений(а), дані про спорядження правдиві' : 'З правилами турніру ознайомлений(а)'}
           </label>
           <small className="hint">
             Ще не знайомий(а) з правилами?{' '}
@@ -182,7 +237,7 @@ export default function RegisterPage() {
             )}
           </small>
           {err && <p className="form-err">{err}</p>}
-          <button type="submit" className="btn btn-primary" disabled={busy || !rulesAck || !nickname.trim() || !membersValid}>
+          <button type="submit" className="btn btn-primary" disabled={busy || !rulesAck || !nickname.trim() || !membersValid || !gearValid}>
             {busy ? 'Надсилання…' : 'Подати заявку'}
           </button>
         </form>

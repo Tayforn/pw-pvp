@@ -18,6 +18,13 @@ interface WinStat {
   count: number;
 }
 
+/** Порядок рядків складу під п'єдесталом (1 → 2 → 3). */
+const PODIUM_PLACES = [
+  { key: 'first' as const, medal: '🥇' },
+  { key: 'second' as const, medal: '🥈' },
+  { key: 'third' as const, medal: '🥉' },
+];
+
 /** Українська форма слова "перемога" залежно від числа (1/2-4/5+, з винятком
  * для 11-14, які завжди "перемог" попри останню цифру). */
 function winsWord(n: number): string {
@@ -67,10 +74,14 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
       }
 
       // Статистика: нік → кількість турнірних перемог (чемпіонств) по всій
-      // історії зіграних турнірів.
+      // історії зіграних турнірів. Згенерована команда фул-рандому (є склад
+      // у members.first) — перемога кожному її гравцю; готова команда /
+      // соло — як і було, на назву заявки.
       const wins = new Map<string, number>();
       podiums.forEach((pd) => {
-        if (pd) wins.set(pd.first, (wins.get(pd.first) ?? 0) + 1);
+        if (!pd) return;
+        const credited = pd.members.first && pd.members.first.length > 0 ? pd.members.first : [pd.first];
+        for (const n of credited) wins.set(n, (wins.get(n) ?? 0) + 1);
       });
       const stats = Array.from(wins, ([nickname, count]) => ({ nickname, count }))
         .sort((a, b) => b.count - a.count || a.nickname.localeCompare(b.nickname));
@@ -118,6 +129,18 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
         {!latest && <p className="hint">Ще не було жодного турніру.</p>}
         {latest && !podium && <span className="badge warn">{STATUS_LABELS[latest.status]}</span>}
         {latest && podium && <Podium podium={podium} caption={latest.eventDate} />}
+        {/* Склади згенерованих команд фул-рандому — на п'єдесталі лише назва
+            команди, а перемога зарахована гравцям, тож показуємо, хто це. */}
+        {latest && podium && PODIUM_PLACES.some((p) => podium.members[p.key]?.length) && (
+          <div className="hint" style={{ textAlign: 'center', marginTop: 6 }}>
+            {PODIUM_PLACES.map((p) => {
+              const members = podium.members[p.key];
+              return members && members.length > 0 ? (
+                <div key={p.key}>{p.medal} {podium[p.key]}: {members.join(', ')}</div>
+              ) : null;
+            })}
+          </div>
+        )}
 
         {winStats.length > 0 && (
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>

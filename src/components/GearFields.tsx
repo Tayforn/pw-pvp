@@ -1,0 +1,162 @@
+// =========================================================
+// Анкета спорядження для балансного фул-рандому — контрольований
+// компонент, спільний для форми заявки гравця (RegisterPage) і модалки
+// «✎» адміна (RegistrationsPanel). Компактний, на один екран десктопа:
+// 8 select-ів + чекбокс ПЗ-зброї + 3 чекбокси спецсетів + згорнутий блок
+// із двома числовими полями (ПА/ПЗ з вікна персонажа — калібрування,
+// у v1.0 на бали не впливають). Балів не зберігає — лише показує
+// орієнтовний гір-скор за таблицями gearRules.
+//
+// Верстка: у кожному .field-row підписи полів — в один рядок (див.
+// .gear-fields у styles.css), а підказки стоять ПІД рядком, а не всередині
+// колонки — інакше колонки різної висоти і селекти «скачуть».
+//
+// Кожне емітоване значення нормалізоване: weaponPz завжди boolean,
+// specialSets завжди масив — так вимагає constraint registrations_gear_all_or_none.
+// =========================================================
+
+import type { PlayerGear, SpecialSet } from '../data/types';
+import {
+  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER,
+  GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_HINTS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
+  TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER, WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER,
+  computeGearScore, rulesFor,
+} from '../data/gearRules';
+import { useRules } from '../data/rulesStore';
+
+interface Props {
+  value: Partial<PlayerGear>;
+  onChange: (next: Partial<PlayerGear>) => void;
+  attackLevel: number | null;
+  defenseLevel: number | null;
+  onExtraChange: (attackLevel: number | null, defenseLevel: number | null) => void;
+  /** Версія таблиць балів для живого скору й видимості ПЗ-чекбокса; за замовчуванням — поточна. */
+  rulesVersion?: string | null;
+  /** Показувати бейдж «Орієнтовний гір-скор», коли анкета заповнена. */
+  showScore?: boolean;
+}
+
+/** Анкета заповнена — усі 10 полів на місці. Чекбокси ніколи не null:
+ * компонент емітить weaponPz=false / specialSets=[] уже з першої зміни,
+ * тож до моменту, коли всі 8 select-ів обрано, вони гарантовано є. */
+export function isGearComplete(v: Partial<PlayerGear>): v is PlayerGear {
+  return !!(
+    v.charClass && v.weaponGrade && v.weaponRefine && typeof v.weaponPz === 'boolean' &&
+    v.armorSet && v.armorRefine && v.gems && Array.isArray(v.specialSets) && v.tract && v.genie
+  );
+}
+
+/** Показники з вікна персонажа: порожньо = null, інакше ціле 0–300. */
+function parseLevel(raw: string): number | null {
+  if (raw.trim() === '') return null;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(300, n));
+}
+
+/** Один select анкети: порожня опція «— обери —» + варіанти в заданому порядку. */
+function OptionSelect<T extends string>({ label, value, options, labels, onChange }: {
+  label: string;
+  value: T | undefined;
+  options: readonly T[];
+  labels: Record<T, string>;
+  onChange: (v: T | undefined) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value ?? ''} onChange={(e) => onChange((e.target.value || undefined) as T | undefined)}>
+        <option value="">— обери —</option>
+        {options.map((o) => <option key={o} value={o}>{labels[o]}</option>)}
+      </select>
+    </label>
+  );
+}
+
+export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore }: Props) {
+  // Підписка на реєстр версій: коли шкала з БД довантажиться (або адмін
+  // збереже нову), живий гір-скор і список сетів перемалюються.
+  useRules();
+  const rules = rulesFor(rulesVersion);
+  const sets = value.specialSets ?? [];
+
+  // Єдина точка виходу: зливає патч і нормалізує чекбокси (ніколи не null).
+  const patch = (p: Partial<PlayerGear>) => {
+    const next: Partial<PlayerGear> = { ...value, ...p };
+    next.weaponPz = next.weaponPz ?? false;
+    next.specialSets = next.specialSets ?? [];
+    onChange(next);
+  };
+
+  // Порядок у масиві — як у SPECIAL_SET_ORDER, щоб однакові відповіді давали однаковий рядок.
+  const toggleSet = (s: SpecialSet, on: boolean) => {
+    patch({ specialSets: SPECIAL_SET_ORDER.filter((x) => (x === s ? on : sets.includes(x))) });
+  };
+
+  // Приховані сети (feature flag у правилах — поки ні в кого немає) показуємо
+  // лише якщо вже обрані, напр. адмін редагує анкету зі старим значенням.
+  const armorSets = ARMOR_SET_ORDER.filter((s) => !rules.hiddenArmorSets.includes(s) || value.armorSet === s);
+
+  return (
+    <div className="gear-fields" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <OptionSelect label="Клас" value={value.charClass} options={CLASS_ORDER} labels={CLASS_LABELS} onChange={(v) => patch({ charClass: v })} />
+
+      <div className="field-row">
+        <OptionSelect label="Зброя" value={value.weaponGrade} options={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} onChange={(v) => patch({ weaponGrade: v })} />
+        <OptionSelect label="Заточка зброї" value={value.weaponRefine} options={WEAPON_REFINE_ORDER} labels={WEAPON_REFINE_LABELS} onChange={(v) => patch({ weaponRefine: v })} />
+      </div>
+      {/* Запасна зброя з показником захисту, на яку свапаються під уроном —
+          є в будь-якого грейду основної зброї, тому чекбокс показуємо завжди. */}
+      <label className="checkbox-row" title="запасна зброя з показником захисту, на яку свапаєшся, щоб отримувати менше шкоди">
+        <input type="checkbox" checked={!!value.weaponPz} onChange={(e) => patch({ weaponPz: e.target.checked })} />
+        Є ПЗ-зброя (запасна, з показником захисту для свапу)
+      </label>
+
+      <div className="field-row">
+        <OptionSelect label="Сет броні" value={value.armorSet} options={armorSets} labels={ARMOR_SET_LABELS} onChange={(v) => patch({ armorSet: v })} />
+        <OptionSelect label="Круг точки" value={value.armorRefine} options={ARMOR_REFINE_ORDER} labels={ARMOR_REFINE_LABELS} onChange={(v) => patch({ armorRefine: v })} />
+      </div>
+      <small className="hint" style={{ marginTop: -6 }}>Круг точки — заточка броні, біжі й кілець разом; якщо нерівномірно — рівень більшості частин.</small>
+
+      {/* Камені — за вартістю по зростанню (до 24 каменів у 6 шмотках); «мішанина» = приблизно навпіл. */}
+      <div className="field-row">
+        <OptionSelect label="Камні" value={value.gems} options={GEMS_ORDER} labels={GEMS_LABELS} onChange={(v) => patch({ gems: v })} />
+        <OptionSelect label="Трактат" value={value.tract} options={TRACT_ORDER} labels={TRACT_LABELS} onChange={(v) => patch({ tract: v })} />
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
+        {SPECIAL_SET_ORDER.map((s) => (
+          <label key={s} className="checkbox-row" title={SPECIAL_SET_HINTS[s]}>
+            <input type="checkbox" checked={sets.includes(s)} onChange={(e) => toggleSet(s, e.target.checked)} />
+            {SPECIAL_SET_LABELS[s]}
+          </label>
+        ))}
+      </div>
+
+      <OptionSelect label="Джин" value={value.genie} options={GENIE_ORDER} labels={GENIE_LABELS} onChange={(v) => patch({ genie: v })} />
+
+      <details className="gear-extra">
+        <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)', fontWeight: 500 }}>
+          Показники з вікна персонажа (необов'язково)
+        </summary>
+        <div className="field-row" style={{ marginTop: 10 }}>
+          <label className="field">
+            <span>Показник атаки</span>
+            <input type="number" min={0} max={300} value={attackLevel ?? ''} onChange={(e) => onExtraChange(parseLevel(e.target.value), defenseLevel)} />
+          </label>
+          <label className="field">
+            <span>Показник захисту</span>
+            <input type="number" min={0} max={300} value={defenseLevel ?? ''} onChange={(e) => onExtraChange(attackLevel, parseLevel(e.target.value))} />
+          </label>
+        </div>
+        <small className="hint">без бафів; зараз не впливає на бали</small>
+      </details>
+
+      {showScore && isGearComplete(value) && (
+        <div>
+          <span className="badge mute">Орієнтовний гір-скор: {computeGearScore(value, rulesVersion)}</span>
+        </div>
+      )}
+    </div>
+  );
+}

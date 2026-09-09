@@ -18,6 +18,14 @@ function nameFor(id: string | null, regs: Registration[]): string {
   return regs.find((r) => r.id === id)?.nickname ?? '?';
 }
 
+/** Підказка (title) на слоті — склад команди: у фул-рандомі в сітці лише
+ * назва команди, і без цього гравець не знайде, де він. */
+function titleFor(id: string | null, regs: Registration[]): string | undefined {
+  if (!id) return undefined;
+  const members = regs.find((r) => r.id === id)?.memberNicknames;
+  return members && members.length > 0 ? members.join(', ') : undefined;
+}
+
 function roundLabel(depthFromFinal: number): string {
   if (depthFromFinal === 0) return 'Фінал';
   if (depthFromFinal === 1) return 'Півфінал';
@@ -39,7 +47,7 @@ function FormatEditor({ value, onChange }: { value: string; onChange: (v: string
           type="text"
           defaultValue={KNOWN_FORMATS.includes(value) ? '' : value}
           placeholder="напр. bo7"
-          style={{ ...smallInputStyle, width: 72 }}
+          style={{ ...smallInputStyle, width: 56 }}
           onBlur={(e) => onChange(e.target.value.trim() || 'bo1')}
         />
         <button
@@ -57,9 +65,12 @@ function FormatEditor({ value, onChange }: { value: string; onChange: (v: string
     );
   }
   return (
+    // Фіксована ширина: без неї select розтягується під найдовшу опцію
+    // («Інший…») і разом із бейджем рахунку та іконкою скидання не
+    // вміщається в шапку картки (176/240 px) — обране «BO3» у 64 px входить.
     <select
       value={KNOWN_FORMATS.includes(value) ? value : 'bo1'}
-      style={smallInputStyle}
+      style={{ ...smallInputStyle, width: 64 }}
       onChange={(e) => {
         if (e.target.value === 'custom') setCustom(true);
         else onChange(e.target.value);
@@ -148,15 +159,24 @@ function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrati
 
   return (
     <div className="card" style={{ padding: 12 }}>
+      {/* Шапка в один рядок: бейдж формату/рахунку ліворуч, праворуч —
+          компактна іконка скидання (як у дзеркальному вигляді) і select
+          формату; текстова кнопка «Скинути» тут не вміщалась і ламала картку. */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-        <span className="badge mute" style={{ textTransform: 'uppercase' }}>
+        <span className="badge mute" style={{ textTransform: 'uppercase', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {FORMAT_LABELS[m.format] ?? m.format}
           {m.score ? ` · ${m.score}` : ''}
         </span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
           {showReset && (
-            <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '3px 8px', fontSize: 12 }} title="Скинути рахунок серії" onClick={reset}>
-              ↺ Скинути
+            <button
+              type="button"
+              onClick={reset}
+              title="Скинути рахунок серії"
+              aria-label="Скинути рахунок серії"
+              style={{ fontSize: 13, lineHeight: 1, padding: '4px 7px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--accent-3)', border: '1px solid var(--line-2)', cursor: 'pointer' }}
+            >
+              ↺
             </button>
           )}
           {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
@@ -172,6 +192,7 @@ function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrati
             type="button"
             disabled={!clickable}
             onClick={() => pick(pid)}
+            title={titleFor(pid, registrations)}
             style={{
               display: 'block',
               width: '100%',
@@ -246,7 +267,7 @@ function BracketColumns({
   return (
     <div className="bracket-scroll" style={{ display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 8 }}>
       {rounds.map((r, ri) => (
-        <div key={r} style={{ flex: '0 0 220px' }}>
+        <div key={r} style={{ flex: '0 0 240px' }}>
           <h4 style={{ margin: '0 0 4px', color: 'var(--text-dim)', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             {label(r)}
           </h4>
@@ -298,11 +319,11 @@ function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registratio
     <div className="trn-match-outer">
       <div className={'trn-match' + (m.winnerId ? ' trn-decided' : '')}>
         <div className="trn-match-meta">
-          <span>
+          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
             {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
             {m.score ? ` · ${m.score}` : ''}
           </span>
-          <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
             {showReset && (
               <button
                 type="button"
@@ -328,6 +349,7 @@ function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registratio
               role={clickable ? 'button' : undefined}
               tabIndex={clickable ? 0 : undefined}
               onClick={() => pick(pid)}
+              title={titleFor(pid, registrations)}
               onKeyDown={
                 clickable
                   ? (e) => {
@@ -627,14 +649,14 @@ export default function BracketView({ matches, registrations, editable, bracketN
             )}
 
             {final.length > 0 && (
-              <div style={{ marginTop: 24, maxWidth: 220 }}>
+              <div style={{ marginTop: 24, maxWidth: 240 }}>
                 <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
                 <MatchCard m={final[0]} registrations={registrations} editable={editable} />
               </div>
             )}
 
             {thirdPlace && (
-              <div style={{ marginTop: 24, maxWidth: 220 }}>
+              <div style={{ marginTop: 24, maxWidth: 240 }}>
                 <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
                 <MatchCard m={thirdPlace} registrations={registrations} editable={editable} />
               </div>
@@ -646,7 +668,7 @@ export default function BracketView({ matches, registrations, editable, bracketN
           <>
             <BracketColumns sideMatches={winners} roundLabel={singleElimLabel} registrations={registrations} editable={editable} />
             {thirdPlace && (
-              <div style={{ marginTop: 24, maxWidth: 220 }}>
+              <div style={{ marginTop: 24, maxWidth: 240 }}>
                 <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
                 <MatchCard m={thirdPlace} registrations={registrations} editable={editable} />
               </div>

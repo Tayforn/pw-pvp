@@ -15,13 +15,15 @@ import { useAuth } from '../app/useAuth';
 import { reportError } from '../app/errorMessage';
 import PageMeta from '../app/PageMeta';
 import type { Tournament, TournamentSeries } from '../data/types';
-import { STATUS_LABELS, effectiveStatus, isRegistrationOpen } from '../data/types';
+import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isRegistrationOpen } from '../data/types';
 import { deleteTournament, fetchAdminTournaments, subscribeToTournamentChanges } from '../data/tournaments';
 import TournamentEditor from './admin/TournamentEditor';
 import RegistrationsPanel from './admin/RegistrationsPanel';
+import TeamsPanel from './admin/TeamsPanel';
 import BracketPanel from './admin/BracketPanel';
 import AdminsManager from './admin/AdminsManager';
 import ParticipantsManager from './admin/ParticipantsManager';
+import RulesEditor from './admin/RulesEditor';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -105,7 +107,7 @@ function TournamentRow({
         <span className="hint" style={{ margin: 0, whiteSpace: 'nowrap' }}>{t.eventDate}</span>
         <span className="hint" style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {seriesName(t.seriesId)}
-          {t.teamSize ? ` · команди×${t.teamSize}` : ''}
+          {isBalancedRandom(t) ? ` · фул-рандом×${t.teamSize}` : t.teamSize ? ` · команди×${t.teamSize}` : ''}
         </span>
         <span className={'badge ' + (effectiveStatus(t) === 'completed' ? 'good' : effectiveStatus(t) === 'cancelled' ? 'bad' : 'warn')} style={{ whiteSpace: 'nowrap' }}>
           {t.visibility === 'unlisted' ? '🔒 ' : ''}
@@ -124,8 +126,16 @@ function TournamentRow({
         <div style={{ padding: '4px 18px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <h4>Заявки</h4>
-            <RegistrationsPanel tournamentId={t.id} />
+            <RegistrationsPanel tournament={t} />
           </div>
+          {isBalancedRandom(t) && (
+            // Блок між заявками й сіткою — лише для фул-рандому: сітка
+            // генерується з team-рядків, які затверджуються тут.
+            <div>
+              <h4>Команди</h4>
+              <TeamsPanel tournament={t} />
+            </div>
+          )}
           <div>
             <h4>Сітка</h4>
             <BracketPanel tournament={t} />
@@ -230,7 +240,7 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
 
 export default function AdminPage({ series }: { series: TournamentSeries[] }) {
   const { session, isAdmin, role, loading } = useAuth();
-  const [tab, setTab] = useState<'tournaments' | 'participants'>('tournaments');
+  const [tab, setTab] = useState<'tournaments' | 'participants' | 'rules'>('tournaments');
 
   if (loading) return <p className="hint">Перевірка сесії…</p>;
   if (!session) return <LoginForm />;
@@ -263,10 +273,18 @@ export default function AdminPage({ series }: { series: TournamentSeries[] }) {
         <button type="button" className={'btn btn-sm ' + (tab === 'participants' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('participants')}>
           Учасники
         </button>
+        {isSuperadmin && (
+          // Шкала балів фул-рандому — глобальна для всіх турнірів, тому лише суперадмін.
+          <button type="button" className={'btn btn-sm ' + (tab === 'rules' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('rules')}>
+            Шкала балів
+          </button>
+        )}
       </div>
 
       {tab === 'tournaments' ? (
         <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />
+      ) : tab === 'rules' && isSuperadmin ? (
+        <RulesEditor />
       ) : (
         <ParticipantsManager />
       )}

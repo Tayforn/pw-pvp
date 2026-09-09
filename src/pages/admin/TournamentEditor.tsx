@@ -1,14 +1,15 @@
 // =========================================================
 // Адмінка: модалка створення/редагування турніру — назва, дата,
-// статус, правила, призи, тип сітки. Серія (для суперадміна) в UI
-// не показується — новий турнір мовчки прив'язується до єдиної активної.
+// статус, правила, призи, тип сітки, командний режим і спосіб
+// формування команд. Серія (для суперадміна) в UI не показується —
+// новий турнір мовчки прив'язується до єдиної активної.
 // =========================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { errorMessage } from '../../app/errorMessage';
-import type { BracketType, Tournament, TournamentSeries, TournamentStatus } from '../../data/types';
+import type { BracketType, TeamMode, Tournament, TournamentSeries, TournamentStatus } from '../../data/types';
 import { STATUS_LABELS } from '../../data/types';
-import { createTournament, updateTournament, type TournamentInput } from '../../data/tournaments';
+import { createTournament, fetchRegistrations, updateTournament, type TournamentInput } from '../../data/tournaments';
 import { standardRulesFor, standardRulesLabel } from '../../data/standardRules';
 
 const STATUSES: TournamentStatus[] = ['draft', 'registration_open', 'registration_closed', 'in_progress', 'completed', 'cancelled'];
@@ -39,8 +40,37 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   const [bracketNewLook, setBracketNewLook] = useState(initial?.bracketNewLook ?? true);
   const [teamMode, setTeamMode] = useState(!!initial?.teamSize);
   const [teamSize, setTeamSize] = useState(initial?.teamSize ?? 5);
+  // Спосіб формування команд — має значення лише при увімкненому «Командний турнір».
+  const [teamModeSel, setTeamModeSel] = useState<TeamMode>(initial?.teamMode ?? 'fixed');
+  // Заявки існуючого турніру: null = ще не знаємо — режим і розмір команди
+  // тримаємо заблокованими, поки не переконались, що заявок немає (зміна
+  // режиму/розміру при наявних заявках зробила б їх неузгодженими: у
+  // фул-рандомі це анкети, у готових командах — списки з N ніків).
+  // total рахує й team-рядки фул-рандому, players — лише заявки гравців (для підказки).
+  const [regInfo, setRegInfo] = useState<{ total: number; players: number } | null>(initial ? null : { total: 0, players: 0 });
+  const [regCheckFailed, setRegCheckFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const initialId = initial?.id;
+  useEffect(() => {
+    if (!initialId) return;
+    let cancelled = false;
+    fetchRegistrations(initialId)
+      .then((rs) => {
+        if (!cancelled) setRegInfo({ total: rs.length, players: rs.filter((r) => r.kind === 'player').length });
+      })
+      .catch(() => {
+        if (!cancelled) setRegCheckFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialId]);
+
+  const mode: TeamMode = teamMode ? teamModeSel : 'fixed';
+  const locked = regInfo === null || regInfo.total > 0;
+  const lockedStyle = locked ? { opacity: 0.5, cursor: 'not-allowed' as const } : undefined;
 
   const save = async () => {
     if (!name.trim()) return;
@@ -55,6 +85,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
       prizesMd,
       bracketType,
       teamSize: teamMode ? teamSize : null,
+      teamMode: mode,
       thirdPlaceMatch,
       bracketNewLook,
     };
@@ -111,6 +142,11 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
               <option value="single_elim">Одинарна елімінація</option>
               <option value="double_elim">Подвійна елімінація (лише степінь двійки учасників, без байів)</option>
             </select>
+            {bracketType === 'double_elim' && mode === 'balanced_random' && (
+              <small className="hint">
+                Подвійна елімінація потребує кількість команд = степінь двійки (4, 8, 16). Кількість команд обираєш під час формування — зайві гравці підуть у резерв.
+              </small>
+            )}
           </label>
           <label className="checkbox-row" style={bracketType !== 'single_elim' ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
             <input
@@ -130,28 +166,52 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
             />
             Новий вигляд сітки (дзеркальна, лише одинарна елімінація)
           </label>
-          <label className="checkbox-row">
-            <input type="checkbox" checked={teamMode} onChange={(e) => setTeamMode(e.target.checked)} />
+          {/* Той самий lock, що й для режиму/розміру: зняти «командність» при
+              наявних заявках означало б соло-турнір з анкетами/списками ніків у базі. */}
+          <label className="checkbox-row" style={lockedStyle} title={locked ? 'Режим не змінюється — вже є заявки' : undefined}>
+            <input type="checkbox" checked={teamMode} disabled={locked} onChange={(e) => setTeamMode(e.target.checked)} />
             Командний турнір
           </label>
           {teamMode && (
-            <label className="field" style={{ maxWidth: 200 }}>
-              <span>Кількість людей в команді</span>
-              <input
-                type="number"
-                min={2}
-                max={20}
-                value={teamSize}
-                onChange={(e) => setTeamSize(Math.max(2, parseInt(e.target.value, 10) || 2))}
-              />
-            </label>
+            <>
+              <div className="field-row">
+                <label className="field" style={{ flex: '0 1 220px', ...lockedStyle }}>
+                  <span>Кількість людей в команді</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={teamSize}
+                    disabled={locked}
+                    onChange={(e) => setTeamSize(Math.max(2, parseInt(e.target.value, 10) || 2))}
+                  />
+                </label>
+                <label className="field" style={lockedStyle}>
+                  <span>Формування команд</span>
+                  <select value={teamModeSel} disabled={locked} onChange={(e) => setTeamModeSel(e.target.value as TeamMode)}>
+                    <option value="fixed">Готові команди</option>
+                    <option value="balanced_random">Балансний фул-рандом (випадкові збалансовані команди)</option>
+                  </select>
+                </label>
+              </div>
+              {teamModeSel === 'balanced_random' && (
+                <p className="hint">
+                  Гравці реєструються поодинці й заповнюють коротку анкету спорядження — команди по {teamSize} формує система випадково, вирівнюючи гір-скор і класи.
+                </p>
+              )}
+              {regInfo === null ? (
+                <p className="hint">{regCheckFailed ? 'Не вдалося перевірити заявки — режим і розмір команди заблоковано.' : 'Перевіряю заявки…'}</p>
+              ) : regInfo.total > 0 ? (
+                <p className="hint">Режим і розмір команди не змінюються — вже є заявки ({regInfo.players}).</p>
+              ) : null}
+            </>
           )}
           <label className="field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>Правила</span>
               {(() => {
                 const effectiveTeamSize = teamMode ? teamSize : null;
-                const preset = standardRulesFor(effectiveTeamSize);
+                const preset = standardRulesFor(effectiveTeamSize, mode);
                 if (!preset) return null;
                 return (
                   <button
@@ -162,7 +222,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
                       setRulesMd(preset);
                     }}
                   >
-                    Вставити стандартні правила ({standardRulesLabel(effectiveTeamSize)})
+                    Вставити стандартні правила ({standardRulesLabel(effectiveTeamSize, mode)})
                   </button>
                 );
               })()}

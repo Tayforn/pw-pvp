@@ -4,7 +4,7 @@ import { RULE_SECTIONS } from '../data/standardRules';
 export default function RulesPage() {
   return (
     <div>
-      <PageMeta title="Правила — PW PvP" description="Правила турнірів PW PvP за форматом: 1х1, 2х2, 3х3/5х5/6х6/10х10." />
+      <PageMeta title="Правила — PW PvP" description="Правила турнірів PW PvP за форматом: 1х1, 2х2, 3х3/5х5/6х6/10х10 та балансний фул-рандом." />
       <div className="section-head">
         <span className="eyebrow">PvP</span>
         <h2>Правила турнірів</h2>

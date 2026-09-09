@@ -4,7 +4,12 @@
 // =========================================================
 
 import { supabase } from '../app/supabaseClient';
-import { isRegistrationOpen, type Registration, type RegistrationStatus, type Tournament, type TournamentSeries, type TournamentStatus } from './types';
+import {
+  isRegistrationOpen,
+  type ArmorRefine, type ArmorSet, type BalanceStats, type CharClass, type Gems, type Genie, type PlayerGear, type Registration,
+  type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
+  type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
+} from './types';
 
 interface SeriesRow { id: string; slug: string; name: string; is_active: boolean; auto_weekday: number | null }
 interface TournamentRow {
@@ -12,10 +17,18 @@ interface TournamentRow {
   rules_md: string | null; prizes_md: string | null; bracket_type: 'single_elim' | 'double_elim'; bracket_size: number | null;
   team_size: number | null; created_by: string | null; visibility: 'public' | 'unlisted'; third_place_match: boolean;
   bracket_new_look: boolean;
+  // 0017 — до застосування міграції цих колонок немає, тому всі читання з fallback
+  team_mode?: TeamMode | null; balance_seed?: string | null; bracket_seed?: string | null;
+  balance_rules_version?: string | null; balance_stats?: BalanceStats | null;
 }
 interface RegistrationRow {
   id: string; tournament_id: string; nickname: string; rules_ack: boolean; status: RegistrationStatus; created_at: string;
   member_nicknames: string[] | null;
+  // 0017
+  kind?: RegistrationKind | null; team_registration_id?: string | null;
+  char_class?: CharClass | null; weapon_grade?: WeaponGrade | null; weapon_refine?: WeaponRefine | null; weapon_pz?: boolean | null;
+  armor_set?: ArmorSet | null; armor_refine?: ArmorRefine | null; gems?: Gems | null; special_sets?: SpecialSet[] | null; tract?: Tract | null; genie?: Genie | null;
+  attack_level?: number | null; defense_level?: number | null;
 }
 
 const seriesFromRow = (r: SeriesRow): TournamentSeries => ({ id: r.id, slug: r.slug, name: r.name, isActive: r.is_active, autoWeekday: r.auto_weekday });
@@ -23,10 +36,26 @@ const tournamentFromRow = (r: TournamentRow): Tournament => ({
   id: r.id, seriesId: r.series_id, name: r.name, eventDate: r.event_date, status: r.status,
   rulesMd: r.rules_md, prizesMd: r.prizes_md, bracketType: r.bracket_type, bracketSize: r.bracket_size, teamSize: r.team_size,
   createdBy: r.created_by, visibility: r.visibility, thirdPlaceMatch: r.third_place_match, bracketNewLook: r.bracket_new_look,
+  teamMode: r.team_mode ?? 'fixed', balanceSeed: r.balance_seed ?? null, bracketSeed: r.bracket_seed ?? null,
+  balanceRulesVersion: r.balance_rules_version ?? null, balanceStats: r.balance_stats ?? null,
 });
+/** Анкета зібрана лише коли є всі 9 полів (constraint registrations_gear_all_or_none гарантує «або все, або нічого»). */
+const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
+  if (!r.char_class || !r.weapon_grade || !r.weapon_refine || r.weapon_pz == null || !r.armor_set || !r.armor_refine || !r.gems || !r.tract || !r.genie) return null;
+  return {
+    charClass: r.char_class, weaponGrade: r.weapon_grade, weaponRefine: r.weapon_refine, weaponPz: r.weapon_pz,
+    armorSet: r.armor_set, armorRefine: r.armor_refine, gems: r.gems, specialSets: r.special_sets ?? [], tract: r.tract, genie: r.genie,
+  };
+};
 const registrationFromRow = (r: RegistrationRow): Registration => ({
   id: r.id, tournamentId: r.tournament_id, nickname: r.nickname, rulesAck: r.rules_ack, status: r.status, createdAt: r.created_at,
   memberNicknames: r.member_nicknames,
+  kind: r.kind ?? 'player', teamRegistrationId: r.team_registration_id ?? null, gear: gearFromRow(r),
+  attackLevel: r.attack_level ?? null, defenseLevel: r.defense_level ?? null,
+});
+const gearToRow = (g: PlayerGear) => ({
+  char_class: g.charClass, weapon_grade: g.weaponGrade, weapon_refine: g.weaponRefine, weapon_pz: g.weaponPz,
+  armor_set: g.armorSet, armor_refine: g.armorRefine, gems: g.gems, special_sets: g.specialSets, tract: g.tract, genie: g.genie,
 });
 
 export async function fetchSeries(): Promise<TournamentSeries[]> {
@@ -68,7 +97,11 @@ export async function fetchRegistrations(tournamentId: string): Promise<Registra
   return (data as RegistrationRow[]).map(registrationFromRow);
 }
 
-export async function submitRegistration(input: { tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[] }): Promise<void> {
+export async function submitRegistration(input: {
+  tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[];
+  /** Балансний фул-рандом: анкета обов'язкова (RLS відхилить заявку без char_class). */
+  gear?: PlayerGear; attackLevel?: number | null; defenseLevel?: number | null;
+}): Promise<void> {
   // Свіжа перевірка прямо перед вставкою — стан на сторінці міг застаріти
   // (вкладка відкрита довго, адмін тим часом закрив реєстрацію чи турнір
   // уже пройшов). RLS-політика в БД теж це перевіряє, ця — для чистого
@@ -82,7 +115,14 @@ export async function submitRegistration(input: { tournamentId: string; nickname
     nickname: input.nickname,
     rules_ack: input.rulesAck,
     member_nicknames: input.memberNicknames && input.memberNicknames.length > 0 ? input.memberNicknames : null,
+    ...(input.gear ? { ...gearToRow(input.gear), attack_level: input.attackLevel ?? null, defense_level: input.defenseLevel ?? null } : {}),
   });
+  if (error) throw error;
+}
+
+/** Адмінська правка анкети («✎» у панелі заявок) — update-політика 0006 пропускає власника турніру/суперадміна. */
+export async function updateRegistrationGear(id: string, gear: PlayerGear, attackLevel: number | null, defenseLevel: number | null): Promise<void> {
+  const { error } = await supabase.from('registrations').update({ ...gearToRow(gear), attack_level: attackLevel, defense_level: defenseLevel }).eq('id', id);
   if (error) throw error;
 }
 
@@ -127,6 +167,8 @@ export interface TournamentInput {
   bracketType: 'single_elim' | 'double_elim';
   /** null/0/1 = звичайний турнір; >=2 = командний (стільки нікнеймів вимагає форма заявки). */
   teamSize: number | null;
+  /** Спосіб формування команд — має значення лише при teamSize >= 2 (інакше зберігається 'fixed'). */
+  teamMode: TeamMode;
   /** Матч за 3-тє місце — застосовується лише коли bracketType === 'single_elim'. */
   thirdPlaceMatch: boolean;
   /** Дзеркальний вигляд сітки замість колонок — застосовується лише коли bracketType === 'single_elim'. */
@@ -149,6 +191,7 @@ export async function createTournament(input: TournamentInput, owner: { createdB
       prizes_md: input.prizesMd || null,
       bracket_type: input.bracketType,
       team_size: input.teamSize && input.teamSize >= 2 ? input.teamSize : null,
+      team_mode: input.teamSize && input.teamSize >= 2 ? input.teamMode : 'fixed',
       third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
       bracket_new_look: input.bracketType !== 'single_elim' || input.bracketNewLook,
       created_by: owner.createdBy,
@@ -172,6 +215,7 @@ export async function updateTournament(id: string, input: TournamentInput): Prom
       prizes_md: input.prizesMd || null,
       bracket_type: input.bracketType,
       team_size: input.teamSize && input.teamSize >= 2 ? input.teamSize : null,
+      team_mode: input.teamSize && input.teamSize >= 2 ? input.teamMode : 'fixed',
       third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
       bracket_new_look: input.bracketType !== 'single_elim' || input.bracketNewLook,
     })

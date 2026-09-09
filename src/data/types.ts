@@ -15,6 +15,73 @@ export interface TournamentSeries {
 
 export type TournamentStatus = 'draft' | 'registration_open' | 'registration_closed' | 'in_progress' | 'completed' | 'cancelled';
 export type BracketType = 'single_elim' | 'double_elim';
+/** Спосіб формування команд у командному турнірі: 'fixed' — заявка = готова
+ * команда (назва + N ніків, як було завжди); 'balanced_random' — «Балансний
+ * фул-рандом»: гравці реєструються поодинці з анкетою спорядження, команди
+ * формує адмін алгоритмом (src/data/balance.ts). */
+export type TeamMode = 'fixed' | 'balanced_random';
+
+// ── Анкета спорядження (0017) — дискретні відповіді, бали рахуються
+// на читанні за версією правил (src/data/gearRules.ts). ──
+export type RegistrationKind = 'player' | 'team';
+export type CharClass = 'blademaster' | 'wizard' | 'cleric' | 'archer' | 'venomancer' | 'barbarian' | 'assassin' | 'psychic' | 'seeker' | 'mystic';
+export type WeaponGrade = 'other' | 'nirvana' | 'r8r' | 'cgd' | 'r9' | 'r9r1' | 'rcgd' | 'r9r2';
+export type WeaponRefine = 'w0_5' | 'w6_7' | 'w8_9' | 'w10' | 'w11' | 'w12';
+export type ArmorSet = 'other' | 'nirvana' | 'nirvana_r8_mix' | 'r8' | 'r8r' | 'r9';
+/** «Круг точки» — рівень заточки всього круга: броня + біжутерія + кільця. */
+export type ArmorRefine = 'a0_4' | 'a5' | 'a6' | 'a7' | 'a8' | 'a9' | 'a10' | 'a11' | 'a12';
+export type SpecialSet = 'pz' | 'pa' | 'aspd';
+export type Tract = 't1_3' | 't4_5' | 't6' | 't7' | 't8' | 'emperor';
+export type Genie = 'top' | 'lower';
+/** Камені у броні (до 6 шмоток × 4 дірки = 24 камені), за вартістю по зростанню:
+ * рівневі 0–9 / 10 / 11 → Сюаньки → Сюаньки/ПА → ПА → Сюаньки/Лагеря → Лагеря (2 ПЗ кожен, до 48 ПЗ). */
+export type Gems = 'g0_9' | 'g10' | 'g11' | 'xuan' | 'xuan_pa' | 'pa' | 'xuan_camp' | 'camp';
+export type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
+
+/** Усі 10 полів завжди присутні (constraint registrations_gear_all_or_none):
+ * невідмічений чекбокс — це false / [], а не null. */
+export interface PlayerGear {
+  charClass: CharClass;
+  weaponGrade: WeaponGrade;
+  weaponRefine: WeaponRefine;
+  /** ПЗ-зброя — запасна зброя з показником захисту, на яку свапаються під уроном. */
+  weaponPz: boolean;
+  armorSet: ArmorSet;
+  armorRefine: ArmorRefine;
+  gems: Gems;
+  specialSets: SpecialSet[];
+  tract: Tract;
+  genie: Genie;
+}
+
+/** Що саме подавалось на вхід алгоритму — достатньо, щоб відтворити
+ * результат після зміни таблиць балів (score вже пораховані). */
+export interface BalanceSnapshot {
+  algoVersion: string;
+  rulesVersion: string;
+  seed: string;
+  teamSize: number;
+  teamCount: number;
+  reservePolicy: string;
+  inputHash: string;
+  /** [registrationId, клас, score] — відсортовано за id. */
+  players: Array<[string, CharClass, number]>;
+}
+
+/** tournaments.balance_stats — знімок генерації + склади на момент затвердження. */
+export interface BalanceStats extends BalanceSnapshot {
+  formedAt: string;
+  penalty: number;
+  bestPenalty: number;
+  candidates: number;
+  teams: {
+    name: string;
+    total: number;
+    members: { registrationId: string; nickname: string; charClass: CharClass; score: number; tier: Tier }[];
+  }[];
+  reserve: { registrationId: string; nickname: string }[];
+  substitutions: { teamId: string; out: string; in: string | null; reason: string; at: string }[];
+}
 
 export interface Tournament {
   id: string;
@@ -36,6 +103,15 @@ export interface Tournament {
   /** Дзеркальна сітка з конекторами (true) чи колонки по раундах (false) —
    * впливає лише на single_elim, для double_elim вигляд один. */
   bracketNewLook: boolean;
+  /** Має значення лише при teamSize >= 2; для соло-турнірів завжди 'fixed'. */
+  teamMode: TeamMode;
+  /** Seed останнього формування команд (balanced_random). */
+  balanceSeed: string | null;
+  /** Seed посіву сітки — новий при кожному «Решафл сітки»; null = сітку ще не генерували з seed. */
+  bracketSeed: string | null;
+  /** Версія таблиць балів, якою рахувався цей турнір (напр. 'balance-v1.0'); null до формування. */
+  balanceRulesVersion: string | null;
+  balanceStats: BalanceStats | null;
 }
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
@@ -50,6 +126,28 @@ export interface Registration {
   createdAt: string;
   /** Нікнейми учасників команди — заповнено лише для командних турнірів. */
   memberNicknames: string[] | null;
+  /** 'player' — заявка гравця (або готової команди у fixed-режимі); 'team' —
+   * згенерована командa балансного фул-рандому (нік = назва команди). */
+  kind: RegistrationKind;
+  /** Для гравця фул-рандому — id його team-рядка після формування. */
+  teamRegistrationId: string | null;
+  /** Анкета спорядження — лише у balanced_random; null для решти. */
+  gear: PlayerGear | null;
+  /** Калібрувальні поля (не рахуються у v1.0): показник атаки/захисту без бафів. */
+  attackLevel: number | null;
+  defenseLevel: number | null;
+}
+
+/** Балансний фул-рандом = командний турнір з індивідуальною реєстрацією. */
+export function isBalancedRandom(t: Pick<Tournament, 'teamSize' | 'teamMode'>): boolean {
+  return !!t.teamSize && t.teamMode === 'balanced_random';
+}
+
+/** Хто йде в сітку: у фул-рандомі — згенеровані team-рядки, інакше —
+ * звичайні заявки (усі старі рядки мають kind='player'). */
+export function isBracketParticipant(t: Pick<Tournament, 'teamSize' | 'teamMode'>, r: Pick<Registration, 'status' | 'kind'>): boolean {
+  if (r.status !== 'confirmed') return false;
+  return isBalancedRandom(t) ? r.kind === 'team' : r.kind === 'player';
 }
 
 export type BracketSide = 'winners' | 'losers' | 'final' | 'third_place';

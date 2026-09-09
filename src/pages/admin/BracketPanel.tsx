@@ -1,15 +1,20 @@
 // =========================================================
-// Адмінка: керування сіткою турніру — генерація (рандомний шафл
-// підтверджених учасників), решафл (доки немає жодного результату),
-// і сам редактор сітки (клік по комірці → формат/переможець).
+// Адмінка: керування сіткою турніру — генерація (seeded шафл
+// підтверджених учасників; seed зберігається в tournaments.bracket_seed),
+// решафл сітки (доки немає жодного результату — новий seed), видалення
+// сітки, і сам редактор сітки (клік по комірці → формат/переможець).
+// У балансному фул-рандомі учасники сітки — затверджені team-рядки
+// (isBracketParticipant), тож генерація можлива лише після блоку «Команди».
 // =========================================================
 
 import { useEffect, useState } from 'react';
 import { errorMessage, reportError } from '../../app/errorMessage';
 import type { BracketMatch, Registration, Tournament } from '../../data/types';
+import { isBalancedRandom, isBracketParticipant } from '../../data/types';
 import { fetchRegistrations, setTournamentStatus, subscribeToTournamentChanges } from '../../data/tournaments';
 import {
   bracketHasResults,
+  deleteBracket,
   fetchBracket,
   generateDoubleEliminationBracket,
   generateSingleEliminationBracket,
@@ -17,6 +22,7 @@ import {
   setMatchFormat,
   setMatchWinner,
 } from '../../data/bracket';
+import { newSeed } from '../../data/balance';
 import BracketView from '../../components/BracketView';
 
 export default function BracketPanel({ tournament }: { tournament: Tournament }) {
@@ -46,7 +52,9 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament.id]);
 
-  const confirmed = registrations.filter((r) => r.status === 'confirmed');
+  const balanced = isBalancedRandom(tournament);
+  // Соло/fixed: підтверджені заявки (усі kind='player'); фул-рандом: team-рядки.
+  const confirmed = registrations.filter((r) => isBracketParticipant(tournament, r));
 
   const isDouble = tournament.bracketType === 'double_elim';
 
@@ -54,8 +62,11 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
     setErr(null);
     setBusy(true);
     try {
-      if (isDouble) await generateDoubleEliminationBracket(tournament.id, confirmed.map((r) => r.id));
-      else await generateSingleEliminationBracket(tournament.id, confirmed.map((r) => r.id), tournament.thirdPlaceMatch);
+      // Свіжий seed на кожну генерацію/решафл — інакше з фіксованим seed
+      // решафл був би no-op; seed лягає в bracket_seed для відтворюваності.
+      const seed = newSeed();
+      if (isDouble) await generateDoubleEliminationBracket(tournament.id, confirmed.map((r) => r.id), seed);
+      else await generateSingleEliminationBracket(tournament.id, confirmed.map((r) => r.id), tournament.thirdPlaceMatch, seed);
       await reload();
     } catch (e) {
       setErr(errorMessage(e, 'Не вдалося згенерувати сітку.'));
@@ -64,7 +75,22 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
     }
   };
 
-  const canGenerate = isDouble ? isPowerOfTwo(confirmed.length) : confirmed.length >= 2;
+  const remove = async () => {
+    if (!confirm('Видалити сітку? Команди/учасники лишаються, сітку можна згенерувати заново.')) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      await deleteBracket(tournament.id);
+      await reload();
+    } catch (e) {
+      setErr(errorMessage(e, 'Не вдалося видалити сітку.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const noTeamsYet = balanced && confirmed.length === 0;
+  const canGenerate = !noTeamsYet && (isDouble ? isPowerOfTwo(confirmed.length) : confirmed.length >= 2);
 
   const finish = () => {
     if (!confirm(`Завершити турнір «${tournament.name}»? Статус одразу стане "Завершено".`)) return;
@@ -77,33 +103,52 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-        <span className="hint" style={{ margin: 0 }}>Підтверджених учасників: {confirmed.length}</span>
+        <span className="hint" style={{ margin: 0 }}>{balanced ? 'Підтверджених команд' : 'Підтверджених учасників'}: {confirmed.length}</span>
         {bracket.length > 0 && tournament.status !== 'completed' && (
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={finish}>
             🏁 Завершити турнір
           </button>
         )}
         {bracket.length === 0 ? (
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !canGenerate} onClick={generate}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={busy || !canGenerate}
+            title={noTeamsYet ? 'Спочатку сформуй і затверди команди (блок «Команди» вище).' : ''}
+            onClick={generate}
+          >
             Згенерувати сітку
           </button>
         ) : (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={busy || hasResults}
-            title={hasResults ? 'Уже є зафіксовані результати — решафл заблоковано' : ''}
-            onClick={generate}
-          >
-            Решафл
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busy || hasResults}
+              title={hasResults ? 'Уже є зафіксовані результати — решафл заблоковано' : 'Новий посів тих самих учасників (команди не змінюються)'}
+              onClick={generate}
+            >
+              Решафл сітки
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={busy || hasResults}
+              title={hasResults ? 'Уже є зафіксовані результати — видалення заблоковано' : ''}
+              onClick={remove}
+            >
+              Видалити сітку
+            </button>
+          </>
         )}
       </div>
       {!canGenerate && bracket.length === 0 && (
         <p className="hint">
-          {isDouble
-            ? 'Подвійна елімінація потребує кількість учасників = степінь двійки (4, 8, 16, 32…), без байів.'
-            : 'Потрібно щонайменше 2 підтверджені учасники.'}
+          {noTeamsYet
+            ? 'Спочатку сформуй і затверди команди (блок «Команди» вище).'
+            : isDouble
+              ? `Подвійна елімінація потребує кількість ${balanced ? 'команд' : 'учасників'} = степінь двійки (4, 8, 16, 32…), без байів.`
+              : `Потрібно щонайменше 2 підтверджені ${balanced ? 'команди' : 'учасники'}.`}
         </p>
       )}
       {err && <p className="form-err">{err}</p>}
