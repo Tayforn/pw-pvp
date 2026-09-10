@@ -25,17 +25,18 @@ export interface ScoreBreakdown {
   total: number;
 }
 
-export function scoreBreakdown(r: Registration, version: string, ratings?: Map<string, PlayerRating>): ScoreBreakdown | null {
+/** teamSize — розмір команди турніру (від нього залежать бали за клас). */
+export function scoreBreakdown(r: Registration, version: string, ratings: Map<string, PlayerRating> | undefined, teamSize: number | null | undefined): ScoreBreakdown | null {
   if (!r.gear) return null;
-  const gear = computeGearScore(r.gear, version);
+  const gear = computeGearScore(r.gear, version, teamSize);
   const adjust = r.scoreAdjust ?? 0;
   const rating = ratings ? ratingBonus(ratingOf(ratings, r.nickname)?.rating, rulesFor(version)) : 0;
   return { gear, adjust, rating, total: gear + adjust + rating };
 }
 
 /** Скор гравця для жеребки/відображення в адмінці (з корекцією і рейтингом). */
-export function playerScore(r: Registration, version: string, ratings?: Map<string, PlayerRating>): number | null {
-  return scoreBreakdown(r, version, ratings)?.total ?? null;
+export function playerScore(r: Registration, version: string, ratings: Map<string, PlayerRating> | undefined, teamSize: number | null | undefined): number | null {
+  return scoreBreakdown(r, version, ratings, teamSize)?.total ?? null;
 }
 
 /** Підтверджені гравці з анкетою → вхід алгоритму (score за версією правил турніру,
@@ -44,7 +45,7 @@ export function playersForBalance(t: Tournament, regs: Registration[], ratings?:
   const version = rulesVersionFor(t);
   return regs
     .filter((r) => r.kind === 'player' && r.status === 'confirmed' && r.gear)
-    .map((r) => ({ id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: playerScore(r, version, ratings)!, createdAt: r.createdAt }));
+    .map((r) => ({ id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: playerScore(r, version, ratings, t.teamSize)!, createdAt: r.createdAt }));
 }
 
 /** Скори на момент жеребки (зі знімка balance_stats) за id заявки. Після

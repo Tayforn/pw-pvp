@@ -38,7 +38,7 @@ function BalancedTeams({ tournament, registrations }: { tournament: Tournament; 
   const statTotals = new Map((tournament.balanceStats?.teams ?? []).map((x) => [x.name, x.total] as const));
   const teams = teamRows(tournament, registrations).map((team) => {
     const members = teamMembers(team, registrations);
-    const total = statTotals.get(team.nickname) ?? members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version) : 0), 0);
+    const total = statTotals.get(team.nickname) ?? members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version, tournament.teamSize) : 0), 0);
     return { team, members, total };
   });
   // Резерв — підтверджені з анкетою, кого не взяли в жодну команду.

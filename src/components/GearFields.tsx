@@ -34,6 +34,8 @@ interface Props {
   rulesVersion?: string | null;
   /** Показувати бейдж «Орієнтовний гір-скор», коли анкета заповнена. */
   showScore?: boolean;
+  /** Розмір команди турніру — від нього залежать бали за клас у скорі. */
+  teamSize?: number | null;
 }
 
 /** Анкета заповнена — усі 10 полів на місці. Чекбокси ніколи не null:
@@ -75,7 +77,7 @@ function OptionSelect<T extends string>({ label, value, options, labels, onChang
   );
 }
 
-export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore }: Props) {
+export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize }: Props) {
   // Підписка на реєстр версій: коли шкала з БД довантажиться (або адмін
   // збереже нову), живий гір-скор і список сетів перемалюються.
   useRules();
@@ -181,7 +183,7 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
 
       {showScore && isGearComplete(value) && (
         <div>
-          <span className="badge mute">Орієнтовний гір-скор: {computeGearScore(value, rulesVersion)}</span>
+          <span className="badge mute">Орієнтовний гір-скор: {computeGearScore(value, rulesVersion, teamSize)}</span>
         </div>
       )}
     </div>

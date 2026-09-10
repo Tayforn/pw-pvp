@@ -15,7 +15,9 @@ import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../d
 import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
-  WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, tierForWith,
+  RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
+  WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, sameForAllSizes, tierForWith,
+  type SizeBucket,
   type GearRules,
 } from '../../data/gearRules';
 import { saveRulesVersion, useRules } from '../../data/rulesStore';
@@ -123,6 +125,20 @@ export default function RulesEditor() {
   };
 
   const setTier = (i: number, min: number) => patch({ tiers: draft.tiers.map((t, idx) => (idx === i ? { ...t, min } : t)) });
+  // Матриця «клас × розмір паті»
+  const classMax = Math.max(...SIZE_BUCKETS.flatMap((s) => CLASS_ORDER.map((c) => draft.classPointsBySize[s][c])));
+  const setClassPoints = (s: SizeBucket, c: CharClass, v: number) =>
+    patch({ classPointsBySize: { ...draft.classPointsBySize, [s]: { ...draft.classPointsBySize[s], [c]: v } } });
+  const applyRecommended = () => {
+    if (!confirm('Замінити всю матрицю «клас × розмір паті» рекомендованими значеннями?')) return;
+    patch({ classPointsBySize: JSON.parse(JSON.stringify(RECOMMENDED_CLASS_POINTS_BY_SIZE)) });
+  };
+  const flattenSizes = () => {
+    if (!confirm('Скопіювати колонку «2» в усі розміри (бали за клас перестануть залежати від розміру)?')) return;
+    patch({ classPointsBySize: sameForAllSizes(draft.classPointsBySize['2']) });
+  };
+  // Для якого розміру паті рахувати контрольні архетипи (бали за клас залежать від нього).
+  const [checkSize, setCheckSize] = useState(3);
   const setOverride = (c: CharClass, g: WeaponGrade, v: number | undefined) => {
     const cur = { ...(draft.weaponGradeByClass[c] ?? {}) };
     if (v === undefined) delete cur[g]; else cur[g] = v;
@@ -162,13 +178,18 @@ export default function RulesEditor() {
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
           <b>Перевірка чернетки</b>
+          <label className="field" style={{ flex: '0 0 auto' }} title="Розмір паті, для якого рахуються архетипи (бали за клас залежать від нього)">
+            <select value={checkSize} style={{ padding: '4px 30px 4px 8px', fontSize: 13, backgroundPosition: 'right 10px center' }} onChange={(e) => setCheckSize(Number(e.target.value))}>
+              {SIZE_BUCKETS.map((s) => <option key={s} value={Number(s)}>паті {SIZE_BUCKET_LABELS[s]}</option>)}
+            </select>
+          </label>
           <span className="badge mute">максимум {maxScore}</span>
           <span className="badge mute">без R9-броні {realisticMax}</span>
           {!tiersValid && <span className="badge bad">пороги tier мають спадати</span>}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {ARCHETYPES.map((a) => {
-            const s = computeGearScoreWith(a.gear, draft);
+            const s = computeGearScoreWith(a.gear, draft, checkSize);
             const t = tierForWith(s, draft);
             return (
               <div key={a.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -181,7 +202,45 @@ export default function RulesEditor() {
         </div>
       </div>
 
-      <NumTable title="Клас" hint="Сила самого класу в ПвП — додається до скору гравця, тож команди балансуються і за класами. Усі нулі = вимкнути." order={CLASS_ORDER} labels={CLASS_LABELS} values={draft.classPoints} onChange={(v) => patch({ classPoints: v })} />
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <b>Клас × розмір паті</b>
+          <span className="badge mute">max {classMax}</span>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Сила самого класу в ПвП залежить від формату: сін тягне 2×2 / 3×3, у 6×6 важливіші прист, маг, танк. Колонка — розмір команди турніру
+          («6+» — 6 і більше); бали додаються до скору гравця, тож команди балансуються і за класами. Усі нулі = вимкнути.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `110px repeat(${SIZE_BUCKETS.length}, minmax(64px, 1fr))`, gap: 6, alignItems: 'center', minWidth: 460 }}>
+            <span />
+            {SIZE_BUCKETS.map((s) => (
+              <span key={s} className="hint" style={{ margin: 0, textAlign: 'center' }}>паті {SIZE_BUCKET_LABELS[s]}</span>
+            ))}
+            {CLASS_ORDER.map((c) => (
+              <Fragment key={c}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{CLASS_LABELS[c]}</span>
+                {SIZE_BUCKETS.map((s) => (
+                  <span key={s} className="field">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={draft.classPointsBySize[s][c]}
+                      style={{ padding: '6px 8px', fontSize: 13, textAlign: 'center' }}
+                      onChange={(e) => setClassPoints(s, c, e.target.value === '' ? 0 : Math.max(0, Math.round(Number(e.target.value))))}
+                    />
+                  </span>
+                ))}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={applyRecommended} title="Сін/шаман/друїд сильніші в малих форматах, прист/маг/танк/воїн/містик — у масових">Рекомендовані за розміром</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={flattenSizes}>Однаково для всіх розмірів (як «паті 2»)</button>
+        </div>
+      </div>
       <NumTable title="Зброя (за замовчуванням)" hint="ПА лінійки ЦГД / R9 уже вшитий у бали грейду. Для класів, де це не так, — таблиця нижче." order={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} values={draft.weaponGrade} onChange={(v) => patch({ weaponGrade: v })} />
 
       <div className="card" style={{ padding: 14 }}>

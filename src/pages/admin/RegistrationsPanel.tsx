@@ -29,7 +29,7 @@ const clampAdjust = (n: number) => Math.max(-100, Math.min(100, Math.round(n)));
 
 /** Модалка «Анкета: nick» — той самий GearFields, що й у формі гравця,
  * плюс секція «Корекція адміна» (± бали з причиною, 0021). */
-function GearModal({ reg, version, onClose, onSaved }: { reg: Registration; version: string; onClose: () => void; onSaved: () => void }) {
+function GearModal({ reg, version, teamSize, onClose, onSaved }: { reg: Registration; version: string; teamSize: number | null; onClose: () => void; onSaved: () => void }) {
   const [gear, setGear] = useState<Partial<PlayerGear>>(reg.gear ?? {});
   const [attack, setAttack] = useState<number | null>(reg.attackLevel);
   const [defense, setDefense] = useState<number | null>(reg.defenseLevel);
@@ -75,6 +75,7 @@ function GearModal({ reg, version, onClose, onSaved }: { reg: Registration; vers
             defenseLevel={defense}
             onExtraChange={(a: number | null, d: number | null) => { setAttack(a); setDefense(d); }}
             rulesVersion={version}
+            teamSize={teamSize}
             showScore
           />
           <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -156,7 +157,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
       {rows.map((r) => {
         // Скор = гір + корекція адміна + бонус за Ело; tier — від того ж
         // підсумку, що йде в жеребку (buildBalanceStats рахує так само).
-        const bd = balanced ? scoreBreakdown(r, version, ratings) : null;
+        const bd = balanced ? scoreBreakdown(r, version, ratings, tournament.teamSize) : null;
         const tier = bd ? tierFor(bd.total, version) : null;
         const elo = balanced && ratings ? ratingOf(ratings, r.nickname) : undefined;
         // Вибулий після заміни (RPC ставить rejected) — для адміна «Вибув», а не «Відхилено».
@@ -228,6 +229,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
         <GearModal
           reg={editing}
           version={version}
+          teamSize={tournament.teamSize}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); reload(); }}
         />

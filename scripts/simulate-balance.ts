@@ -100,7 +100,7 @@ function synthPlayer(rng: () => number, i: number, p: Profile): BalancePlayer {
     tract: pick(rng, p.tract),
     genie: pick(rng, p.genie),
   };
-  return { id: `p${String(i).padStart(3, '0')}`, nickname: `N${i}`, cls: gear.charClass, score: computeGearScore(gear), createdAt: String(i).padStart(4, '0') };
+  return { id: `p${String(i).padStart(3, '0')}`, nickname: `N${i}`, cls: gear.charClass, score: computeGearScore(gear, undefined, S), createdAt: String(i).padStart(4, '0') };
 }
 
 function arg(name: string, def: string): string {

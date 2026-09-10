@@ -58,8 +58,8 @@ function fmtDateTime(iso: string): string {
  * Скор — той самий, що й у playersForBalance (гір + корекція адміна + бонус за Ело);
  * frozen — скори зі знімка жеребки (після формування Ело дрейфує, а показувати
  * треба те, за чим балансували). */
-function toBalancePlayer(r: Registration, version: string, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): BalancePlayer | null {
-  const b = scoreBreakdown(r, version, ratings);
+function toBalancePlayer(r: Registration, version: string, teamSize: number | null | undefined, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): BalancePlayer | null {
+  const b = scoreBreakdown(r, version, ratings, teamSize);
   if (!b || !r.gear) return null;
   return { id: r.id, nickname: r.nickname, cls: r.gear.charClass, score: frozen?.get(r.id) ?? b.total, createdAt: r.createdAt };
 }
@@ -71,11 +71,11 @@ function breakdownTitle(b: ScoreBreakdown): string {
 }
 
 /** id заявки → підказка на скорі (для рядків, де під рукою лише BalancePlayer). */
-function scoreTitlesFor(regs: Registration[], version: string, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): Map<string, string> {
+function scoreTitlesFor(regs: Registration[], version: string, teamSize: number | null | undefined, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): Map<string, string> {
   const m = new Map<string, string>();
   for (const r of regs) {
     if (r.kind !== 'player') continue;
-    const b = scoreBreakdown(r, version, ratings);
+    const b = scoreBreakdown(r, version, ratings, teamSize);
     if (!b) continue;
     const fz = frozen?.get(r.id);
     m.set(r.id, fz !== undefined && fz !== b.total ? `на момент жеребки; зараз ${b.total}: ${breakdownTitle(b)}` : breakdownTitle(b));
@@ -502,10 +502,10 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
 
   // Склад команди — за скорами жеребки, кандидати з резерву — наживо.
   const frozen = frozenScores(t);
-  const teamBP = members.map((r) => toBalancePlayer(r, version, ratings, frozen)).filter((p): p is BalancePlayer => !!p);
-  const outBP = toBalancePlayer(out, version, ratings, frozen);
-  const reserveBP = reserve.map((r) => toBalancePlayer(r, version, ratings)).filter((p): p is BalancePlayer => !!p);
-  const scoreTitles = scoreTitlesFor(reserve, version, ratings);
+  const teamBP = members.map((r) => toBalancePlayer(r, version, t.teamSize, ratings, frozen)).filter((p): p is BalancePlayer => !!p);
+  const outBP = toBalancePlayer(out, version, t.teamSize, ratings, frozen);
+  const reserveBP = reserve.map((r) => toBalancePlayer(r, version, t.teamSize, ratings)).filter((p): p is BalancePlayer => !!p);
+  const scoreTitles = scoreTitlesFor(reserve, version, t.teamSize, ratings);
   const reserveNoGear = reserve.filter((r) => !r.gear);
   const candidates = outBP ? suggestReplacement(teamBP, outBP, reserveBP) : reserveBP;
   const total = teamBP.reduce((s, p) => s + p.score, 0);
@@ -622,9 +622,9 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const players = playersForBalance(t, regs, ratings);
   // Для модалки формування — живі скори (нова жеребка), для карток сформованих
   // команд — скори зі знімка (див. frozenScores).
-  const scoreTitles = scoreTitlesFor(regs, version, ratings);
+  const scoreTitles = scoreTitlesFor(regs, version, t.teamSize, ratings);
   const frozen = frozenScores(t);
-  const frozenTitles = scoreTitlesFor(regs, version, ratings, frozen);
+  const frozenTitles = scoreTitlesFor(regs, version, t.teamSize, ratings, frozen);
   const noGear = confirmedWithoutGear(regs);
   const confirmedPlayers = regs.filter((r) => r.kind === 'player' && r.status === 'confirmed');
   const teams = teamRows(t, regs);
@@ -727,7 +727,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
           <div className="teams-grid">
             {teams.map((team) => {
               const members = teamMembers(team, regs);
-              const total = members.reduce((s, m) => s + (toBalancePlayer(m, version, ratings, frozen)?.score ?? 0), 0);
+              const total = members.reduce((s, m) => s + (toBalancePlayer(m, version, t.teamSize, ratings, frozen)?.score ?? 0), 0);
               return (
                 <div key={team.id} className="card team-card">
                   <div className="team-card-head">
@@ -737,7 +737,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
                   {members.length < S && <span className="badge bad" style={{ alignSelf: 'flex-start' }}>Неповна: {members.length}/{S}</span>}
                   <div className="team-rows">
                     {members.map((m) => {
-                      const bp = toBalancePlayer(m, version, ratings, frozen);
+                      const bp = toBalancePlayer(m, version, t.teamSize, ratings, frozen);
                       return (
                         <div key={m.id} className="player-row static">
                           {bp ? <PlayerLine p={bp} version={version} scoreTitle={frozenTitles.get(m.id)} /> : <><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nickname}>{m.nickname}</span><span className="badge bad">без анкети</span></>}
@@ -767,7 +767,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
               {reserveSorted.length === 0 && <span className="hint">Порожньо.</span>}
               <div className="team-rows">
                 {reserveSorted.map((m) => {
-                  const bp = toBalancePlayer(m, version, ratings);
+                  const bp = toBalancePlayer(m, version, t.teamSize, ratings);
                   return (
                     <div key={m.id} className="player-row static">
                       {bp ? <PlayerLine p={bp} version={version} scoreTitle={scoreTitles.get(m.id)} /> : <><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nickname}>{m.nickname}</span><span className="badge bad">без анкети</span></>}

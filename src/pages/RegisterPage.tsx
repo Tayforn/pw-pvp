@@ -305,6 +305,7 @@ export default function RegisterPage() {
                 setDefenseLevel(d);
               }}
               showScore
+              teamSize={tournament?.teamSize}
             />
           )}
           <label className="checkbox-row">

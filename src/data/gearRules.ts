@@ -41,12 +41,34 @@ export interface BalanceRules {
   topN: number;
 }
 
+/** Колонки матриці «клас × розмір паті»: 2, 3, 4, 5 і «6+» (6 і більше). */
+export const SIZE_BUCKETS = ['2', '3', '4', '5', '6'] as const;
+export type SizeBucket = (typeof SIZE_BUCKETS)[number];
+export const SIZE_BUCKET_LABELS: Record<SizeBucket, string> = { '2': '2', '3': '3', '4': '4', '5': '5', '6': '6+' };
+
+/** Розмір команди → колонка матриці: 1 і менше (не балансний формат) — як 2,
+ * 6 і більше — «6+». */
+export function sizeBucket(teamSize: number | null | undefined): SizeBucket {
+  const n = Math.floor(teamSize ?? 0);
+  if (n >= 6) return '6';
+  if (n <= 2) return '2';
+  return String(n) as SizeBucket;
+}
+
+/** Один ряд балів за клас → однаково для всіх розмірів паті. */
+export function sameForAllSizes(points: Record<CharClass, number>): Record<SizeBucket, Record<CharClass, number>> {
+  const out = {} as Record<SizeBucket, Record<CharClass, number>>;
+  for (const s of SIZE_BUCKETS) out[s] = { ...points };
+  return out;
+}
+
 /** Таблиці балів — те, що редагує адмін. */
 export interface ScoringRules {
-  /** бали за сам клас (сила класу в ПвП цієї версії); спека це не радила, бо сила
-   * класу залежить від складу пачки, але власник хоче балансувати і за цим —
-   * усі нулі = вимкнено */
-  classPoints: Record<CharClass, number>;
+  /** бали за сам клас — за розміром паті: сила класу залежить від формату (сін
+   * тягне 2×2 / 3×3, у 6×6 важливіші прист, маг, танк). Колонка = розмір команди
+   * турніру (sizeBucket). Спека це не радила, бо сила класу залежить від складу
+   * пачки, але власник хоче балансувати і за цим — усі нулі = вимкнено */
+  classPointsBySize: Record<SizeBucket, Record<CharClass, number>>;
   /** бали за грейд зброї за замовчуванням (для класів без окремого значення) */
   weaponGrade: Record<WeaponGrade, number>;
   /** перевизначення за класом: R9-лінійка нерівна між класами (абілки на фізичних
@@ -99,9 +121,22 @@ const byClass = (physical: Partial<Record<WeaponGrade, number>>, caster: Partial
   return out;
 };
 
+/** Рекомендована матриця за розміром паті (оцінка для 1.4.6, до 10): сін, шаман,
+ * друїд сильніші в малих форматах; прист, маг, танк, воїн, містик — у масових;
+ * лучник і страж рівні скрізь. Пресет у редакторі («Рекомендовані за розміром»),
+ * у вбудовану версію не входить, щоб не зсунути скори турнірів на v1.0. */
+export const RECOMMENDED_CLASS_POINTS_BY_SIZE: Record<SizeBucket, Record<CharClass, number>> = {
+  '2': { assassin: 10, psychic: 9, archer: 8, venomancer: 8, seeker: 7, wizard: 6, cleric: 5, barbarian: 5, mystic: 5, blademaster: 5 },
+  '3': { assassin: 9, psychic: 8, archer: 8, venomancer: 7, seeker: 7, wizard: 7, cleric: 7, barbarian: 6, mystic: 6, blademaster: 6 },
+  '4': { assassin: 8, psychic: 8, archer: 8, venomancer: 6, seeker: 7, wizard: 8, cleric: 8, barbarian: 7, mystic: 7, blademaster: 7 },
+  '5': { assassin: 7, psychic: 7, archer: 8, venomancer: 5, seeker: 7, wizard: 9, cleric: 9, barbarian: 8, mystic: 8, blademaster: 8 },
+  '6': { assassin: 6, psychic: 7, archer: 8, venomancer: 5, seeker: 7, wizard: 10, cleric: 10, barbarian: 9, mystic: 8, blademaster: 9 },
+};
+
 const BUILTIN: GearRules = {
-  // стартова оцінка сили класу в ПвП 1.4.6 (до 10) — власник підправляє в адмінці
-  classPoints: { assassin: 10, psychic: 8, archer: 8, wizard: 7, cleric: 7, barbarian: 6, seeker: 6, mystic: 6, venomancer: 5, blademaster: 5 },
+  // стартова оцінка сили класу в ПвП 1.4.6 (до 10), однакова для всіх розмірів
+  // паті — власник задає залежність від розміру в адмінці (є пресет)
+  classPointsBySize: sameForAllSizes({ assassin: 10, psychic: 8, archer: 8, wizard: 7, cleric: 7, barbarian: 6, seeker: 6, mystic: 6, venomancer: 5, blademaster: 5 }),
   // ПА фіксований за грейдом (ЦГД 30, РЦГД 50, R9 30, R9R1 40, R9R2 50) — вшито в бали.
   // Рідкість на сервері (8 міс.): ЦГД ~5, РЦГД ~20, R9 1, R9R1 2, R9R2 2 — тому
   // великі розриви R8R → ЦГД (+15) і РЦГД → R9R2 (+15), решта лінійки між ними.
@@ -220,6 +255,17 @@ function numTable<K extends string>(src: unknown, template: Record<K, number>): 
 
 /** Розбирає JSON версії: невідомі/зламані поля беруться з вбудованої, тож
  * старий або неповний запис ніколи не зламає підрахунок. Tier D у JSON — min null. */
+/** Матриця «клас × розмір»: нове поле classPointsBySize; старі версії мали один
+ * ряд classPoints — розкладаємо його на всі розміри (скори тих версій не
+ * змінюються). Відсутнє/зламане — з вбудованої. */
+function classMatrix(r: Record<string, unknown>): Record<SizeBucket, Record<CharClass, number>> {
+  const legacy = r.classPoints && typeof r.classPoints === 'object' ? numTable(r.classPoints, BUILTIN.classPointsBySize['2']) : null;
+  const src = r.classPointsBySize && typeof r.classPointsBySize === 'object' ? (r.classPointsBySize as Record<string, unknown>) : null;
+  const out = {} as Record<SizeBucket, Record<CharClass, number>>;
+  for (const s of SIZE_BUCKETS) out[s] = numTable(src?.[s], legacy ?? BUILTIN.classPointsBySize[s]);
+  return out;
+}
+
 export function normalizeRules(raw: unknown): GearRules {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const b = (r.balance && typeof r.balance === 'object' ? r.balance : {}) as Record<string, unknown>;
@@ -247,7 +293,7 @@ export function normalizeRules(raw: unknown): GearRules {
     byCls[c] = out;
   }
   return {
-    classPoints: numTable(r.classPoints, BUILTIN.classPoints),
+    classPointsBySize: classMatrix(r),
     weaponGrade: numTable(r.weaponGrade, BUILTIN.weaponGrade),
     weaponGradeByClass: byCls,
     weaponRefine: numTable(r.weaponRefine, BUILTIN.weaponRefine),
@@ -307,9 +353,15 @@ export function specialSetGemsScore(g: Pick<PlayerGear, 'specialSets' | 'special
   return Math.min(r.specialSetGemsCap, Math.round(sum));
 }
 
-export function computeGearScoreWith(g: PlayerGear, r: ScoringRules): number {
+/** Бали за клас для команди такого розміру. */
+export function classPointsFor(r: ScoringRules, cls: CharClass, teamSize: number | null | undefined): number {
+  return r.classPointsBySize[sizeBucket(teamSize)][cls];
+}
+
+/** teamSize — розмір команди турніру: від нього залежать бали за клас. */
+export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: number | null | undefined): number {
   return (
-    r.classPoints[g.charClass] +
+    classPointsFor(r, g.charClass, teamSize) +
     weaponGradeScore(g.charClass, g.weaponGrade, r) +
     r.weaponRefine[g.weaponRefine] +
     (g.weaponPz ? r.weaponPz : 0) +
@@ -323,14 +375,15 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules): number {
   );
 }
 
-export function computeGearScore(g: PlayerGear, version?: string | null): number {
-  return computeGearScoreWith(g, rulesFor(version));
+export function computeGearScore(g: PlayerGear, version: string | null | undefined, teamSize: number | null | undefined): number {
+  return computeGearScoreWith(g, rulesFor(version), teamSize);
 }
 
 export function maxGearScoreOf(r: ScoringRules): number {
   const mx = (o: Record<string, number>) => Math.max(...Object.values(o));
   const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
-  return mx(r.classPoints) + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie);
+  const maxClass = Math.max(...SIZE_BUCKETS.map((s) => mx(r.classPointsBySize[s])));
+  return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie);
 }
 
 export function maxGearScore(version?: string | null): number {
