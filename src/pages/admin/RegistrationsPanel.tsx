@@ -18,6 +18,7 @@ import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import { rulesVersionFor, scoreBreakdown, teamRows } from '../../data/teams';
 import GearFields, { isGearComplete } from '../../components/GearFields';
+import TierBadge from '../../components/PlayerPopover';
 
 const STATUS_LABEL: Record<Registration['status'], string> = { pending: 'Очікує', confirmed: 'Підтверджено', rejected: 'Відхилено' };
 const STATUS_CLASS: Record<Registration['status'], string> = { pending: 'warn', confirmed: 'good', rejected: 'bad' };
@@ -158,7 +159,6 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
         // Скор = гір + корекція адміна + бонус за Ело; tier — від того ж
         // підсумку, що йде в жеребку (buildBalanceStats рахує так само).
         const bd = balanced ? scoreBreakdown(r, version, ratings, tournament.teamSize) : null;
-        const tier = bd ? tierFor(bd.total, version) : null;
         const elo = balanced && ratings ? ratingOf(ratings, r.nickname) : undefined;
         // Вибулий після заміни (RPC ставить rejected) — для адміна «Вибув», а не «Відхилено».
         const statusLabel = balanced && r.status === 'rejected' && substitutedOut.has(r.id) ? 'Вибув' : STATUS_LABEL[r.status];
@@ -171,7 +171,15 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                   <span className="badge mute">{CLASS_LABELS[r.gear.charClass]}</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <b title={`гір ${bd.gear} · корекція ${signed(bd.adjust)} · рейтинг ${signed(bd.rating)}`}>{bd.total}</b>
-                    <span className={'badge ' + (tier === 'S' || tier === 'A' ? 'warn' : 'mute')}>{tier}</span>
+                    <TierBadge
+                      info={{
+                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version),
+                        admin: {
+                          score: bd.total, gearScore: bd.gear, adjust: bd.adjust, rating: bd.rating, adjustNote: r.scoreAdjustNote,
+                          elo, attackLevel: r.attackLevel, defenseLevel: r.defenseLevel, version,
+                        },
+                      }}
+                    />
                     {bd.adjust !== 0 && (
                       <span className="badge warn" title={r.scoreAdjustNote ?? 'Корекція адміна'}>{signed(bd.adjust)}</span>
                     )}

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import PageMeta from '../app/PageMeta';
-import type { BracketMatch, CharClass, Registration, Tournament } from '../data/types';
+import type { BracketMatch, CharClass, Registration, Tier, Tournament } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isRegistrationOpen } from '../data/types';
 import { fetchRegistrations, fetchTournament, subscribeToTournamentChanges } from '../data/tournaments';
 import { fetchBracket } from '../data/bracket';
-import { CLASS_LABELS, computeGearScore, gearSummary } from '../data/gearRules';
+import { CLASS_LABELS, computeGearScore, tierFor } from '../data/gearRules';
 import { useRules } from '../data/rulesStore';
 import { rulesVersionFor, teamMembers, teamRows } from '../data/teams';
 import BracketView from '../components/BracketView';
+import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
 
 /** Підтверджені гравці фул-рандому з анкетою — без анкети (старі/зламані
  * заявки) до формування не допускаються, тож і публічно їх не показуємо. */
@@ -25,12 +26,42 @@ function classCountsLine(players: Registration[]): string {
     .join(' · ');
 }
 
+/** Публічна картка гравця для бейджа рангу: нік, клас, анкета і ранг — без
+ * чисел скору (їх бачить лише адмін). Ранг у сформованих командах — зі
+ * знімка жеребки (там урахована корекція й рейтинг, яких анонім не бачить);
+ * до формування — з самої анкети. */
+function publicInfo(r: Registration, tournament: Tournament, frozenTiers?: Map<string, Tier>): PlayerCardInfo | null {
+  if (!r.gear) return null;
+  const version = rulesVersionFor(tournament);
+  const tier = frozenTiers?.get(r.id) ?? tierFor(computeGearScore(r.gear, version, tournament.teamSize), version);
+  return { nickname: r.nickname, gear: r.gear, tier };
+}
+
+/** Рядок гравця «як у таблиці» (ті самі колонки, що в адмінці): нік · клас · ранг. */
+const COL = { cls: 68, tier: 28 } as const;
+function PlayerRow({ reg, info }: { reg: Registration; info: PlayerCardInfo | null }) {
+  return (
+    <div className="player-row static">
+      <span title={reg.nickname} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{reg.nickname}</span>
+      {reg.gear ? (
+        <span className="badge mute" style={{ width: COL.cls, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 6px', flexShrink: 0 }}>{CLASS_LABELS[reg.gear.charClass]}</span>
+      ) : (
+        <span className="badge bad">без анкети</span>
+      )}
+      {info && <TierBadge info={info} width={COL.tier} />}
+    </div>
+  );
+}
+
 /** Склади команд балансного фул-рандому: картки команд + резерв + рядок
- * довіри (розкид сум, seed, версія правил). Публічно — нік, клас, відповіді
- * анкети і сума гіру КОМАНДИ; персональний скор/tier не показуємо ніколи
- * (число без контексту породжує суперечки, публічна «D» — стигма). */
+ * довіри (розкид сум, seed, версія правил). Публічно — нік, клас, ранг і
+ * (у попапі за бейджем рангу) відповіді анкети + сума балів КОМАНДИ;
+ * персональний скор числом не показуємо (число без контексту породжує
+ * суперечки). */
 function BalancedTeams({ tournament, registrations }: { tournament: Tournament; registrations: Registration[] }) {
   const version = rulesVersionFor(tournament);
+  const frozenTiers = new Map<string, Tier>();
+  for (const team of tournament.balanceStats?.teams ?? []) for (const m of team.members) frozenTiers.set(m.registrationId, m.tier);
   // Сума команди — зі знімка формування (balance_stats): там уже враховані
   // корекції адміна й рейтинг на момент жеребки, а заміни оновлюють знімок
   // (RPC substitute_team_member, 0022). Перерахунок з анкет — лише якщо
@@ -51,44 +82,31 @@ function BalancedTeams({ tournament, registrations }: { tournament: Tournament; 
 
   return (
     <div>
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+      <div className="teams-grid">
         {teams.map(({ team, members, total }) => (
-          <div key={team.id} className="card" style={{ padding: 14 }}>
-            <b>{team.nickname}</b>
-            <span className="hint">сума балів {total}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-              {members.map((m) => (
-                <span key={m.id} className="badge mute">
-                  {m.nickname}
-                  {m.gear ? ` · ${CLASS_LABELS[m.gear.charClass]}` : ''}
-                </span>
-              ))}
+          <div key={team.id} className="card team-card">
+            <div className="team-card-head">
+              <b>{team.nickname}</b>
+              <span className="hint" style={{ margin: 0 }}>сума балів {total}</span>
             </div>
-            <details style={{ marginTop: 8 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-mute)' }}>Заявлене спорядження</summary>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-                {members.map((m) => (
-                  <span key={m.id} className="hint" style={{ margin: 0 }}>
-                    {m.nickname} — {m.gear ? gearSummary(m.gear, version) : 'анкети немає'}
-                  </span>
-                ))}
-              </div>
-            </details>
+            <div className="team-rows">
+              {members.map((m) => <PlayerRow key={m.id} reg={m} info={publicInfo(m, tournament, frozenTiers)} />)}
+            </div>
           </div>
         ))}
       </div>
       {reserve.length > 0 && (
-        <div className="card" style={{ padding: 14, marginTop: 12 }}>
-          <b>Резерв ({reserve.length})</b>
-          <span className="hint">заміняють тих, хто не з'явиться на старт</span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            {reserve.map((r) => (
-              <span key={r.id} className="badge mute">{r.nickname} · {CLASS_LABELS[r.gear!.charClass]}</span>
-            ))}
+        <div className="card team-card" style={{ marginTop: 12 }}>
+          <div className="team-card-head">
+            <b>Резерв ({reserve.length})</b>
+            <span className="hint" style={{ margin: 0 }}>заміняють тих, хто не з'явиться на старт</span>
+          </div>
+          <div className="team-rows">
+            {reserve.map((r) => <PlayerRow key={r.id} reg={r} info={publicInfo(r, tournament)} />)}
           </div>
         </div>
       )}
-      <span className="hint" style={{ marginTop: 10 }}>{trust.join(' · ')}</span>
+      <span className="hint" style={{ marginTop: 10 }}>{trust.join(' · ')} · натисни на ранг гравця, щоб побачити анкету</span>
     </div>
   );
 }
@@ -227,12 +245,10 @@ export default function TournamentPage({ id }: { id: string }) {
               <p className="hint">Ще немає підтверджених учасників.</p>
             ) : (
               <>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {players.map((r) => (
-                    <span key={r.id} className="badge mute">{r.nickname} · {CLASS_LABELS[r.gear!.charClass]}</span>
-                  ))}
+                <div className="team-rows" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', columnGap: 18 }}>
+                  {players.map((r) => <PlayerRow key={r.id} reg={r} info={publicInfo(r, tournament)} />)}
                 </div>
-                <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)}</span>
+                <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)} · натисни на ранг гравця, щоб побачити анкету</span>
               </>
             )}
             {(status === 'registration_closed' || status === 'in_progress') && (

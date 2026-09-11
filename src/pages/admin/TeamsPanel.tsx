@@ -25,7 +25,8 @@ import { bracketHasResults, fetchBracket, isPowerOfTwo } from '../../data/bracke
 import { estimateSpread, evaluateTeams, formTeams, newSeed, spreadOf, suggestReplacement, type BalancePlayer, type ReservePolicy } from '../../data/balance';
 import { CLASS_LABELS, CLASS_ORDER, rulesFor, tierFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
-import { fetchRatings, type PlayerRating } from '../../data/ratings';
+import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
+import TierBadge, { type PlayerCardInfo } from '../../components/PlayerPopover';
 import {
   applyBalancedTeams,
   clearBalancedTeams,
@@ -37,7 +38,6 @@ import {
   substituteTeamMember,
   teamMembers,
   teamRows,
-  type ScoreBreakdown,
   type TeamsDraft,
 } from '../../data/teams';
 
@@ -45,7 +45,6 @@ type SubstReason = 'no_show' | 'disqualified';
 const REASON_LABELS: Record<SubstReason, string> = { no_show: 'Неявка', disqualified: 'Дискваліфікація' };
 
 /** S/A — помітні (warn), решта — mute: межі tier попередні, не треба їх кричати. */
-const tierClass = (tier: Tier) => (tier === 'S' || tier === 'A' ? 'warn' : 'mute');
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
@@ -64,21 +63,28 @@ function toBalancePlayer(r: Registration, version: string, teamSize: number | nu
   return { id: r.id, nickname: r.nickname, cls: r.gear.charClass, score: frozen?.get(r.id) ?? b.total, createdAt: r.createdAt };
 }
 
-/** Підказка на скорі — з чого він складається. */
-function breakdownTitle(b: ScoreBreakdown): string {
-  const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
-  return `гір ${b.gear} · корекція ${signed(b.adjust)} · рейтинг ${signed(b.rating)}`;
-}
-
-/** id заявки → підказка на скорі (для рядків, де під рукою лише BalancePlayer). */
-function scoreTitlesFor(regs: Registration[], version: string, teamSize: number | null | undefined, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): Map<string, string> {
-  const m = new Map<string, string>();
+/** id заявки → картка гравця для бейджа рангу (PlayerPopover): адмінська —
+ * скор зі складовими, Ело, ПА/ПЗ, корекція. frozen — скори зі знімка жеребки
+ * (тоді ранг і скор — за ними, живий скор показується поруч). */
+function playerInfos(regs: Registration[], version: string, teamSize: number | null | undefined, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): Map<string, PlayerCardInfo> {
+  const m = new Map<string, PlayerCardInfo>();
   for (const r of regs) {
-    if (r.kind !== 'player') continue;
+    if (r.kind !== 'player' || !r.gear) continue;
     const b = scoreBreakdown(r, version, ratings, teamSize);
     if (!b) continue;
     const fz = frozen?.get(r.id);
-    m.set(r.id, fz !== undefined && fz !== b.total ? `на момент жеребки; зараз ${b.total}: ${breakdownTitle(b)}` : breakdownTitle(b));
+    const score = fz ?? b.total;
+    m.set(r.id, {
+      nickname: r.nickname,
+      gear: r.gear,
+      tier: tierFor(score, version),
+      admin: {
+        score, gearScore: b.gear, adjust: b.adjust, rating: b.rating, adjustNote: r.scoreAdjustNote,
+        elo: ratings ? ratingOf(ratings, r.nickname) : undefined,
+        attackLevel: r.attackLevel, defenseLevel: r.defenseLevel, version,
+        liveScore: fz !== undefined ? b.total : undefined,
+      },
+    });
   }
   return m;
 }
@@ -97,8 +103,11 @@ function largestPow2(n: number): number {
  * а клас / скор / tier — колонки фіксованої ширини, тому вирівняні між
  * рядками картки. Кнопка дії (якщо є) — компактна іконка праворуч. */
 const COL = { cls: 68, score: 34, tier: 28 } as const;
-function PlayerLine({ p, version, scoreTitle }: { p: BalancePlayer; version: string; scoreTitle?: string }) {
-  const tier = tierFor(p.score, version);
+function PlayerLine({ p, version, info }: { p: BalancePlayer; version: string; info?: PlayerCardInfo }) {
+  const tier = info?.tier ?? tierFor(p.score, version);
+  const a = info?.admin;
+  const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+  const scoreTitle = a ? `гір ${a.gearScore} · корекція ${signed(a.adjust)} · рейтинг ${signed(a.rating)}${a.liveScore !== undefined && a.liveScore !== a.score ? ` · зараз ${a.liveScore}` : ''}` : undefined;
   return (
     <>
       <span title={p.nickname} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, textAlign: 'left' }}>
@@ -106,7 +115,7 @@ function PlayerLine({ p, version, scoreTitle }: { p: BalancePlayer; version: str
       </span>
       <span className="badge mute" style={{ width: COL.cls, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 6px', flexShrink: 0 }}>{CLASS_LABELS[p.cls]}</span>
       <b title={scoreTitle} style={{ width: COL.score, textAlign: 'right', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{p.score}</b>
-      <span className={'badge ' + tierClass(tier)} style={{ width: COL.tier, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 0', flexShrink: 0 }}>{tier}</span>
+      {info ? <TierBadge info={info} width={COL.tier} /> : <span className="badge mute" style={{ width: COL.tier, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 0', flexShrink: 0 }}>{tier}</span>}
     </>
   );
 }
@@ -119,8 +128,8 @@ const ACTION_BTN_STYLE = { width: 30, height: 30, padding: 0, display: 'inline-f
 interface FormModalProps {
   tournament: Tournament;
   players: BalancePlayer[];
-  /** id заявки → підказка на скорі (складові) */
-  scoreTitles: Map<string, string>;
+  /** id заявки → картка гравця (бейдж рангу з попапом) */
+  infos: Map<string, PlayerCardInfo>;
   bracketExists: boolean;
   onClose: () => void;
   onApplied: () => void;
@@ -143,7 +152,7 @@ function median(xs: number[]): number {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-function FormTeamsModal({ tournament: t, players, scoreTitles, bracketExists, onClose, onApplied }: FormModalProps) {
+function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose, onApplied }: FormModalProps) {
   const S = t.teamSize ?? 1;
   const version = rulesVersionFor(t);
   const rules = rulesFor(version).balance;
@@ -438,7 +447,7 @@ function FormTeamsModal({ tournament: t, players, scoreTitles, bracketExists, on
                             style={selectedId === p.id ? { outline: '2px solid var(--accent)', outlineOffset: -1 } : undefined}
                             onClick={() => clickPlayer(p.id)}
                           >
-                            <PlayerLine p={p} version={version} scoreTitle={scoreTitles.get(p.id)} />
+                            <PlayerLine p={p} version={version} info={infos.get(p.id)} />
                           </button>
                         ))}
                       </div>
@@ -460,7 +469,7 @@ function FormTeamsModal({ tournament: t, players, scoreTitles, bracketExists, on
                         style={selectedId === p.id ? { outline: '2px solid var(--accent)', outlineOffset: -1 } : undefined}
                         onClick={() => clickPlayer(p.id)}
                       >
-                        <PlayerLine p={p} version={version} scoreTitle={scoreTitles.get(p.id)} />
+                        <PlayerLine p={p} version={version} info={infos.get(p.id)} />
                       </button>
                     ))}
                   </div>
@@ -505,7 +514,7 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
   const teamBP = members.map((r) => toBalancePlayer(r, version, t.teamSize, ratings, frozen)).filter((p): p is BalancePlayer => !!p);
   const outBP = toBalancePlayer(out, version, t.teamSize, ratings, frozen);
   const reserveBP = reserve.map((r) => toBalancePlayer(r, version, t.teamSize, ratings)).filter((p): p is BalancePlayer => !!p);
-  const scoreTitles = scoreTitlesFor(reserve, version, t.teamSize, ratings);
+  const infos = playerInfos(reserve, version, t.teamSize, ratings);
   const reserveNoGear = reserve.filter((r) => !r.gear);
   const candidates = outBP ? suggestReplacement(teamBP, outBP, reserveBP) : reserveBP;
   const total = teamBP.reduce((s, p) => s + p.score, 0);
@@ -551,7 +560,7 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
                 const delta = next - total;
                 return (
                   <div key={p.id} className="player-row static">
-                    <PlayerLine p={p} version={version} scoreTitle={scoreTitles.get(p.id)} />
+                    <PlayerLine p={p} version={version} info={infos.get(p.id)} />
                     <span className="hint" style={{ margin: 0, whiteSpace: 'nowrap' }}>сума стане {next} ({delta >= 0 ? '+' : ''}{delta})</span>
                     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(p.id)}>Поставити</button>
                   </div>
@@ -622,9 +631,9 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const players = playersForBalance(t, regs, ratings);
   // Для модалки формування — живі скори (нова жеребка), для карток сформованих
   // команд — скори зі знімка (див. frozenScores).
-  const scoreTitles = scoreTitlesFor(regs, version, t.teamSize, ratings);
+  const infos = playerInfos(regs, version, t.teamSize, ratings);
   const frozen = frozenScores(t);
-  const frozenTitles = scoreTitlesFor(regs, version, t.teamSize, ratings, frozen);
+  const frozenInfos = playerInfos(regs, version, t.teamSize, ratings, frozen);
   const noGear = confirmedWithoutGear(regs);
   const confirmedPlayers = regs.filter((r) => r.kind === 'player' && r.status === 'confirmed');
   const teams = teamRows(t, regs);
@@ -740,7 +749,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
                       const bp = toBalancePlayer(m, version, t.teamSize, ratings, frozen);
                       return (
                         <div key={m.id} className="player-row static">
-                          {bp ? <PlayerLine p={bp} version={version} scoreTitle={frozenTitles.get(m.id)} /> : <><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nickname}>{m.nickname}</span><span className="badge bad">без анкети</span></>}
+                          {bp ? <PlayerLine p={bp} version={version} info={frozenInfos.get(m.id)} /> : <><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nickname}>{m.nickname}</span><span className="badge bad">без анкети</span></>}
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm"
@@ -770,7 +779,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
                   const bp = toBalancePlayer(m, version, t.teamSize, ratings);
                   return (
                     <div key={m.id} className="player-row static">
-                      {bp ? <PlayerLine p={bp} version={version} scoreTitle={scoreTitles.get(m.id)} /> : <><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nickname}>{m.nickname}</span><span className="badge bad">без анкети</span></>}
+                      {bp ? <PlayerLine p={bp} version={version} info={infos.get(m.id)} /> : <><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.nickname}>{m.nickname}</span><span className="badge bad">без анкети</span></>}
                       {/* та сама ширина, що й колонка дій у командах — рядки вирівняні між картками */}
                       <span style={{ width: 30, flexShrink: 0, display: 'inline-flex', justifyContent: 'center' }} title={!reserveOrder.has(m.id) ? 'Підтверджений після формування' : undefined}>
                         {!reserveOrder.has(m.id) ? <span className="badge warn" style={{ padding: '2px 5px', fontSize: 11 }}>+</span> : null}
@@ -804,7 +813,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
         <FormTeamsModal
           tournament={t}
           players={players}
-          scoreTitles={scoreTitles}
+          infos={infos}
           bracketExists={bracketLen > 0}
           onClose={() => setForming(false)}
           onApplied={() => { setForming(false); reload().catch(reportError); }}
