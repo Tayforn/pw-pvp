@@ -225,15 +225,25 @@ function TrnMatch({ m, ctx, matchRefLabel }: { m: BracketMatch; ctx: MatchCtx; m
     <div className="trn-match-outer">
       <div className={'trn-match' + state + (cardHit ? ' trn-hit' : '') + (pending ? ' trn-busy' : '')} aria-busy={pending || undefined}>
         <div className="trn-match-meta">
-          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }} title={matchRefLabel ? `Матч ${matchRefLabel}` : undefined}>
-            {matchRefLabel && <span className="trn-match-ref">{matchRefLabel} · </span>}
-            {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
-            {live && !editable && <span className="trn-live-dot" aria-label="матч можна грати" title="Обидва учасники відомі — матч можна грати" />}
-          </span>
+          {/* У редакторі формат показує селект праворуч, тож текстовий підпис
+              не дублюємо — інакше «В1.1 · BO3 · ↓Н1.1 · ↺ · [BO3]» не вміщається
+              в 200 px, шапка переноситься на два рядки, і картка «їде». */}
+          {(matchRefLabel || !editable) && (
+            <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }} title={matchRefLabel ? `Матч ${matchRefLabel}` : undefined}>
+              {matchRefLabel && <span className="trn-match-ref">{matchRefLabel}</span>}
+              {!editable && (
+                <>
+                  {matchRefLabel ? ' · ' : ''}
+                  {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
+                </>
+              )}
+              {live && !editable && <span className="trn-live-dot" aria-label="матч можна грати" title="Обидва учасники відомі — матч можна грати" />}
+            </span>
+          )}
           {dropTarget && !m.winnerId && (
             <span className="trn-drop" title={`Програвший переходить у матч ${matchRef(dropTarget, ctx.doubleElim)}`}>↓ {matchRef(dropTarget, ctx.doubleElim)}</span>
           )}
-          <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
             {pending && <span className="hint" style={{ margin: 0 }}>…</span>}
             {showReset && (
               <button type="button" className="trn-ctl" onClick={reset} title={m.winnerId ? 'Скасувати результат матчу' : 'Скинути рахунок серії'}>
