@@ -6,6 +6,7 @@ import { hasRegistered, markRegistered } from '../app/registeredTournaments';
 import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
 import { fetchLastGearByNickname, fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 import GearFields, { isGearComplete } from '../components/GearFields';
+import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 
 /** Суфікс до назви турніру у виборі/підписі — формат командного турніру. */
 function teamSuffix(t: Tournament): string {
@@ -13,25 +14,6 @@ function teamSuffix(t: Tournament): string {
   return isBalancedRandom(t) ? ` (фул-рандом, команди по ${t.teamSize})` : ` (команди по ${t.teamSize})`;
 }
 
-/** Останній нікнейм, з яким подавали заявку з цього браузера — гравець без
- * акаунта, тож це єдиний спосіб не змушувати вводити нік щоразу. */
-const LAST_NICK_KEY = 'pw-pvp:lastNickname';
-
-function readLastNickname(): string {
-  try {
-    return localStorage.getItem(LAST_NICK_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function saveLastNickname(nick: string): void {
-  try {
-    localStorage.setItem(LAST_NICK_KEY, nick);
-  } catch {
-    /* сховище недоступне (приватний режим тощо) — не критично */
-  }
-}
 
 export default function RegisterPage() {
   // ?t=<id> — пряме посилання на конкретний турнір (у т.ч. "unlisted" ГМ-турніри,

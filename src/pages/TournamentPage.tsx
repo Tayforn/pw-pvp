@@ -118,17 +118,39 @@ export default function TournamentPage({ id }: { id: string }) {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [bracket, setBracket] = useState<BracketMatch[]>([]);
   const [copied, setCopied] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
+    let alive = true;
     const load = async () => {
-      const [t, regs, matches] = await Promise.all([fetchTournament(id), fetchRegistrations(id), fetchBracket(id)]);
-      setTournament(t);
-      setRegistrations(regs);
-      setBracket(matches);
+      setRefreshing(true);
+      try {
+        const [t, regs, matches] = await Promise.all([fetchTournament(id), fetchRegistrations(id), fetchBracket(id)]);
+        if (!alive) return;
+        setTournament(t);
+        setRegistrations(regs);
+        setBracket(matches);
+        setUpdatedAt(new Date());
+      } finally {
+        if (alive) setRefreshing(false);
+      }
     };
-    load();
-    return subscribeToTournamentChanges(load);
-  }, [id]);
+    load().catch(() => { /* помилка мережі — лишаємо те, що є */ });
+    // Телефон заснув → realtime-вебсокет упав, події за цей час втрачено;
+    // при поверненні на вкладку перечитуємо все.
+    const onWake = () => { if (document.visibilityState === 'visible') load().catch(() => {}); };
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('focus', onWake);
+    const unsubscribe = subscribeToTournamentChanges(() => { load().catch(() => {}); });
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('focus', onWake);
+      unsubscribe();
+    };
+  }, [id, reloadTick]);
 
   if (tournament === undefined) return <p className="hint">Завантаження…</p>;
   if (tournament === null) return <p className="hint">Турнір не знайдено.</p>;
@@ -177,8 +199,12 @@ export default function TournamentPage({ id }: { id: string }) {
           порядок звичний: правила → учасники → заглушка сітки внизу. */}
       {bracket.length > 0 && (
         <div style={{ marginBottom: 18 }}>
-          <h3>Сітка</h3>
-          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0 }}>Сітка</h3>
+            {updatedAt && <span className="hint" style={{ margin: 0 }}>оновлено о {updatedAt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}</span>}
+            <button type="button" className="btn btn-ghost btn-sm" disabled={refreshing} title="Перечитати сітку" onClick={() => setReloadTick((t) => t + 1)}>↻</button>
+          </div>
+          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
         </div>
       )}
 

@@ -16,11 +16,13 @@ import {
   bracketHasResults,
   deleteBracket,
   fetchBracket,
+  formatsByRound,
   generateDoubleEliminationBracket,
   generateSingleEliminationBracket,
   isPowerOfTwo,
   setMatchFormat,
   setMatchWinner,
+  type FormatByRound,
 } from '../../data/bracket';
 import { newSeed } from '../../data/balance';
 import BracketView from '../../components/BracketView';
@@ -44,11 +46,11 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
   };
 
   useEffect(() => {
-    reload();
+    reload().catch(reportError);
     // RegistrationsPanel (сусідній компонент вище) тримає свій ОКРЕМИЙ стан —
     // без підписки підтвердження заявки там не відображалось би тут (лічильник
     // "Підтверджених учасників") без згортання/розгортання турніру (ремаунт).
-    return subscribeToTournamentChanges(reload);
+    return subscribeToTournamentChanges(() => { reload().catch(reportError); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament.id]);
 
@@ -58,21 +60,26 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
 
   const isDouble = tournament.bracketType === 'double_elim';
 
-  const generate = async () => {
+  const generate = async (formats: FormatByRound = {}) => {
     setErr(null);
     setBusy(true);
     try {
       // Свіжий seed на кожну генерацію/решафл — інакше з фіксованим seed
       // решафл був би no-op; seed лягає в bracket_seed для відтворюваності.
       const seed = newSeed();
-      if (isDouble) await generateDoubleEliminationBracket(tournament.id, confirmed.map((r) => r.id), seed);
-      else await generateSingleEliminationBracket(tournament.id, confirmed.map((r) => r.id), tournament.thirdPlaceMatch, seed);
+      if (isDouble) await generateDoubleEliminationBracket(tournament.id, confirmed.map((r) => r.id), seed, formats);
+      else await generateSingleEliminationBracket(tournament.id, confirmed.map((r) => r.id), tournament.thirdPlaceMatch, seed, formats);
       await reload();
     } catch (e) {
       setErr(errorMessage(e, 'Не вдалося згенерувати сітку.'));
     } finally {
       setBusy(false);
     }
+  };
+  // Решафл — новий посів тих самих учасників; формати раундів (BO3/BO5) зберігаються.
+  const reshuffle = () => {
+    if (!confirm('Новий посів тих самих учасників (формати раундів збережуться). Продовжити?')) return;
+    generate(formatsByRound(bracket));
   };
 
   const remove = async () => {
@@ -99,6 +106,20 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
       .catch(reportError)
       .finally(() => setBusy(false));
   };
+  // Турнір «Завершено», а вирішальний матч без переможця (результат скинули
+  // або статус поставили руками) — повернути в «Триває».
+  const decisive = bracket.find((m) => m.bracketSide === 'final') ?? (() => {
+    const w = bracket.filter((m) => m.bracketSide === 'winners');
+    const max = w.length ? Math.max(...w.map((m) => m.round)) : 0;
+    return w.find((m) => m.round === max);
+  })();
+  const canReopen = tournament.status === 'completed' && !!decisive && !decisive.winnerId;
+  const reopen = () => {
+    setBusy(true);
+    setTournamentStatus(tournament.id, 'in_progress')
+      .catch(reportError)
+      .finally(() => setBusy(false));
+  };
 
   return (
     <div>
@@ -109,13 +130,18 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
             🏁 Завершити турнір
           </button>
         )}
+        {canReopen && (
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={reopen} title="Вирішальний матч без переможця, а турнір «Завершено»">
+            ↩ Повернути в хід
+          </button>
+        )}
         {bracket.length === 0 ? (
           <button
             type="button"
             className="btn btn-primary btn-sm"
             disabled={busy || !canGenerate}
             title={noTeamsYet ? 'Спочатку сформуй і затверди команди (блок «Команди» вище).' : ''}
-            onClick={generate}
+            onClick={() => generate()}
           >
             Згенерувати сітку
           </button>
@@ -125,8 +151,8 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
               type="button"
               className="btn btn-ghost btn-sm"
               disabled={busy || hasResults}
-              title={hasResults ? 'Уже є зафіксовані результати — решафл заблоковано' : 'Новий посів тих самих учасників (команди не змінюються)'}
-              onClick={generate}
+              title={hasResults ? 'Уже є зафіксовані результати — решафл заблоковано' : 'Новий посів тих самих учасників (команди й формати раундів не змінюються)'}
+              onClick={reshuffle}
             >
               Решафл сітки
             </button>
@@ -157,9 +183,11 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
         matches={bracket}
         registrations={registrations}
         bracketNewLook={tournament.bracketNewLook}
+        title={tournament.name}
         editable={{
-          onSetFormat: (matchId, format) => setMatchFormat(matchId, format).then(reload).catch(reportError),
-          onSetWinner: (matchId, winnerId, score) => setMatchWinner(matchId, winnerId, score).then(reload).catch(reportError),
+          // Повертаємо проміс: картка блокується, поки запит у дорозі; помилка — у банер, не в alert.
+          onSetFormat: (matchId, format) => setMatchFormat(matchId, format).then(reload).catch((e) => setErr(errorMessage(e, 'Не вдалося змінити формат.'))),
+          onSetWinner: (matchId, winnerId, score) => setMatchWinner(matchId, winnerId, score).then(reload).catch((e) => setErr(errorMessage(e, 'Не вдалося зберегти результат.'))),
         }}
       />
     </div>

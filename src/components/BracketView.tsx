@@ -3,27 +3,42 @@
 // перегляду (TournamentPage) і адмінського редактора (AdminPage) —
 // різниця лише в наявності `editable`.
 //
-// single_elim: дзеркальна сітка (обидві половини сходяться до фіналу
-// в центрі, з конекторами й короною чемпіона) — тестовий вигляд за
-// референсом турнірної сітки Perfect World.
-// double_elim: колонки по раундах без конекторів (як було) — три секції:
-// Верхня сітка (winners), Нижня сітка (losers), Гранд-фінал (final).
+// Картка матчу одна на всі розкладки (TrnMatch): два рядки-слоти в рамці,
+// шапка «адреса · формат · ↓ куди йде програвший», порожній слот показує,
+// звідки прийде учасник («переможець В1.2», «програвший В2.1»), у командних
+// турнірах — склад команди другим рядком, у серіях BO3+ — рахунок цифрами
+// біля кожного слота. Стани: очікує (немає обох учасників) · live (обидва
+// є, переможця немає — підсвічена рамка) · вирішено.
+//
+// Редактор: клік по слоту — переможець (BO1) або +1 у серії; проміжний
+// рахунок серії зберігається в bracket_matches.score (видно всім і після
+// перезавантаження). Вирішений матч не перемикається кліком — лише ↺,
+// і лише поки наступний матч не вирішено. Поки запит у дорозі — картка
+// заблокована (подвійний тап не дає +2).
+//
+// Розкладки: single_elim (новий вигляд) — дзеркальна сітка з конекторами й
+// короною; double_elim і старий вигляд single_elim — колонки по раундах
+// (ColumnsBracket) з конекторами, позиції за реальними звʼязками
+// nextMatchId (у нижній сітці раунди «з підсадкою» мають стільки ж матчів,
+// як попередній). Гранд-фінал стоїть колонкою після фіналу верхньої, під
+// ним корона. «Список» — вертикальний вигляд по раундах для телефонів.
+// Пошук («Знайти нік або команду») підсвічує слоти й притемнює решту;
+// публічно підставляється нік із localStorage (з форми заявки).
 // =========================================================
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { BracketMatch, Registration } from '../data/types';
+import { readLastNickname } from '../app/lastNickname';
 
 function nameFor(id: string | null, regs: Registration[]): string {
   if (!id) return '—';
   return regs.find((r) => r.id === id)?.nickname ?? '?';
 }
 
-/** Підказка (title) на слоті — склад команди: у фул-рандомі в сітці лише
- * назва команди, і без цього гравець не знайде, де він. */
-function titleFor(id: string | null, regs: Registration[]): string | undefined {
-  if (!id) return undefined;
-  const members = regs.find((r) => r.id === id)?.memberNicknames;
-  return members && members.length > 0 ? members.join(', ') : undefined;
+/** Склад команди (у фул-рандомі та fixed-командних турнірах); соло — порожньо. */
+function membersFor(id: string | null, regs: Registration[]): string[] {
+  if (!id) return [];
+  return regs.find((r) => r.id === id)?.memberNicknames ?? [];
 }
 
 function roundLabel(depthFromFinal: number): string {
@@ -35,29 +50,35 @@ function roundLabel(depthFromFinal: number): string {
 
 const FORMAT_LABELS: Record<string, string> = { bo1: 'BO1', bo3: 'BO3', bo5: 'BO5' };
 const KNOWN_FORMATS = ['bo1', 'bo3', 'bo5'];
+const DECISIVE_CONFIRM = 'Це вирішальний матч — турнір одразу стане «Завершено». Продовжити?';
 
 function FormatEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [custom, setCustom] = useState(!KNOWN_FORMATS.includes(value));
-  const smallInputStyle = { fontSize: 12, padding: '3px 6px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--line-2)', textTransform: 'uppercase' } as const;
 
   if (custom) {
+    const commit = (raw: string) => {
+      const v = raw.trim().toLowerCase() || 'bo1';
+      if (v !== value) onChange(v);
+    };
     return (
       <span style={{ display: 'inline-flex', gap: 4 }}>
         <input
           type="text"
+          className="trn-ctl"
           defaultValue={KNOWN_FORMATS.includes(value) ? '' : value}
           placeholder="напр. bo7"
-          style={{ ...smallInputStyle, width: 56 }}
-          onBlur={(e) => onChange(e.target.value.trim() || 'bo1')}
+          style={{ width: 56 }}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
         />
         <button
           type="button"
+          className="trn-ctl"
           title="Повернутись до BO1/BO3/BO5"
           onClick={() => {
             setCustom(false);
             onChange('bo1');
           }}
-          style={{ ...smallInputStyle, cursor: 'pointer' }}
         >
           ↺
         </button>
@@ -66,14 +87,14 @@ function FormatEditor({ value, onChange }: { value: string; onChange: (v: string
   }
   return (
     // Фіксована ширина: без неї select розтягується під найдовшу опцію
-    // («Інший…») і разом із бейджем рахунку та іконкою скидання не
-    // вміщається в шапку картки (176/240 px) — обране «BO3» у 64 px входить.
+    // («Інший…») і разом із бейджем та іконкою скидання не вміщається в шапку.
     <select
+      className="trn-ctl"
       value={KNOWN_FORMATS.includes(value) ? value : 'bo1'}
-      style={{ ...smallInputStyle, width: 64 }}
+      style={{ width: 64 }}
       onChange={(e) => {
         if (e.target.value === 'custom') setCustom(true);
-        else onChange(e.target.value);
+        else if (e.target.value !== value) onChange(e.target.value);
       }}
     >
       <option value="bo1">BO1</option>
@@ -85,8 +106,9 @@ function FormatEditor({ value, onChange }: { value: string; onChange: (v: string
 }
 
 export interface BracketEditable {
-  onSetWinner: (matchId: string, winnerId: string | null, score?: string | null) => void;
-  onSetFormat: (matchId: string, format: string) => void;
+  /** winnerId=null + score — проміжний рахунок серії; winnerId=null + score=null — скинути. */
+  onSetWinner: (matchId: string, winnerId: string | null, score?: string | null) => Promise<void> | void;
+  onSetFormat: (matchId: string, format: string) => Promise<void> | void;
 }
 
 /** Скільки перемог потрібно для серії даного формату (bo3 → 2, bo5 → 3,
@@ -98,39 +120,29 @@ function requiredWins(format: string): number {
   return Math.max(1, Math.floor(n / 2) + 1);
 }
 
-/** Рахунок серії не БО1: клік по ніку — +1 перемога цьому учаснику (а не
- * одразу переможець), допоки хтось не набере потрібну кількість — тоді
- * матч фіксується автоматично з рахунком "X-Y". Рахунок локальний
- * (не персиститься, доки серія не вирішена) — «Скинути» одразу обнуляє
- * його і, якщо матч уже було вирішено цим-таки тало, знімає переможця. */
-function useMatchTally(m: BracketMatch, editable?: BracketEditable) {
-  const [tally, setTally] = useState<[number, number]>([0, 0]);
+/** «2-1» → [2, 1]; інше — null. */
+function parseScore(score: string | null): [number, number] | null {
+  const mm = /^(\d+)-(\d+)$/.exec(score ?? '');
+  return mm ? [Number(mm[1]), Number(mm[2])] : null;
+}
 
-  useEffect(() => {
-    setTally([0, 0]);
-  }, [m.id, m.participant1Id, m.participant2Id, m.winnerId]);
+/** «В1.2» / «Н3.1» / «1.2» (одинарна) / «ГФ» / «3-тє» — коротка адреса матчу
+ * для підказок у порожніх слотах і в шапці картки. */
+function matchRef(f: BracketMatch, doubleElim: boolean): string {
+  if (f.bracketSide === 'final') return 'ГФ';
+  if (f.bracketSide === 'third_place') return '3-тє';
+  const side = !doubleElim ? '' : f.bracketSide === 'losers' ? 'Н' : 'В';
+  return `${side}${f.round}.${f.slot + 1}`;
+}
 
-  const addWin = (pid: string | null) => {
-    if (!editable || !pid || !m.participant1Id || !m.participant2Id || m.winnerId) return;
-    const idx = pid === m.participant1Id ? 0 : 1;
-    const needed = requiredWins(m.format);
-    setTally((t) => {
-      const next: [number, number] = [t[0], t[1]];
-      next[idx] += 1;
-      if (next[idx] >= needed) {
-        editable.onSetWinner(m.id, pid, `${next[0]}-${next[1]}`);
-        return [0, 0];
-      }
-      return next;
-    });
-  };
-
-  const reset = () => {
-    setTally([0, 0]);
-    if (m.winnerId) editable?.onSetWinner(m.id, null, null);
-  };
-
-  return { tally, addWin, reset };
+/** Підписи для порожніх слотів матчу: хто сюди прийде (переможець/програвший якого матчу). */
+function sourceLabels(m: BracketMatch, all: BracketMatch[], doubleElim: boolean): [string | undefined, string | undefined] {
+  const out: [string | undefined, string | undefined] = [undefined, undefined];
+  for (const f of all) {
+    if (f.nextMatchId === m.id && f.nextMatchSlot) out[f.nextMatchSlot - 1] = `переможець ${matchRef(f, doubleElim)}`;
+    if (f.loserNextMatchId === m.id && f.loserNextMatchSlot) out[f.loserNextMatchSlot - 1] = `програвший ${matchRef(f, doubleElim)}`;
+  }
+  return out;
 }
 
 interface Props {
@@ -140,150 +152,280 @@ interface Props {
   /** single_elim: дзеркальна сітка (true, за замовчуванням) чи колонки по
    * раундах (false, старий вигляд) — не впливає на double_elim. */
   bracketNewLook?: boolean;
+  /** назва турніру — у шапці повноекранного режиму */
+  title?: string;
 }
 
-function MatchCard({ m, registrations, editable }: { m: BracketMatch; registrations: Registration[]; editable?: BracketEditable }) {
-  const isBo1 = m.format.toLowerCase() === 'bo1';
-  const { tally, addWin, reset } = useMatchTally(m, editable);
+/** Спільні для всіх карток параметри рендеру (щоб не тягнути 6 пропсів у кожен TrnMatch). */
+interface MatchCtx {
+  registrations: Registration[];
+  editable?: BracketEditable;
+  /** усі матчі турніру — підписи порожніх слотів, «куди йде програвший», блокування */
+  all: BracketMatch[];
+  doubleElim: boolean;
+  /** підсвітка пошуку: чи збігається учасник з запитом */
+  hit: (pid: string | null) => boolean;
+  /** показувати склад команди другим рядком слота */
+  showMembers: boolean;
+  /** матч, результат якого завершує турнір (гранд-фінал / фінал) */
+  decisiveId: string | null;
+}
 
-  const pick = (pid: string | null) => {
-    if (!editable || !pid || !m.participant1Id || !m.participant2Id) return;
-    if (isBo1) {
-      editable.onSetWinner(m.id, pid, pid === m.participant1Id ? '1-0' : '0-1');
-    } else {
-      addWin(pid);
-    }
+// ── Картка матчу ────────────────────────────────────────────────────────
+
+function TrnMatch({ m, ctx, matchRefLabel }: { m: BracketMatch; ctx: MatchCtx; matchRefLabel?: string }) {
+  const { registrations, editable } = ctx;
+  const isBo1 = m.format.toLowerCase() === 'bo1';
+  const [pending, setPending] = useState(false);
+  const score = parseScore(m.score);
+  const sources = useMemo(() => sourceLabels(m, ctx.all, ctx.doubleElim), [m, ctx.all, ctx.doubleElim]);
+  // Наступний матч уже вирішено — цей чіпати не можна (інакше в наступному
+  // лишиться учасник, якого там уже не мало б бути).
+  const downstreamDecided = ctx.all.some((x) => (x.id === m.nextMatchId || x.id === m.loserNextMatchId) && !!x.winnerId);
+  const dropTarget = m.loserNextMatchId ? ctx.all.find((x) => x.id === m.loserNextMatchId) : undefined;
+  const both = !!m.participant1Id && !!m.participant2Id;
+  const live = both && !m.winnerId;
+  const decisive = ctx.decisiveId === m.id;
+
+  // Поки запит у дорозі — картка заблокована: подвійний тап не дає +2,
+  // два швидкі кліки в BO1 не женуть два read-then-write.
+  const run = (p: Promise<void> | void) => {
+    setPending(true);
+    Promise.resolve(p).finally(() => setPending(false));
   };
 
-  const showReset = editable && !isBo1 && (tally[0] > 0 || tally[1] > 0 || !!m.winnerId);
+  const pick = (pid: string | null) => {
+    if (!editable || !pid || !both || m.winnerId || pending || downstreamDecided) return;
+    if (isBo1) {
+      if (decisive && !confirm(DECISIVE_CONFIRM)) return;
+      run(editable.onSetWinner(m.id, pid, pid === m.participant1Id ? '1-0' : '0-1'));
+      return;
+    }
+    const cur = score ?? [0, 0];
+    const idx = pid === m.participant1Id ? 0 : 1;
+    const next: [number, number] = [cur[0], cur[1]];
+    next[idx] += 1;
+    if (next[idx] >= requiredWins(m.format)) {
+      if (decisive && !confirm(DECISIVE_CONFIRM)) return;
+      run(editable.onSetWinner(m.id, pid, `${next[0]}-${next[1]}`));
+    } else {
+      run(editable.onSetWinner(m.id, null, `${next[0]}-${next[1]}`)); // проміжний рахунок — у БД
+    }
+  };
+  const reset = () => {
+    if (!editable || pending || downstreamDecided) return;
+    run(editable.onSetWinner(m.id, null, null));
+  };
+
+  const showReset = !!editable && !downstreamDecided && (!!m.winnerId || (!!score && (score[0] > 0 || score[1] > 0)));
+  const cardHit = [m.participant1Id, m.participant2Id].some((pid) => !!pid && ctx.hit(pid));
+  const state = m.winnerId ? ' trn-decided' : live ? ' trn-live' : ' trn-pending';
 
   return (
-    <div className="card" style={{ padding: 12 }}>
-      {/* Шапка в один рядок: бейдж формату/рахунку ліворуч, праворуч —
-          компактна іконка скидання (як у дзеркальному вигляді) і select
-          формату; текстова кнопка «Скинути» тут не вміщалась і ламала картку. */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-        <span className="badge mute" style={{ textTransform: 'uppercase', whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {FORMAT_LABELS[m.format] ?? m.format}
-          {m.score ? ` · ${m.score}` : ''}
-        </span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          {showReset && (
-            <button
-              type="button"
-              onClick={reset}
-              title="Скинути рахунок серії"
-              aria-label="Скинути рахунок серії"
-              style={{ fontSize: 13, lineHeight: 1, padding: '4px 7px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--accent-3)', border: '1px solid var(--line-2)', cursor: 'pointer' }}
-            >
-              ↺
-            </button>
+    <div className="trn-match-outer">
+      <div className={'trn-match' + state + (cardHit ? ' trn-hit' : '') + (pending ? ' trn-busy' : '')} aria-busy={pending || undefined}>
+        <div className="trn-match-meta">
+          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }} title={matchRefLabel ? `Матч ${matchRefLabel}` : undefined}>
+            {matchRefLabel && <span className="trn-match-ref">{matchRefLabel} · </span>}
+            {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
+            {live && !editable && <span className="trn-live-dot" aria-label="матч можна грати" title="Обидва учасники відомі — матч можна грати" />}
+          </span>
+          {dropTarget && !m.winnerId && (
+            <span className="trn-drop" title={`Програвший переходить у матч ${matchRef(dropTarget, ctx.doubleElim)}`}>↓ {matchRef(dropTarget, ctx.doubleElim)}</span>
           )}
-          {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
+            {pending && <span className="hint" style={{ margin: 0 }}>…</span>}
+            {showReset && (
+              <button type="button" className="trn-ctl" onClick={reset} title={m.winnerId ? 'Скасувати результат матчу' : 'Скинути рахунок серії'}>
+                ↺
+              </button>
+            )}
+            {editable && <FormatEditor value={m.format} onChange={(fmt) => run(editable.onSetFormat(m.id, fmt))} />}
+          </span>
         </div>
+        {[m.participant1Id, m.participant2Id].map((pid, i) => {
+          const isWin = !!m.winnerId && pid === m.winnerId;
+          const isLose = !!m.winnerId && !!pid && pid !== m.winnerId;
+          const clickable = !!editable && !!pid && both && !m.winnerId && !pending && !downstreamDecided;
+          const members = ctx.showMembers ? membersFor(pid, registrations) : [];
+          const hit = !!pid && ctx.hit(pid);
+          const title = clickable
+            ? (isBo1 ? 'Клік — переможець матчу' : 'Клік — +1 перемога в серії')
+            : editable && downstreamDecided && !!pid ? 'Спочатку скинь результат наступного матчу'
+            : members.length ? members.join(', ') : undefined;
+          return (
+            <div
+              key={i}
+              className={'trn-slot' + (isWin ? ' win' : '') + (isLose ? ' lose' : '') + (clickable ? ' pickable' : '') + (hit ? ' hit' : '')}
+              role={clickable ? 'button' : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={() => pick(pid)}
+              title={title}
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        pick(pid);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <span className="trn-slot-body">
+                {pid ? (
+                  <span className="trn-slot-name">{nameFor(pid, registrations)}</span>
+                ) : (
+                  <span className="trn-slot-src">{sources[i] ?? '—'}</span>
+                )}
+                {members.length > 0 && <span className="trn-slot-members" title={members.join(', ')}>{members.join(', ')}</span>}
+              </span>
+              {!isBo1 && score && <span className="trn-slot-score">{score[i]}</span>}
+              {isWin && <span className="trn-win-mark" aria-hidden="true">✓</span>}
+            </div>
+          );
+        })}
       </div>
-      {[m.participant1Id, m.participant2Id].map((pid, i) => {
-        const isWinner = !!m.winnerId && pid === m.winnerId;
-        const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id && (isBo1 || !m.winnerId);
-        const wins = !isBo1 && !m.winnerId ? tally[i] : 0;
-        return (
-          <button
-            key={i}
-            type="button"
-            disabled={!clickable}
-            onClick={() => pick(pid)}
-            title={titleFor(pid, registrations)}
-            style={{
-              display: 'block',
-              width: '100%',
-              textAlign: 'left',
-              padding: '7px 9px',
-              marginBottom: 4,
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--line-2)',
-              background: isWinner ? 'rgba(var(--good-rgb), 0.14)' : 'transparent',
-              color: isWinner ? 'var(--good)' : pid ? 'var(--text)' : 'var(--text-mute)',
-              fontWeight: isWinner ? 700 : 500,
-              cursor: clickable ? 'pointer' : 'default',
-              fontFamily: 'inherit',
-              fontSize: 14,
-            }}
-          >
-            {isWinner ? '🏆 ' : ''}
-            {nameFor(pid, registrations)}
-            {wins > 0 && <span style={{ marginLeft: 8, opacity: 0.75, fontWeight: 700 }}>({wins})</span>}
-          </button>
-        );
-      })}
     </div>
   );
 }
 
-const DEFAULT_MATCH_H = 84;
-const GAP = 16;
+// ── Заголовок секції («Верхня сітка · 4/7 зіграно») ─────────────────────
 
-/** Одна "сітка" (колонки по раундах) — winners АБО losers, для double_elim.
- * Кожен матч позиціонується абсолютно по центру між двома матчами, що в нього
- * ведуть; висота картки НЕ хардкодиться, а вимірюється з реального DOM (перша
- * картка раунду 1) — інакше при відхиленні реального контенту від
- * припущеної константи картки в різних раундах накладаються одна на одну. */
-function BracketColumns({
-  sideMatches,
+function Band({ title, matches, hint }: { title: string; matches: BracketMatch[]; hint?: string }) {
+  const played = matches.filter((m) => m.winnerId).length;
+  return (
+    <div className="trn-band">
+      <span className="trn-band-title">{title}</span>
+      {matches.length > 0 && <span className="badge mute">{played}/{matches.length} зіграно</span>}
+      {hint && <span className="hint" style={{ margin: 0 }}>{hint}</span>}
+    </div>
+  );
+}
+
+// ── Колонки по раундах (double_elim, старий вигляд single_elim) ─────────
+
+const COL_MATCH_W = 200;
+const COL_CONN_W = 36;
+const COL_GAP = 12;
+const COL_CHAMPION_H = 64;
+const DEFAULT_MATCH_H = 84;
+
+/** Рядок сітки колонками по раундах. Позиція матчу — по центру між
+ * матчами попереднього раунду, що ведуть у нього (nextMatchId); якщо в
+ * матч веде один (раунд «з підсадкою» в нижній сітці або гранд-фінал після
+ * фіналу верхньої) — рівно навпроти нього. Висота картки вимірюється з DOM
+ * (максимум по рядку), а не хардкодиться. Конектори між колонками —
+ * прямі відрізки під 90°, як у дзеркальній сітці. */
+function ColumnsBracket({
+  rowMatches,
   roundLabel: label,
-  registrations,
-  editable,
+  ctx,
+  champion,
 }: {
-  sideMatches: BracketMatch[];
+  rowMatches: BracketMatch[];
   roundLabel: (r: number) => string;
-  registrations: Registration[];
-  editable?: BracketEditable;
+  ctx: MatchCtx;
+  /** під останньою колонкою — корона з іменем чемпіона (або заглушка) */
+  champion?: { name: string | null };
 }) {
   const [matchH, setMatchH] = useState(DEFAULT_MATCH_H);
-  const firstCardRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
-    const h = firstCardRef.current?.getBoundingClientRect().height;
+    const cards = gridRef.current?.querySelectorAll<HTMLElement>('.trn-match');
+    if (!cards || cards.length === 0) return;
+    let h = 0;
+    cards.forEach((c) => { h = Math.max(h, c.getBoundingClientRect().height); });
     if (h && Math.abs(h - matchH) > 1) setMatchH(h);
   });
 
-  if (sideMatches.length === 0) return null;
+  const layout = useMemo(() => {
+    const rounds = Array.from(new Set(rowMatches.map((m) => m.round))).sort((a, b) => a - b);
+    const byRound = new Map<number, BracketMatch[]>(rounds.map((r) => [r, rowMatches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot)]));
+    const pitch = matchH + COL_GAP;
+    const maxCount = Math.max(...rounds.map((r) => byRound.get(r)!.length));
+    const columnHeight = maxCount * pitch - COL_GAP;
+    const centers = new Map<string, number>();
+    const feedersOf = new Map<string, BracketMatch[]>();
+    rounds.forEach((r, i) => {
+      const list = byRound.get(r)!;
+      const prev = i > 0 ? byRound.get(rounds[i - 1])! : [];
+      list.forEach((m, s) => {
+        const feeders = prev.filter((f) => f.nextMatchId === m.id);
+        feedersOf.set(m.id, feeders);
+        let c: number;
+        if (feeders.length > 0) c = feeders.reduce((sum, f) => sum + centers.get(f.id)!, 0) / feeders.length;
+        else c = (s + 0.5) * (columnHeight + COL_GAP) / list.length - COL_GAP / 2; // рівномірно, якщо звʼязків немає
+        centers.set(m.id, c);
+      });
+    });
+    return { rounds, byRound, columnHeight, centers, feedersOf };
+  }, [rowMatches, matchH]);
 
-  const rounds = Array.from(new Set(sideMatches.map((m) => m.round))).sort((a, b) => a - b);
-  const byRound = new Map<number, BracketMatch[]>(rounds.map((r) => [r, sideMatches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot)]));
-  const pitch = matchH + GAP;
-
-  const centers = new Map<number, number[]>();
-  centers.set(rounds[0], byRound.get(rounds[0])!.map((_, s) => s * pitch + matchH / 2));
-  for (let i = 1; i < rounds.length; i++) {
-    const r = rounds[i];
-    const prevCenters = centers.get(rounds[i - 1])!;
-    centers.set(
-      r,
-      byRound.get(r)!.map((_, s) => (prevCenters[2 * s] + prevCenters[2 * s + 1]) / 2),
-    );
-  }
-  const columnHeight = byRound.get(rounds[0])!.length * pitch;
+  if (rowMatches.length === 0) return null;
+  const { rounds, byRound, columnHeight, centers, feedersOf } = layout;
+  const matchCol = (i: number) => 1 + i * 2;
+  const connCol = (i: number) => i * 2;
+  const bodyH = columnHeight + (champion ? COL_CHAMPION_H : 0);
+  const lastRound = rounds[rounds.length - 1];
+  const lastMatch = byRound.get(lastRound)![0];
 
   return (
-    <div className="bracket-scroll" style={{ display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 8 }}>
-      {rounds.map((r, ri) => (
-        <div key={r} style={{ flex: '0 0 240px' }}>
-          <h4 style={{ margin: '0 0 4px', color: 'var(--text-dim)', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div className="bracket-scroll" style={{ overflowX: 'auto', paddingBottom: 8 }}>
+      <div
+        ref={gridRef}
+        className="trn-grid"
+        style={{
+          gridTemplateColumns: rounds.map((_, i) => (i === 0 ? `${COL_MATCH_W}px` : `${COL_CONN_W}px ${COL_MATCH_W}px`)).join(' '),
+          gridTemplateRows: `28px ${bodyH}px`,
+        }}
+      >
+        {rounds.map((r, i) => (
+          <div key={'h' + r} className="trn-header" style={{ gridColumn: matchCol(i), gridRow: 1 }}>
             {label(r)}
-          </h4>
-          <div style={{ position: 'relative', height: columnHeight }}>
-            {byRound.get(r)!.map((m, s) => (
-              <div
-                key={m.id}
-                ref={ri === 0 && s === 0 ? firstCardRef : undefined}
-                style={{ position: 'absolute', left: 0, right: 0, top: centers.get(r)![s] - matchH / 2 }}
-              >
-                <MatchCard m={m} registrations={registrations} editable={editable} />
+          </div>
+        ))}
+        {rounds.map((r, i) => (
+          <div key={'c' + r} style={{ gridColumn: matchCol(i), gridRow: 2, position: 'relative' }}>
+            {/* Комірка фіксованої (максимальної) висоти, картка центрована в ній —
+                картки без складу нижчі, а конектор цілить у центр комірки. */}
+            {byRound.get(r)!.map((m) => (
+              <div key={m.id} style={{ position: 'absolute', left: 0, right: 0, top: centers.get(m.id)! - matchH / 2, height: matchH, display: 'flex', alignItems: 'center' }}>
+                <TrnMatch m={m} ctx={ctx} matchRefLabel={ctx.doubleElim ? matchRef(m, true) : undefined} />
               </div>
             ))}
+            {champion && i === rounds.length - 1 && lastMatch && (
+              <div
+                className={'trn-champion' + (champion.name ? ' has-champion' : '')}
+                style={{ position: 'absolute', left: 0, right: 0, top: centers.get(lastMatch.id)! + matchH / 2 + 12 }}
+              >
+                <span className="trn-crown" aria-hidden="true">🏆</span>
+                <span>{champion.name || 'Переможець турніру'}</span>
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        ))}
+        {rounds.map((r, i) => {
+          if (i === 0) return null;
+          const segs: { style: CSSProperties; v?: boolean }[] = [];
+          for (const m of byRound.get(r)!) {
+            const feeders = feedersOf.get(m.id) ?? [];
+            if (feeders.length === 0) continue;
+            const y = centers.get(m.id)!;
+            const ys = feeders.map((f) => centers.get(f.id)!);
+            for (const fy of ys) segs.push({ style: { left: 0, width: '50%', top: fy } });
+            segs.push({ style: { left: '50%', width: '50%', top: y } });
+            const lo = Math.min(...ys, y), hi = Math.max(...ys, y);
+            if (hi - lo > 0.5) segs.push({ v: true, style: { left: '50%', top: lo, height: hi - lo } });
+          }
+          return (
+            <div key={'k' + r} className="trn-conn" style={{ gridColumn: connCol(i), gridRow: 2 }} aria-hidden="true">
+              {segs.map((s, j) => <div key={j} className={s.v ? 'trn-conn-v' : 'trn-conn-h'} style={s.style} />)}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -296,81 +438,6 @@ const TRN_FINAL_W = 196;
 const TRN_ROW_H = 40;
 const TRN_ROW_H_EDIT = 48;
 const TRN_ROW_GAP = 8;
-
-/** Компактна картка матчу для дзеркальної сітки: та сама логіка вибору
- * переможця/формату, що й MatchCard, лише інша розмітка (два рядки-слоти
- * в одній рамці замість двох кнопок у картці). */
-function TrnMatch({ m, registrations, editable }: { m: BracketMatch; registrations: Registration[]; editable?: BracketEditable }) {
-  const isBo1 = m.format.toLowerCase() === 'bo1';
-  const { tally, addWin, reset } = useMatchTally(m, editable);
-
-  const pick = (pid: string | null) => {
-    if (!editable || !pid || !m.participant1Id || !m.participant2Id) return;
-    if (isBo1) {
-      editable.onSetWinner(m.id, pid, pid === m.participant1Id ? '1-0' : '0-1');
-    } else {
-      addWin(pid);
-    }
-  };
-
-  const showReset = editable && !isBo1 && (tally[0] > 0 || tally[1] > 0 || !!m.winnerId);
-
-  return (
-    <div className="trn-match-outer">
-      <div className={'trn-match' + (m.winnerId ? ' trn-decided' : '')}>
-        <div className="trn-match-meta">
-          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
-            {FORMAT_LABELS[m.format] ?? m.format.toUpperCase()}
-            {m.score ? ` · ${m.score}` : ''}
-          </span>
-          <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
-            {showReset && (
-              <button
-                type="button"
-                onClick={reset}
-                title="Скинути рахунок серії"
-                style={{ fontSize: 11, lineHeight: 1, padding: '2px 4px', borderRadius: 'var(--radius)', background: 'var(--bg-3)', color: 'var(--text)', border: '1px solid var(--line-2)', cursor: 'pointer' }}
-              >
-                ↺
-              </button>
-            )}
-            {editable && <FormatEditor value={m.format} onChange={(fmt) => editable.onSetFormat(m.id, fmt)} />}
-          </span>
-        </div>
-        {[m.participant1Id, m.participant2Id].map((pid, i) => {
-          const isWin = !!m.winnerId && pid === m.winnerId;
-          const isLose = !!m.winnerId && !!pid && pid !== m.winnerId;
-          const clickable = !!editable && !!pid && !!m.participant1Id && !!m.participant2Id && (isBo1 || !m.winnerId);
-          const wins = !isBo1 && !m.winnerId ? tally[i] : 0;
-          return (
-            <div
-              key={i}
-              className={'trn-slot' + (isWin ? ' win' : '') + (isLose ? ' lose' : '') + (clickable ? ' pickable' : '')}
-              role={clickable ? 'button' : undefined}
-              tabIndex={clickable ? 0 : undefined}
-              onClick={() => pick(pid)}
-              title={titleFor(pid, registrations)}
-              onKeyDown={
-                clickable
-                  ? (e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        pick(pid);
-                      }
-                    }
-                  : undefined
-              }
-            >
-              <span className="trn-slot-name">{nameFor(pid, registrations)}</span>
-              {wins > 0 && <span style={{ opacity: 0.75, fontWeight: 800, marginRight: 4 }}>({wins})</span>}
-              {isWin && <span className="trn-win-mark" aria-hidden="true">✓</span>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /** Розкладка колонок/рядків grid-сітки: обидві половини дзеркальні відносно
  * фіналу в центрі (структура завжди — повне бінарне дерево, бай-матчі
@@ -420,7 +487,7 @@ function buildMirrorLayout(bracketSize: number) {
   // points — % висоти комірки, де лінія торкається карток-"дітей" (завжди
   // 25%/75% для звичайного парного злиття — це універсально, не залежить
   // від рівня, бо комірка конектора завжди дзеркально обрамляє рівно двох
-  // дітей). Для in'єднання в фінал дитина лише одна (свій бік половини),
+  // дітей). Для входу в фінал дитина лише одна (свій бік половини),
   // а друга "точка" — це вже центр фіналу (50%), тому points містить лише
   // одне значення.
   interface Conn { gridColumn: number; gridRow: string; mirrored: boolean; points: number[]; }
@@ -487,32 +554,24 @@ function TrnConnector({ mirrored, points }: { mirrored: boolean; points: number[
   );
 }
 
-function SingleElimBracket({
-  matches,
-  registrations,
-  editable,
-  thirdPlace,
-}: {
-  matches: BracketMatch[];
-  registrations: Registration[];
-  editable?: BracketEditable;
-  thirdPlace: BracketMatch | null;
-}) {
+function SingleElimBracket({ matches, ctx, thirdPlace }: { matches: BracketMatch[]; ctx: MatchCtx; thirdPlace: BracketMatch | null }) {
   const round1Count = matches.filter((m) => m.round === 1).length;
   const bracketSize = round1Count * 2;
   const layout = useMemo(() => (bracketSize >= 2 ? buildMirrorLayout(bracketSize) : null), [bracketSize]);
 
-  // Висота рядка НЕ хардкодиться (як і в BracketColumns) — вимірюється з
-  // реального DOM першої картки раунду 1. Інакше фактична висота картки
-  // (залежить від шрифтів/редактора формату/масштабу браузера) розходиться
-  // з припущеною константою, і сусідні картки в сітці накладаються одна на
-  // одну. TRN_ROW_GAP — гарантований проміжок між сусідніми картками.
-  const [rowH, setRowH] = useState(editable ? TRN_ROW_H_EDIT : TRN_ROW_H);
+  // Висота рядка НЕ хардкодиться (як і в ColumnsBracket) — вимірюється з
+  // реальних карток (.trn-match, максимум), а не з комірок grid: комірка
+  // завжди рівно 2 рядки, і по ній не видно, що картка (зі складом команди)
+  // вища. TRN_ROW_GAP — гарантований проміжок між сусідніми картками.
+  const [rowH, setRowH] = useState(ctx.editable ? TRN_ROW_H_EDIT : TRN_ROW_H);
   const [cardH, setCardH] = useState(rowH * 2 - TRN_ROW_GAP);
-  const firstMatchRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
-    const h = firstMatchRef.current?.getBoundingClientRect().height;
+    const cards = gridRef.current?.querySelectorAll<HTMLElement>('.trn-match');
+    if (!cards || cards.length === 0) return;
+    let h = 0;
+    cards.forEach((c) => { h = Math.max(h, c.getBoundingClientRect().height); });
     if (h) {
       if (Math.abs(h - cardH) > 1) setCardH(h);
       const next = Math.ceil((h - TRN_ROW_GAP) / 2);
@@ -523,12 +582,13 @@ function SingleElimBracket({
   if (!layout) return null;
   const findMatch = (round: number, slot: number) => matches.find((m) => m.round === round && m.slot === slot);
   const finalMatch = findMatch(layout.finalRound, 0);
-  const championName = finalMatch?.winnerId ? nameFor(finalMatch.winnerId, registrations) : null;
+  const championName = finalMatch?.winnerId ? nameFor(finalMatch.winnerId, ctx.registrations) : null;
 
   return (
     <div>
       <div className="bracket-scroll" style={{ overflowX: 'auto', paddingBottom: 10 }}>
         <div
+          ref={gridRef}
           className="trn-grid"
           style={{
             gridTemplateColumns: layout.colWidths.map((w) => w + 'px').join(' '),
@@ -545,14 +605,9 @@ function SingleElimBracket({
           {layout.cells.map((c, i) => {
             const m = findMatch(c.round, c.slot);
             if (!m) return null;
-            const isFirst = c.round === 1 && c.slot === 0;
             return (
-              <div
-                key={i}
-                ref={isFirst ? firstMatchRef : undefined}
-                style={{ gridColumn: c.gridColumn, gridRow: c.gridRow, display: 'flex', alignItems: 'center' }}
-              >
-                <TrnMatch m={m} registrations={registrations} editable={editable} />
+              <div key={i} style={{ gridColumn: c.gridColumn, gridRow: c.gridRow, display: 'flex', alignItems: 'center' }}>
+                <TrnMatch m={m} ctx={ctx} />
               </div>
             );
           })}
@@ -571,7 +626,7 @@ function SingleElimBracket({
                   інакше центрується пара "картка+корона" разом, і сама картка
                   зсувається вище за 50% — конектори не дотягувались до неї. */}
               <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)' }}>
-                <TrnMatch m={finalMatch} registrations={registrations} editable={editable} />
+                <TrnMatch m={finalMatch} ctx={ctx} />
               </div>
               <div
                 className={'trn-champion' + (championName ? ' has-champion' : '')}
@@ -586,91 +641,219 @@ function SingleElimBracket({
       </div>
 
       {thirdPlace && (
-        <div style={{ marginTop: 24, maxWidth: 240 }}>
-          <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
-          <TrnMatch m={thirdPlace} registrations={registrations} editable={editable} />
+        <div style={{ marginTop: 20, maxWidth: 240 }}>
+          <Band title="Матч за 3-тє місце" matches={[thirdPlace]} />
+          <TrnMatch m={thirdPlace} ctx={ctx} />
         </div>
       )}
     </div>
   );
 }
 
-export default function BracketView({ matches, registrations, editable, bracketNewLook = true }: Props) {
+// ── Список по раундах (телефони) ────────────────────────────────────────
+
+interface ListSection { title: string; matches: BracketMatch[]; label: (r: number) => string; hint?: string }
+
+function BracketList({ sections, ctx }: { sections: ListSection[]; ctx: MatchCtx }) {
+  return (
+    <div className="trn-list">
+      {sections.filter((s) => s.matches.length > 0).map((s) => {
+        const rounds = Array.from(new Set(s.matches.map((m) => m.round))).sort((a, b) => a - b);
+        return (
+          <div key={s.title}>
+            <Band title={s.title} matches={s.matches} hint={s.hint} />
+            {rounds.map((r) => {
+              const list = s.matches.filter((m) => m.round === r).sort((a, b) => a.slot - b.slot);
+              const played = list.filter((m) => m.winnerId).length;
+              // Розгорнуто те, що ще грається; зіграні раунди — згорнуті, щоб не скролити повз них.
+              const open = played < list.length;
+              return (
+                <details key={r} className="card trn-list-round" open={open}>
+                  <summary>
+                    <span className="trn-header" style={{ justifyContent: 'flex-start' }}>{rounds.length > 1 || s.matches.length > 1 ? s.label(r) : s.title}</span>
+                    <span className="hint" style={{ margin: 0 }}>{played}/{list.length} зіграно</span>
+                  </summary>
+                  <div className="trn-list-matches">
+                    {list.map((m) => <TrnMatch key={m.id} m={m} ctx={ctx} matchRefLabel={ctx.doubleElim ? matchRef(m, true) : undefined} />)}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Обгортка: пошук, вигляд, фулскрін ───────────────────────────────────
+
+type View = 'grid' | 'list';
+const VIEW_KEY = 'pw-pvp:bracketView';
+
+function initialView(): View {
+  try {
+    const stored = localStorage.getItem(VIEW_KEY);
+    if (stored === 'grid' || stored === 'list') return stored;
+  } catch { /* приватний режим тощо */ }
+  return typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches ? 'list' : 'grid';
+}
+
+export default function BracketView({ matches, registrations, editable, bracketNewLook = true, title }: Props) {
   const [fullscreen, setFullscreen] = useState(false);
+  const [view, setView] = useState<View>(initialView);
+  const [query, setQuery] = useState('');
+  // Публічно — одразу підсвічуємо «свою» команду за ніком з форми заявки
+  // (якщо він узагалі є в цій сітці); в адмінці поле порожнє. Ефект, а не
+  // ініціалізатор стану: учасники можуть довантажитись після першого рендеру.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (editable || prefilled.current || registrations.length === 0) return;
+    prefilled.current = true;
+    const nick = readLastNickname().trim();
+    const low = nick.toLowerCase();
+    if (!low) return;
+    const found = registrations.some((r) => r.nickname.toLowerCase().includes(low) || (r.memberNicknames ?? []).some((n) => n.toLowerCase().includes(low)));
+    if (found) setQuery(nick);
+  }, [editable, registrations]);
+
+  const chooseView = (v: View) => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* ok */ }
+  };
 
   // Лок скролу сторінки під час фулскріна — інакше видно ОДРАЗУ два скролбари:
   // власний (тематизований, .bracket-scroll) і фоновий скролбар <body>.
   useEffect(() => {
     if (!fullscreen) return;
     document.body.classList.add('modal-open');
-    return () => document.body.classList.remove('modal-open');
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.classList.remove('modal-open');
+      document.removeEventListener('keydown', onKey);
+    };
   }, [fullscreen]);
-
-  if (matches.length === 0) return <p className="hint">Сітку ще не згенеровано.</p>;
 
   const winners = matches.filter((m) => m.bracketSide === 'winners');
   const losers = matches.filter((m) => m.bracketSide === 'losers');
   const final = matches.filter((m) => m.bracketSide === 'final');
   const thirdPlace = matches.find((m) => m.bracketSide === 'third_place') ?? null;
   const isDoubleElim = losers.length > 0 || final.length > 0;
-
-  const wbLabel = (r: number) => `Верхня · Раунд ${r}`;
-  const lbLabel = (r: number) => `Нижня · Раунд ${r}`;
+  const showMembers = registrations.some((r) => r.memberNicknames && r.memberNicknames.length > 0);
   const wbMaxRound = winners.length > 0 ? Math.max(...winners.map((m) => m.round)) : 0;
-  const singleElimLabel = (r: number) =>
-    r === wbMaxRound ? 'Фінал' : r === wbMaxRound - 1 && wbMaxRound > 1 ? 'Півфінал' : `Раунд ${r}`;
+  const decisiveId = final[0]?.id ?? winners.find((m) => m.round === wbMaxRound)?.id ?? null;
+
+  // Пошук: збіг по назві учасника/команди або по ніку в складі команди.
+  const q = query.trim().toLowerCase();
+  const hitIds = useMemo(() => {
+    const set = new Set<string>();
+    if (!q) return set;
+    for (const r of registrations) {
+      if (r.nickname.toLowerCase().includes(q) || (r.memberNicknames ?? []).some((n) => n.toLowerCase().includes(q))) set.add(r.id);
+    }
+    return set;
+  }, [q, registrations]);
+  const hitMatches = q ? matches.filter((m) => (m.participant1Id && hitIds.has(m.participant1Id)) || (m.participant2Id && hitIds.has(m.participant2Id))).length : 0;
+
+  // Знайшли — підкручуємо до найближчого live-матчу (або першого зі збігом).
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!q || !rootRef.current) return;
+    const el = rootRef.current.querySelector('.trn-match.trn-hit.trn-live') ?? rootRef.current.querySelector('.trn-match.trn-hit');
+    el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [q, view, fullscreen]);
+
+  const ctx: MatchCtx = { registrations, editable, all: matches, doubleElim: isDoubleElim, hit: (pid) => !!pid && hitIds.has(pid), showMembers, decisiveId };
+
+  if (matches.length === 0) return <p className="hint">Сітку ще не згенеровано.</p>;
+
+  // Гранд-фінал — колонкою після фіналу верхньої: псевдораунд wbMax+1 у тому
+  // ж рядку (у нього веде nextMatchId фіналу верхньої, тож стане навпроти).
+  const wbRow = isDoubleElim ? [...winners, ...final.map((f) => ({ ...f, round: wbMaxRound + 1 }))] : winners;
+  const wbLabel = (r: number) => (r > wbMaxRound ? 'Гранд-фінал' : r === wbMaxRound ? 'Фінал верхньої' : `Раунд ${r}`);
+  const lbMaxRound = losers.length > 0 ? Math.max(...losers.map((m) => m.round)) : 0;
+  const lbLabel = (r: number) => (r === lbMaxRound ? 'Фінал нижньої' : `Раунд ${r}`);
+  const singleElimLabel = (r: number) => (r === wbMaxRound ? 'Фінал' : r === wbMaxRound - 1 && wbMaxRound > 1 ? 'Півфінал' : `Раунд ${r}`);
+  const grandFinal = final[0];
+  const decisiveMatch = matches.find((m) => m.id === decisiveId);
+  const championName = decisiveMatch?.winnerId ? nameFor(decisiveMatch.winnerId, registrations) : null;
+  const lbHint = 'Програвший у верхній переходить сюди; другий програш — виліт. Переможець нижньої грає гранд-фінал.';
+
+  const listSections: ListSection[] = isDoubleElim
+    ? [
+        { title: 'Верхня сітка', matches: winners, label: wbLabel },
+        { title: 'Нижня сітка', matches: losers, label: lbLabel, hint: lbHint },
+        { title: 'Гранд-фінал', matches: final, label: () => 'Гранд-фінал' },
+        ...(thirdPlace ? [{ title: 'Матч за 3-тє місце', matches: [thirdPlace], label: () => '3-тє місце' }] : []),
+      ]
+    : [
+        { title: 'Сітка', matches: winners, label: singleElimLabel },
+        ...(thirdPlace ? [{ title: 'Матч за 3-тє місце', matches: [thirdPlace], label: () => '3-тє місце' }] : []),
+      ];
+
+  const viewBtn = (v: View, label: string) => (
+    <button type="button" className={'btn btn-sm ' + (view === v ? 'btn-primary' : 'btn-ghost')} onClick={() => chooseView(v)} aria-pressed={view === v}>{label}</button>
+  );
 
   return (
-    <div
-      className={fullscreen ? 'bracket-scroll' : undefined}
-      style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 2000, background: 'var(--bg-0)', padding: 24, overflow: 'auto', display: 'flex', flexDirection: 'column' } : undefined}
-    >
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFullscreen((v) => !v)}>
-          {fullscreen ? '✕ Згорнути' : '⛶ На весь екран'}
-        </button>
+    <div ref={rootRef} className={(fullscreen ? 'trn-fullscreen ' : '') + (q ? 'trn-filtering' : '')}>
+      <div className="trn-toolbar">
+        {fullscreen && title && <span className="trn-fullscreen-title">{title}</span>}
+        <span className="trn-search">
+          <input
+            type="search"
+            value={query}
+            placeholder={showMembers ? 'Знайти нік або команду' : 'Знайти учасника'}
+            aria-label="Пошук у сітці"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {q && <span className="hint" style={{ margin: 0, whiteSpace: 'nowrap' }}>{hitMatches ? `матчів: ${hitMatches}` : 'не знайдено'}</span>}
+        </span>
+        <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
+          {viewBtn('grid', 'Сітка')}
+          {viewBtn('list', 'Список')}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFullscreen((v) => !v)}>
+            {fullscreen ? '✕ Згорнути' : '⛶ На весь екран'}
+          </button>
+        </span>
       </div>
 
       {/* margin: auto у flex-контейнері центрує сітку по обох осях, коли вона
           менша за екран, і чесно деградує до звичайного скролу (margin 0),
           коли більша — на відміну від align/justify-center, які в скрол-
           контейнері обрізали б початок контенту. */}
-      <div style={fullscreen ? { margin: 'auto' } : undefined}>
-        {isDoubleElim ? (
+      <div style={fullscreen ? { margin: 'auto', maxWidth: '100%' } : undefined}>
+        {view === 'list' ? (
+          <BracketList sections={listSections} ctx={ctx} />
+        ) : isDoubleElim ? (
           <>
-            <h3 style={{ margin: '0 0 8px' }}>Верхня сітка</h3>
-            <BracketColumns sideMatches={winners} roundLabel={wbLabel} registrations={registrations} editable={editable} />
+            <Band title="Верхня сітка" matches={[...winners, ...final]} />
+            <ColumnsBracket rowMatches={wbRow} roundLabel={wbLabel} ctx={ctx} champion={grandFinal ? { name: championName } : undefined} />
 
             {losers.length > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <h3 style={{ margin: '0 0 8px' }}>Нижня сітка</h3>
-                <BracketColumns sideMatches={losers} roundLabel={lbLabel} registrations={registrations} editable={editable} />
-              </div>
-            )}
-
-            {final.length > 0 && (
-              <div style={{ marginTop: 24, maxWidth: 240 }}>
-                <h3 style={{ margin: '0 0 8px' }}>Гранд-фінал</h3>
-                <MatchCard m={final[0]} registrations={registrations} editable={editable} />
+              <div style={{ marginTop: 8 }}>
+                <Band title="Нижня сітка" matches={losers} hint={lbHint} />
+                <ColumnsBracket rowMatches={losers} roundLabel={lbLabel} ctx={ctx} />
               </div>
             )}
 
             {thirdPlace && (
-              <div style={{ marginTop: 24, maxWidth: 240 }}>
-                <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
-                <MatchCard m={thirdPlace} registrations={registrations} editable={editable} />
+              <div style={{ marginTop: 8, maxWidth: 240 }}>
+                <Band title="Матч за 3-тє місце" matches={[thirdPlace]} />
+                <TrnMatch m={thirdPlace} ctx={ctx} />
               </div>
             )}
           </>
         ) : bracketNewLook ? (
-          <SingleElimBracket matches={winners} registrations={registrations} editable={editable} thirdPlace={thirdPlace} />
+          <SingleElimBracket matches={winners} ctx={ctx} thirdPlace={thirdPlace} />
         ) : (
           <>
-            <BracketColumns sideMatches={winners} roundLabel={singleElimLabel} registrations={registrations} editable={editable} />
+            <ColumnsBracket rowMatches={winners} roundLabel={singleElimLabel} ctx={ctx} champion={{ name: championName }} />
             {thirdPlace && (
-              <div style={{ marginTop: 24, maxWidth: 240 }}>
-                <h3 style={{ margin: '0 0 8px' }}>Матч за 3-тє місце</h3>
-                <MatchCard m={thirdPlace} registrations={registrations} editable={editable} />
+              <div style={{ marginTop: 8, maxWidth: 240 }}>
+                <Band title="Матч за 3-тє місце" matches={[thirdPlace]} />
+                <TrnMatch m={thirdPlace} ctx={ctx} />
               </div>
             )}
           </>

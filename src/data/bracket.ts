@@ -196,7 +196,26 @@ export async function bracketHasResults(tournamentId: string): Promise<boolean> 
  * thirdPlaceMatch=true (і рівно 2 півфіналісти-програні) додає окремий матч
  * bracket_side='third_place' — програні півфіналу потрапляють туди так само,
  * як програні прогресують у losers-сітку double_elim (через loser_next_match_id). */
-export async function generateSingleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], thirdPlaceMatch = false, seed?: string): Promise<void> {
+/** Формати матчів за раундами (`${bracket_side}:${round}` → 'bo3'), щоб решафл
+ * не скидав уже виставлені BO3/BO5 на BO1. */
+export type FormatByRound = Record<string, string>;
+
+/** Формати поточної сітки за раундами — для решафлу. Береться найпоширеніший
+ * формат раунду (адмін зазвичай ставить його всім матчам раунду). */
+export function formatsByRound(matches: BracketMatch[]): FormatByRound {
+  const counts = new Map<string, Map<string, number>>();
+  for (const m of matches) {
+    const key = `${m.bracketSide}:${m.round}`;
+    const c = counts.get(key) ?? new Map<string, number>();
+    c.set(m.format, (c.get(m.format) ?? 0) + 1);
+    counts.set(key, c);
+  }
+  const out: FormatByRound = {};
+  for (const [key, c] of counts) out[key] = Array.from(c.entries()).sort((a, b) => b[1] - a[1])[0][0];
+  return out;
+}
+
+export async function generateSingleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], thirdPlaceMatch = false, seed?: string, formats: FormatByRound = {}): Promise<void> {
   if (confirmedRegistrationIds.length < 2) throw new Error('Потрібно щонайменше 2 підтверджені учасники.');
 
   await supabase.from('bracket_matches').delete().eq('tournament_id', tournamentId);
@@ -237,7 +256,7 @@ export async function generateSingleEliminationBracket(tournamentId: string, con
         bracket_side: 'winners',
         round: r,
         slot: s,
-        format: 'bo1',
+        format: formats[`winners:${r}`] ?? 'bo1',
         participant1_id: p1,
         participant2_id: p2,
         winner_id: null,
@@ -255,7 +274,7 @@ export async function generateSingleEliminationBracket(tournamentId: string, con
       bracket_side: 'third_place',
       round: rounds,
       slot: 0,
-      format: 'bo1',
+      format: formats[`third_place:${rounds}`] ?? 'bo1',
       participant1_id: null,
       participant2_id: null,
       winner_id: null,
@@ -294,7 +313,7 @@ export function isPowerOfTwo(n: number): boolean {
  * (k = log2(n)). Останній раунд losers дає чемпіона нижньої сітки, який
  * зустрічається з чемпіоном winners у гранд-фіналі (без бракет-резету).
  */
-export async function generateDoubleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], seed?: string): Promise<void> {
+export async function generateDoubleEliminationBracket(tournamentId: string, confirmedRegistrationIds: string[], seed?: string, formats: FormatByRound = {}): Promise<void> {
   const n = confirmedRegistrationIds.length;
   if (!isPowerOfTwo(n)) {
     throw new Error(`Подвійна елімінація підтримує лише кількість учасників = степінь двійки (4, 8, 16, 32…), без байів. Зараз підтверджено: ${n}.`);
@@ -342,7 +361,7 @@ export async function generateDoubleEliminationBracket(tournamentId: string, con
         bracket_side: 'winners',
         round: r,
         slot: s,
-        format: 'bo1',
+        format: formats[`winners:${r}`] ?? 'bo1',
         participant1_id: r === 1 ? shuffled[2 * s] : null,
         participant2_id: r === 1 ? shuffled[2 * s + 1] : null,
         winner_id: null,
@@ -377,7 +396,7 @@ export async function generateDoubleEliminationBracket(tournamentId: string, con
         bracket_side: 'losers',
         round: j,
         slot: s,
-        format: 'bo1',
+        format: formats[`losers:${j}`] ?? 'bo1',
         participant1_id: null,
         participant2_id: null,
         winner_id: null,
@@ -396,7 +415,7 @@ export async function generateDoubleEliminationBracket(tournamentId: string, con
     bracket_side: 'final',
     round: 1,
     slot: 0,
-    format: 'bo3',
+    format: formats['final:1'] ?? 'bo3',
     participant1_id: null,
     participant2_id: null,
     winner_id: null,
@@ -431,6 +450,22 @@ export async function setMatchWinner(matchId: string, winnerId: string | null, s
   const { error: updErr } = await supabase.from('bracket_matches').update({ winner_id: winnerId, score: score ?? null }).eq('id', matchId);
   if (updErr) throw updErr;
 
+  // Скидання/зміна переможця: прибрати старого переможця (і старого
+  // програвшого) з наступних матчів — інакше там лишається учасник, якого
+  // там уже не мало б бути, і по ньому можна зафіксувати результат.
+  if (m.winnerId && m.winnerId !== winnerId) {
+    if (m.nextMatchId && m.nextMatchSlot) {
+      const field = m.nextMatchSlot === 1 ? 'participant1_id' : 'participant2_id';
+      const { error: clrErr } = await supabase.from('bracket_matches').update({ [field]: null }).eq('id', m.nextMatchId);
+      if (clrErr) throw clrErr;
+    }
+    if (m.loserNextMatchId && m.loserNextMatchSlot) {
+      const field = m.loserNextMatchSlot === 1 ? 'participant1_id' : 'participant2_id';
+      const { error: clrErr } = await supabase.from('bracket_matches').update({ [field]: null }).eq('id', m.loserNextMatchId);
+      if (clrErr) throw clrErr;
+    }
+  }
+
   if (winnerId && m.nextMatchId && m.nextMatchSlot) {
     const field = m.nextMatchSlot === 1 ? 'participant1_id' : 'participant2_id';
     const { error: nextErr } = await supabase.from('bracket_matches').update({ [field]: winnerId }).eq('id', m.nextMatchId);
@@ -446,10 +481,13 @@ export async function setMatchWinner(matchId: string, winnerId: string | null, s
 
   // Щойно у вирішальному матчі (гранд-фінал / фінал winners-сітки) з'явився
   // переможець — турнір сам стає "Завершено", без ручного перемикання
-  // статусу адміном.
-  if (winnerId) {
-    const all = await fetchBracket(m.tournamentId);
-    const decisive = pickDecisiveMatch(all);
-    if (decisive?.winnerId) await setTournamentStatus(m.tournamentId, 'completed');
+  // статусу адміном; скинули результат вирішального — назад у "Триває".
+  const all = await fetchBracket(m.tournamentId);
+  const decisive = pickDecisiveMatch(all);
+  if (decisive?.id === matchId) {
+    if (winnerId) await setTournamentStatus(m.tournamentId, 'completed');
+    else if (m.winnerId) await setTournamentStatus(m.tournamentId, 'in_progress');
+  } else if (winnerId && decisive?.winnerId) {
+    await setTournamentStatus(m.tournamentId, 'completed');
   }
 }

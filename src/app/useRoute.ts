@@ -20,7 +20,9 @@ export type Route =
   | { name: 'rules' }
   | { name: 'admin' }
   | { name: 'series'; slug: string }
-  | { name: 'tournament'; id: string };
+  | { name: 'tournament'; id: string }
+  /** лише dev-збірка: /dev/bracket — сітка з фейковими командами (верстка) */
+  | { name: 'dev-bracket' };
 
 function parsePath(): Route {
   let p = location.pathname;
@@ -34,6 +36,7 @@ function parsePath(): Route {
   if (a === 'admin') return { name: 'admin' };
   if (a === 'series' && b) return { name: 'series', slug: b };
   if (a === 't' && b) return { name: 'tournament', id: b };
+  if (import.meta.env.DEV && a === 'dev' && b === 'bracket') return { name: 'dev-bracket' };
   return { name: 'home' };
 }
 
@@ -42,6 +45,7 @@ export function routeUrl(route: Route): string {
     case 'home': return APP_BASE;
     case 'series': return APP_BASE + 'series/' + route.slug;
     case 'tournament': return APP_BASE + 't/' + route.id;
+    case 'dev-bracket': return APP_BASE + 'dev/bracket';
     default: return APP_BASE + route.name;
   }
 }

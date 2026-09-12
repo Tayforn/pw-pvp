@@ -21,6 +21,7 @@ import TournamentPage from '../pages/TournamentPage';
 import RegisterPage from '../pages/RegisterPage';
 import RulesPage from '../pages/RulesPage';
 import AdminPage from '../pages/AdminPage';
+import DevBracketPage from '../pages/DevBracketPage';
 
 const isMobile = () => window.matchMedia('(max-width: 880px)').matches;
 
@@ -81,6 +82,7 @@ export default function Layout() {
   else if (route.name === 'series') page = <SeriesPage slug={route.slug} onNavigate={go} />;
   else if (route.name === 'tournament') page = <TournamentPage id={route.id} />;
   else if (route.name === 'admin') page = <AdminPage series={series} />;
+  else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
 
   return (
     <>
