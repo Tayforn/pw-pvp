@@ -7,6 +7,7 @@ import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament 
 import { fetchLastGearByNickname, fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 import GearFields, { isGearComplete } from '../components/GearFields';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
+import { useDiscordMe } from '../app/useDiscordMe';
 
 /** Суфікс до назви турніру у виборі/підписі — формат командного турніру. */
 function teamSuffix(t: Tournament): string {
@@ -25,6 +26,7 @@ export default function RegisterPage() {
   const [pinned, setPinned] = useState<Tournament | null | undefined>(pinnedId ? undefined : null);
   const [tournamentId, setTournamentId] = useState('');
   const [nickname, setNickname] = useState('');
+  const { me: discordMe } = useDiscordMe();
   const [members, setMembers] = useState<string[]>([]);
   // Анкета спорядження — лише для балансного фул-рандому.
   const [gear, setGear] = useState<Partial<PlayerGear>>({});
@@ -120,6 +122,15 @@ export default function RegisterPage() {
     prefillGear(nick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament?.teamSize, tournamentId]);
+
+  // Нік із Discord-сесії (спільний вхід на thunderpw.fun) — підставляємо в
+  // особисту заявку, поки поле порожнє; назву команди не чіпаємо.
+  useEffect(() => {
+    if (!discordMe || isTeam || nickname.trim()) return;
+    setNickname(discordMe.nickname);
+    prefillGear(discordMe.nickname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discordMe, isTeam]);
 
   const prefillHint = prefilledFrom
     ? `Анкету для «${prefilledFrom.nick}» підтягнуто з ${prefilledFrom.tournamentName ? `заявки на «${prefilledFrom.tournamentName}»${prefilledFrom.eventDate ? ` (${prefilledFrom.eventDate})` : ''}` : 'попередньої заявки'} — перевір, чи нічого не змінилось.`
