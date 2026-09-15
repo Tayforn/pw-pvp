@@ -43,15 +43,9 @@ export default function Header({ navOpen, onNavToggle }: Props) {
         <a href="https://cyberpw.fun/" target="_blank" rel="noopener" className="partner-logo" title="cyberpw.fun">
           <img src={import.meta.env.BASE_URL + 'assets/logo.webp'} alt="CyberPW" />
         </a>
-        <a
-          href="https://tayforn.github.io/pw.calc/refine"
-          target="_blank"
-          rel="noopener"
-          className="partner-logo partner-logo-alt"
-          title="PW Хелпер — калькулятори"
-        >
-          <img src={import.meta.env.BASE_URL + 'assets/pwcalc-icon.png'} alt="PW Хелпер" />
-        </a>
+        <a href="https://ladder.thunderpw.fun/" className="btn btn-ghost btn-sm" title="Ладдер страждання">Ладдер</a>
+        <a href="https://calc.thunderpw.fun/" className="btn btn-ghost btn-sm" title="PW Хелпер — калькулятори">Хелпер</a>
+        <a href="https://guild.thunderpw.fun/" className="btn btn-ghost btn-sm" title="Гільдія">Гільдія</a>
         <button
           type="button"
           className="theme-toggle"
