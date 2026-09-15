@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
@@ -7,37 +7,75 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  DEPLOY_HOST: 89.167.1.191
+  DEPLOY_HOST_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGmnVfNuSncQcJ5y4JFH8BtrxTH1M3PKwZDE+MHMRLj6
+  SITE_URL: https://pvp.thunderpw.fun
 
 jobs:
-  build:
+  server:
+    name: Deploy to pvp.thunderpw.fun
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
+          cache: npm
       - run: npm ci
-      # History-роутинг вимагає абсолютної бази підпапки GH Pages.
-      # VITE_SUPABASE_* — публічний anon-ключ, безпечний прямо в білді
-      # (не секрет: доступ обмежує RLS на стороні Supabase, не приховування ключа).
       - run: npm run build
         env:
-          VITE_BASE: /pw-pvp/
+          VITE_BASE: /
+          # Публічний anon-ключ (власний Supabase-проєкт pw-pvp) — безпечний у білді.
           VITE_SUPABASE_URL: https://vnlqxqxnslxcisqfhvsg.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_GLrZl0x0jaNFsvLv68ZGgw_OBp_BH_G
+
+      - name: Upload release
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "$DEPLOY_HOST $DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          tar -C dist -czf - . | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            "deploy@$DEPLOY_HOST" "deploy pvp ${GITHUB_SHA::12}-${GITHUB_RUN_ATTEMPT}"
+
+      - name: Smoke test
+        run: |
+          expected=$(grep -o '/assets/index-[^"]*\.js' dist/index.html)
+          live=$(curl -fsS "$SITE_URL/" | grep -o '/assets/index-[^"]*\.js')
+          echo "expected $expected, live $live"
+          test "$expected" = "$live"
+          curl -fsS -o /dev/null "$SITE_URL$expected"
+
+  pages-build:
+    name: Build GitHub Pages redirect
+    needs: server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p _redirect
+          cp .github/pages-redirect/index.html _redirect/index.html
+          cp .github/pages-redirect/index.html _redirect/404.html
+      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: _redirect
 
-  deploy:
-    needs: build
+  pages-deploy:
+    name: Publish GitHub Pages redirect
+    needs: pages-build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
