@@ -43,14 +43,21 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   // Спосіб формування команд — має значення лише при увімкненому «Командний турнір».
   const [teamModeSel, setTeamModeSel] = useState<TeamMode>(initial?.teamMode ?? 'fixed');
   // Заявки існуючого турніру: null = ще не знаємо — режим і розмір команди
-  // тримаємо заблокованими, поки не переконались, що підтверджених заявок немає.
-  // Блокує саме підтверджена заявка: доки всі заявки ще на розгляді, адмін вільно
-  // міняє режим і розмір команди (непідтверджені анкети/списки ніків за потреби
-  // подадуть заново — про це попереджає підказка).
+  // тримаємо заблокованими, поки не перевірили заявки. Блокуємо лише те, що
+  // справді ламається:
+  //  • режим (соло / готові команди / фул-рандом) — при підтверджених заявках:
+  //    анкети в режимах різні;
+  //  • розмір команди у готових командах — теж при підтверджених: заявка там —
+  //    список з N ніків;
+  //  • розмір команди у фул-рандомі — лише коли команди вже сформовані. Анкета
+  //    гравця від розміру не залежить, а гір-скор рахується на читанні з поточного
+  //    team_size (колонка матриці «клас × розмір паті»), тож після зміни все
+  //    перерахується само. Сформовані команди (і знімок скорів у balance_stats)
+  //    спершу треба розформувати.
   // total рахує й team-рядки фул-рандому, players — лише заявки гравців (для підказки),
-  // confirmed — усі підтверджені рядки (зокрема вже сформовані команди фул-рандому).
-  const [regInfo, setRegInfo] = useState<{ total: number; players: number; confirmed: number } | null>(
-    initial ? null : { total: 0, players: 0, confirmed: 0 },
+  // confirmed — усі підтверджені рядки, teams — сформовані команди фул-рандому.
+  const [regInfo, setRegInfo] = useState<{ total: number; players: number; confirmed: number; teams: number } | null>(
+    initial ? null : { total: 0, players: 0, confirmed: 0, teams: 0 },
   );
   const [regCheckFailed, setRegCheckFailed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,6 +74,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
             total: rs.length,
             players: rs.filter((r) => r.kind === 'player').length,
             confirmed: rs.filter((r) => r.status === 'confirmed').length,
+            teams: rs.filter((r) => r.kind === 'team').length,
           });
       })
       .catch(() => {
@@ -80,6 +88,10 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   const mode: TeamMode = teamMode ? teamModeSel : 'fixed';
   const locked = regInfo === null || regInfo.confirmed > 0;
   const lockedStyle = locked ? { opacity: 0.5, cursor: 'not-allowed' as const } : undefined;
+  // Режим при підтверджених заявках не змінюється, тож teamModeSel тут = збережений режим.
+  const balancedSel = teamModeSel === 'balanced_random';
+  const sizeLocked = regInfo === null || (balancedSel ? regInfo.teams > 0 : regInfo.confirmed > 0);
+  const sizeLockedStyle = sizeLocked ? { opacity: 0.5, cursor: 'not-allowed' as const } : undefined;
 
   const save = async () => {
     if (!name.trim()) return;
@@ -184,14 +196,14 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
           {teamMode && (
             <>
               <div className="field-row">
-                <label className="field" style={{ flex: '0 0 170px', ...lockedStyle }}>
+                <label className="field" style={{ flex: '0 0 170px', ...sizeLockedStyle }}>
                   <span>Людей у команді</span>
                   <input
                     type="number"
                     min={2}
                     max={20}
                     value={teamSize}
-                    disabled={locked}
+                    disabled={sizeLocked}
                     onChange={(e) => setTeamSize(Math.max(2, parseInt(e.target.value, 10) || 2))}
                   />
                 </label>
@@ -210,8 +222,23 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
               )}
               {regInfo === null ? (
                 <p className="hint">{regCheckFailed ? 'Не вдалося перевірити заявки — режим і розмір команди заблоковано.' : 'Перевіряю заявки…'}</p>
+              ) : balancedSel && regInfo.teams > 0 ? (
+                <p className="hint">
+                  Команди вже сформовані — щоб змінити розмір команди, спершу розформуй їх (блок «Команди» турніру).
+                  Режим не змінюється — є підтверджені заявки.
+                </p>
+              ) : balancedSel && regInfo.confirmed > 0 ? (
+                <p className="hint">
+                  Режим не змінюється — вже є підтверджені заявки ({regInfo.confirmed}). Розмір команди змінити можна:
+                  бали за клас перерахуються за колонкою «клас × розмір паті» для нового розміру.
+                </p>
               ) : regInfo.confirmed > 0 ? (
                 <p className="hint">Режим і розмір команди не змінюються — вже є підтверджені заявки ({regInfo.confirmed}).</p>
+              ) : regInfo.total > 0 && balancedSel ? (
+                <p className="hint">
+                  Заявок на розгляді: {regInfo.players}. Розмір команди змінюй вільно; зміна режиму зробить ці анкети
+                  неузгодженими — їх доведеться подати заново.
+                </p>
               ) : regInfo.total > 0 ? (
                 <p className="hint">
                   Заявок на розгляді: {regInfo.players}. Змінити режим чи розмір команди ще можна, але ці заявки стануть
