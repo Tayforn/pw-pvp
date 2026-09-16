@@ -43,11 +43,15 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   // Спосіб формування команд — має значення лише при увімкненому «Командний турнір».
   const [teamModeSel, setTeamModeSel] = useState<TeamMode>(initial?.teamMode ?? 'fixed');
   // Заявки існуючого турніру: null = ще не знаємо — режим і розмір команди
-  // тримаємо заблокованими, поки не переконались, що заявок немає (зміна
-  // режиму/розміру при наявних заявках зробила б їх неузгодженими: у
-  // фул-рандомі це анкети, у готових командах — списки з N ніків).
-  // total рахує й team-рядки фул-рандому, players — лише заявки гравців (для підказки).
-  const [regInfo, setRegInfo] = useState<{ total: number; players: number } | null>(initial ? null : { total: 0, players: 0 });
+  // тримаємо заблокованими, поки не переконались, що підтверджених заявок немає.
+  // Блокує саме підтверджена заявка: доки всі заявки ще на розгляді, адмін вільно
+  // міняє режим і розмір команди (непідтверджені анкети/списки ніків за потреби
+  // подадуть заново — про це попереджає підказка).
+  // total рахує й team-рядки фул-рандому, players — лише заявки гравців (для підказки),
+  // confirmed — усі підтверджені рядки (зокрема вже сформовані команди фул-рандому).
+  const [regInfo, setRegInfo] = useState<{ total: number; players: number; confirmed: number } | null>(
+    initial ? null : { total: 0, players: 0, confirmed: 0 },
+  );
   const [regCheckFailed, setRegCheckFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -58,7 +62,12 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
     let cancelled = false;
     fetchRegistrations(initialId)
       .then((rs) => {
-        if (!cancelled) setRegInfo({ total: rs.length, players: rs.filter((r) => r.kind === 'player').length });
+        if (!cancelled)
+          setRegInfo({
+            total: rs.length,
+            players: rs.filter((r) => r.kind === 'player').length,
+            confirmed: rs.filter((r) => r.status === 'confirmed').length,
+          });
       })
       .catch(() => {
         if (!cancelled) setRegCheckFailed(true);
@@ -69,7 +78,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   }, [initialId]);
 
   const mode: TeamMode = teamMode ? teamModeSel : 'fixed';
-  const locked = regInfo === null || regInfo.total > 0;
+  const locked = regInfo === null || regInfo.confirmed > 0;
   const lockedStyle = locked ? { opacity: 0.5, cursor: 'not-allowed' as const } : undefined;
 
   const save = async () => {
@@ -168,7 +177,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
           </label>
           {/* Той самий lock, що й для режиму/розміру: зняти «командність» при
               наявних заявках означало б соло-турнір з анкетами/списками ніків у базі. */}
-          <label className="checkbox-row" style={lockedStyle} title={locked ? 'Режим не змінюється — вже є заявки' : undefined}>
+          <label className="checkbox-row" style={lockedStyle} title={locked ? 'Режим не змінюється — вже є підтверджені заявки' : undefined}>
             <input type="checkbox" checked={teamMode} disabled={locked} onChange={(e) => setTeamMode(e.target.checked)} />
             Командний турнір
           </label>
@@ -201,8 +210,13 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
               )}
               {regInfo === null ? (
                 <p className="hint">{regCheckFailed ? 'Не вдалося перевірити заявки — режим і розмір команди заблоковано.' : 'Перевіряю заявки…'}</p>
+              ) : regInfo.confirmed > 0 ? (
+                <p className="hint">Режим і розмір команди не змінюються — вже є підтверджені заявки ({regInfo.confirmed}).</p>
               ) : regInfo.total > 0 ? (
-                <p className="hint">Режим і розмір команди не змінюються — вже є заявки ({regInfo.players}).</p>
+                <p className="hint">
+                  Заявок на розгляді: {regInfo.players}. Змінити режим чи розмір команди ще можна, але ці заявки стануть
+                  неузгодженими — анкети та списки ніків доведеться подати заново.
+                </p>
               ) : null}
             </>
           )}
