@@ -14,7 +14,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import type { PlayerGear, Tier } from '../data/types';
 import {
-  ARMOR_REFINE_LABELS, ARMOR_SET_LABELS, CLASS_LABELS, GEMS_LABELS, GENIE_LABELS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
+  ARMOR_REFINE_LABELS, ARMOR_SET_LABELS, CHAR_LEVEL_LABELS, CLASS_LABELS, GEMS_LABELS, GENIE_LABELS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
   TRACT_LABELS, WEAPON_GRADE_LABELS, WEAPON_REFINE_LABELS, rulesFor, shgVoznesLabel,
 } from '../data/gearRules';
 
@@ -43,6 +43,7 @@ export interface PlayerCardInfo {
 export function gearRows(g: PlayerGear): { label: string; value: string }[] {
   const sets = SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s));
   return [
+    { label: 'Рівень', value: g.charLevel ? CHAR_LEVEL_LABELS[g.charLevel] : '—' },
     { label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' · є ПЗ-зброя' : ''}` },
     { label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} · круг точки ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
     { label: 'Камні', value: GEMS_LABELS[g.gems] },

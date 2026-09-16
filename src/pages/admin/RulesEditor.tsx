@@ -13,7 +13,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../../app/errorMessage';
 import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../data/types';
 import {
-  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
+  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
   RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, sameForAllSizes, tierForWith,
@@ -24,11 +24,11 @@ import { saveRulesVersion, useRules } from '../../data/rulesStore';
 
 /** Контрольні архетипи — щоб одразу бачити, куди зсунуться tier після правки. */
 const ARCHETYPES: { name: string; gear: PlayerGear }[] = [
-  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', charLevel: 'l90_100', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', charLevel: 'l90_100', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', charLevel: 'l90_100', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', charLevel: 'l90_100', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', charLevel: 'l90_100', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
 ];
 
 /** Грейди, для яких є сенс у перевизначенні за класом (R9-лінійка й ЦГД/РЦГД). */
@@ -353,6 +353,7 @@ export default function RulesEditor() {
         </div>
       </div>
 
+      <NumTable title="Рівень персонажа" order={CHAR_LEVEL_ORDER} labels={CHAR_LEVEL_LABELS} values={draft.level} onChange={(v) => patch({ level: v })} />
       <NumTable title="Трактат" order={TRACT_ORDER} labels={TRACT_LABELS} values={draft.tract} onChange={(v) => patch({ tract: v })} />
       <NumTable title="Джин (за рівнем)" order={GENIE_ORDER} labels={GENIE_LABELS} values={draft.genie} onChange={(v) => patch({ genie: v })} />
 

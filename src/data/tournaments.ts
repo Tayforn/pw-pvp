@@ -6,7 +6,7 @@
 import { supabase } from '../app/supabaseClient';
 import {
   isRegistrationOpen,
-  type ArmorRefine, type ArmorSet, type BalanceStats, type CharClass, type Gems, type Genie, type PlayerGear, type Registration,
+  type ArmorRefine, type ArmorSet, type BalanceStats, type CharClass, type CharLevel, type Gems, type Genie, type PlayerGear, type Registration,
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
@@ -32,6 +32,8 @@ interface RegistrationRow {
   attack_level?: number | null; defense_level?: number | null;
   // 0023
   shg?: boolean | null; shg_refine?: number | null; voznes?: boolean | null; voznes_refine?: number | null;
+  // 0024
+  char_level?: CharLevel | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -50,7 +52,7 @@ const tournamentFromRow = (r: TournamentRow): Tournament => ({
 const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
   if (!r.char_class || !r.weapon_grade || !r.weapon_refine || r.weapon_pz == null || !r.armor_set || !r.armor_refine || !r.gems || !r.tract || !r.genie) return null;
   return {
-    charClass: r.char_class, weaponGrade: r.weapon_grade, weaponRefine: r.weapon_refine, weaponPz: r.weapon_pz,
+    charClass: r.char_class, charLevel: r.char_level ?? null, weaponGrade: r.weapon_grade, weaponRefine: r.weapon_refine, weaponPz: r.weapon_pz,
     armorSet: r.armor_set, armorRefine: r.armor_refine, gems: r.gems, specialSets: r.special_sets ?? [],
     specialSetGems: r.special_set_gems && typeof r.special_set_gems === 'object' ? r.special_set_gems : {}, tract: r.tract, genie: r.genie,
     // до 0023 колонок не було — «немає шмотки»
@@ -69,7 +71,7 @@ const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registratio
   };
 };
 const gearToRow = (g: PlayerGear) => ({
-  char_class: g.charClass, weapon_grade: g.weaponGrade, weapon_refine: g.weaponRefine, weapon_pz: g.weaponPz,
+  char_class: g.charClass, char_level: g.charLevel, weapon_grade: g.weaponGrade, weapon_refine: g.weaponRefine, weapon_pz: g.weaponPz,
   armor_set: g.armorSet, armor_refine: g.armorRefine, gems: g.gems, special_sets: g.specialSets, special_set_gems: g.specialSetGems,
   tract: g.tract, genie: g.genie,
   shg: g.shg, shg_refine: g.shg ? g.shgRefine ?? 0 : null,

@@ -38,12 +38,16 @@ export type Genie = 'g60' | 'g61_70' | 'g71_80' | 'g81_90' | 'g91_99' | 'g100';
 /** Камені у броні (до 6 шмоток × 4 дірки = 24 камені), за вартістю по зростанню:
  * рівневі 0–9 / 10 / 11 → Сюаньки → Сюаньки/ПА → ПА → Сюаньки/Лагеря → Лагеря (2 ПЗ кожен, до 48 ПЗ). */
 export type Gems = 'g0_9' | 'g10' | 'g11' | 'xuan' | 'xuan_pa' | 'pa' | 'xuan_camp' | 'camp';
+/** Рівень персонажа (0024): 90–100 одним кошиком, далі кожен рівень окремо. */
+export type CharLevel = 'l90_100' | 'l101' | 'l102' | 'l103' | 'l104' | 'l105';
 export type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
 
 /** Усі поля завжди присутні (constraint registrations_gear_all_or_none):
  * невідмічений чекбокс — це false / [] / {}, а не null. */
 export interface PlayerGear {
   charClass: CharClass;
+  /** Рівень персонажа (0024); null — анкета, подана до появи поля (рахується як 90–100). */
+  charLevel: CharLevel | null;
   weaponGrade: WeaponGrade;
   weaponRefine: WeaponRefine;
   /** ПЗ-зброя — запасна зброя з показником захисту, на яку свапаються під уроном. */

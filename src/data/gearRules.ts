@@ -11,7 +11,7 @@
 // =========================================================
 
 import type {
-  ArmorRefine, ArmorSet, CharClass, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
+  ArmorRefine, ArmorSet, CharClass, CharLevel, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
 } from './types';
 
 export type Role = 'support' | 'tank' | 'ranged' | 'melee' | 'control';
@@ -94,6 +94,9 @@ export interface ScoringRules {
   specialSetsCap: number;
   tract: Record<Tract, number>;
   genie: Record<Genie, number>;
+  /** рівень персонажа; версії до появи поля беруть таблицю вбудованої (анкети
+   * без рівня рахуються як 90–100 = 0, тож їхні скори не змінюються) */
+  level: Record<CharLevel, number>;
   /** ШГ і Вознєс: бали за саму наявність шмотки, бонус, якщо є обидві
    * (комплект), і бали за кожен рівень точки кожної. Версії, збережені до
    * появи цих полів, отримують значення вбудованої — анкет із цими шмотками
@@ -171,6 +174,8 @@ const BUILTIN: GearRules = {
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
   // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
   genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
+  // рівень: до 100 — 0, далі кожен рівень дорожчає
+  level: { l90_100: 0, l101: 1, l102: 2, l103: 4, l104: 7, l105: 10 },
   // ШГ 15 і Вознєс 10 за наявність, +5 за обидві разом, +1 за кожен рівень точки кожної
   shg: 15,
   voznes: 10,
@@ -324,6 +329,7 @@ export function normalizeRules(raw: unknown): GearRules {
     specialSetsCap: isNum(r.specialSetsCap) ? r.specialSetsCap : BUILTIN.specialSetsCap,
     tract: numTable(r.tract, BUILTIN.tract),
     genie: numTable(r.genie, BUILTIN.genie),
+    level: numTable(r.level, BUILTIN.level),
     shg: isNum(r.shg) ? r.shg : BUILTIN.shg,
     voznes: isNum(r.voznes) ? r.voznes : BUILTIN.voznes,
     shgVoznesBonus: isNum(r.shgVoznesBonus) ? r.shgVoznesBonus : BUILTIN.shgVoznesBonus,
@@ -405,6 +411,7 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
     specialSetsScore(g.specialSets, r) +
     r.tract[g.tract] +
     r.genie[g.genie] +
+    r.level[g.charLevel ?? 'l90_100'] +
     shgVoznesScore(g, r)
   );
 }
@@ -417,7 +424,7 @@ export function maxGearScoreOf(r: ScoringRules): number {
   const mx = (o: Record<string, number>) => Math.max(...Object.values(o));
   const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
   const maxClass = Math.max(...SIZE_BUCKETS.map((s) => mx(r.classPointsBySize[s])));
-  return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie)
+  return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie) + mx(r.level)
     + r.shg + r.voznes + r.shgVoznesBonus + ITEM_REFINE_MAX * (r.shgRefinePerLevel + r.voznesRefinePerLevel);
 }
 
@@ -488,6 +495,9 @@ export const TRACT_ORDER: Tract[] = ['t1_3', 't4_5', 't6', 't7', 't8', 'emperor'
 export const GENIE_LABELS: Record<Genie, string> = { g60: 'до 60', g61_70: '61–70', g71_80: '71–80', g81_90: '81–90', g91_99: '91–99', g100: '100/100' };
 export const GENIE_ORDER: Genie[] = ['g60', 'g61_70', 'g71_80', 'g81_90', 'g91_99', 'g100'];
 
+export const CHAR_LEVEL_LABELS: Record<CharLevel, string> = { l90_100: '90–100', l101: '101', l102: '102', l103: '103', l104: '104', l105: '105' };
+export const CHAR_LEVEL_ORDER: CharLevel[] = ['l90_100', 'l101', 'l102', 'l103', 'l104', 'l105'];
+
 export const ROLE_LABELS: Record<Role, string> = { support: 'Сапорт', tank: 'Танк', ranged: 'Дальній ДД', melee: 'Ближній ДД', control: 'Контроль' };
 
 /** «ШГ +7, Вознєс +5» / «ШГ +7» / '' — для підсумку анкети. */
@@ -505,6 +515,7 @@ const shortGems = (gems: Gems) => GEMS_LABELS[gems].replace(/ \(.*\)$/, '');
 export function gearSummary(g: PlayerGear, version?: string | null): string {
   void version;
   const parts: string[] = [];
+  if (g.charLevel) parts.push(`Рівень ${CHAR_LEVEL_LABELS[g.charLevel]}`);
   parts.push(`${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}`);
   parts.push(`${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}`);
   parts.push(`Камні ${shortGems(g.gems)}`);

@@ -9,17 +9,17 @@ import type { CharClass, PlayerGear } from '../types';
 const score = (g: PlayerGear, version?: string | null) => computeGearScore(g, version, 3);
 
 const base: PlayerGear = {
-  charClass: 'cleric', weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
+  charClass: 'cleric', charLevel: null, weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
   armorSet: 'nirvana', armorRefine: 'a5', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't1_3', genie: 'g60',
   shg: false, shgRefine: null, voznes: false, voznesRefine: null,
 };
 const gear = (over: Partial<PlayerGear>): PlayerGear => ({ ...base, ...over });
 
 describe('balance-v1.0: шкала', () => {
-  it('максимум 339 (285 + ШГ/Вознєс 54), реалістичний (без R9-броні) 326', () => {
-    expect(maxGearScore()).toBe(339);
+  it('максимум 349 (285 + ШГ/Вознєс 54 + рівень 10), реалістичний (без R9-броні) 336', () => {
+    expect(maxGearScore()).toBe(349);
     const r = rulesFor();
-    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(326);
+    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(336);
   });
 
   it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі (з балами класу)', () => {
@@ -222,5 +222,28 @@ describe('ШГ і Вознєс', () => {
   it('підсумок анкети', () => {
     expect(gearSummary(gear({ shg: true, shgRefine: 7, voznes: true, voznesRefine: 5 }))).toContain('ШГ +7, Вознєс +5');
     expect(gearSummary(base)).not.toContain('ШГ');
+  });
+});
+
+describe('рівень персонажа', () => {
+  it('90–100: 0 · 101: 1 · 102: 2 · 103: 4 · 104: 7 · 105: 10; без рівня — як 90–100', () => {
+    const expected = { l90_100: 0, l101: 1, l102: 2, l103: 4, l104: 7, l105: 10 } as const;
+    for (const [lvl, pts] of Object.entries(expected)) {
+      expect(score(gear({ charLevel: lvl as keyof typeof expected })) - score(base)).toBe(pts);
+    }
+    expect(score(gear({ charLevel: null }))).toBe(score(gear({ charLevel: 'l90_100' })));
+  });
+
+  it('версія без таблиці рівня бере вбудовану; збережена таблиця поважається', () => {
+    const legacy = serializeRules(rulesFor(BUILTIN_RULES_VERSION)) as Record<string, unknown>;
+    delete legacy.level;
+    expect(normalizeRules(legacy).level.l105).toBe(10);
+    const custom = normalizeRules({ ...legacy, level: { l90_100: 0, l101: 3, l102: 6, l103: 9, l104: 12, l105: 15 } });
+    expect(computeGearScoreWith(gear({ charLevel: 'l104' }), custom, 3) - computeGearScoreWith(base, custom, 3)).toBe(12);
+  });
+
+  it('підсумок анкети', () => {
+    expect(gearSummary(gear({ charLevel: 'l103' }))).toMatch(/^Рівень 103 · /);
+    expect(gearSummary(base)).not.toContain('Рівень');
   });
 });
