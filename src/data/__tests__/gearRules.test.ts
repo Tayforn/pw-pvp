@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_RULES_VERSION, CLASS_ORDER, SIZE_BUCKETS, computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, maxGearScore,
-  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
+  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { CharClass, PlayerGear } from '../types';
 
@@ -11,14 +11,15 @@ const score = (g: PlayerGear, version?: string | null) => computeGearScore(g, ve
 const base: PlayerGear = {
   charClass: 'cleric', weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
   armorSet: 'nirvana', armorRefine: 'a5', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't1_3', genie: 'g60',
+  shg: false, shgRefine: null, voznes: false, voznesRefine: null,
 };
 const gear = (over: Partial<PlayerGear>): PlayerGear => ({ ...base, ...over });
 
 describe('balance-v1.0: шкала', () => {
-  it('максимум 285, реалістичний (без R9-броні) 272', () => {
-    expect(maxGearScore()).toBe(285);
+  it('максимум 339 (285 + ШГ/Вознєс 54), реалістичний (без R9-броні) 326', () => {
+    expect(maxGearScore()).toBe(339);
     const r = rulesFor();
-    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(272);
+    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(326);
   });
 
   it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі (з балами класу)', () => {
@@ -186,5 +187,40 @@ describe('balance-v1.0: шкала', () => {
     expect(gearSummary(gear({ weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a8', gems: 'pa', specialSets: ['pz'], specialSetGems: { pz: 'camp' }, tract: 't8', genie: 'g100' })))
       .toBe('ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря) · Тракт 8 · Джин 100/100');
     expect(gearSummary(gear({ weaponPz: true, gems: 'xuan_camp' }))).toBe('Нірвана +0–5 + ПЗ-зброя · Нірвана +5 · Камні Сюаньки / Лагеря · Тракт 1–3 · Джин до 60');
+  });
+});
+
+describe('ШГ і Вознєс', () => {
+  it('наявність 15 / 10, +1 за рівень точки кожної, +5 за обидві', () => {
+    const r = rulesFor();
+    expect(shgVoznesScore(base, r)).toBe(0);
+    expect(shgVoznesScore(gear({ shg: true, shgRefine: 0 }), r)).toBe(15);
+    expect(shgVoznesScore(gear({ shg: true, shgRefine: 7 }), r)).toBe(22);
+    expect(shgVoznesScore(gear({ voznes: true, voznesRefine: 5 }), r)).toBe(15);
+    expect(shgVoznesScore(gear({ shg: true, shgRefine: 7, voznes: true, voznesRefine: 5 }), r)).toBe(42); // 22 + 15 + 5
+    expect(shgVoznesScore(gear({ shg: true, shgRefine: 12, voznes: true, voznesRefine: 12 }), r)).toBe(54);
+    // точка без шмотки не рахується; поза 0–12 обрізається
+    expect(shgVoznesScore(gear({ shg: false, shgRefine: 9 }), r)).toBe(0);
+    expect(shgVoznesScore(gear({ shg: true, shgRefine: 99 }), r)).toBe(27);
+  });
+
+  it('входить у гір-скор', () => {
+    expect(score(gear({ shg: true, shgRefine: 7, voznes: true, voznesRefine: 5 })) - score(base)).toBe(42);
+  });
+
+  it('версія, збережена до появи полів, бере значення вбудованої; збережені значення поважаються', () => {
+    const legacy = serializeRules(rulesFor(BUILTIN_RULES_VERSION)) as Record<string, unknown>;
+    for (const k of ['shg', 'voznes', 'shgVoznesBonus', 'shgRefinePerLevel', 'voznesRefinePerLevel']) delete legacy[k];
+    const old = normalizeRules(legacy);
+    expect(old.shg).toBe(15);
+    expect(old.voznes).toBe(10);
+    expect(computeGearScoreWith(base, old, 3)).toBe(score(base)); // анкети без шмоток — той самий скор
+    const custom = normalizeRules({ ...legacy, shg: 20, shgVoznesBonus: 0, shgRefinePerLevel: 2 });
+    expect(shgVoznesScore(gear({ shg: true, shgRefine: 3, voznes: true, voznesRefine: 0 }), custom)).toBe(20 + 6 + 10);
+  });
+
+  it('підсумок анкети', () => {
+    expect(gearSummary(gear({ shg: true, shgRefine: 7, voznes: true, voznesRefine: 5 }))).toContain('ШГ +7, Вознєс +5');
+    expect(gearSummary(base)).not.toContain('ШГ');
   });
 });

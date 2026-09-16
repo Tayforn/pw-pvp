@@ -57,6 +57,12 @@ export interface PlayerGear {
   specialSetGems: Partial<Record<SpecialSet, Gems>>;
   tract: Tract;
   genie: Genie;
+  /** ШГ (0023): є шмотка — і її точка окремо (0–12; null, коли шмотки немає). */
+  shg: boolean;
+  shgRefine: number | null;
+  /** Вознєс (0023): є шмотка — і її точка окремо (0–12; null, коли шмотки немає). */
+  voznes: boolean;
+  voznesRefine: number | null;
 }
 
 /** Що саме подавалось на вхід алгоритму — достатньо, щоб відтворити

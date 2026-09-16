@@ -94,6 +94,15 @@ export interface ScoringRules {
   specialSetsCap: number;
   tract: Record<Tract, number>;
   genie: Record<Genie, number>;
+  /** ШГ і Вознєс: бали за саму наявність шмотки, бонус, якщо є обидві
+   * (комплект), і бали за кожен рівень точки кожної. Версії, збережені до
+   * появи цих полів, отримують значення вбудованої — анкет із цими шмотками
+   * тоді ще не було, тож їхні скори від цього не змінюються. */
+  shg: number;
+  voznes: number;
+  shgVoznesBonus: number;
+  shgRefinePerLevel: number;
+  voznesRefinePerLevel: number;
   /** Ело-рейтинг з результатів матчів (src/data/ratings.ts): бали за кожні 100
    * пунктів рейтингу понад/нижче 1000 … */
   ratingWeight: number;
@@ -162,6 +171,12 @@ const BUILTIN: GearRules = {
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
   // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
   genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
+  // ШГ 15 і Вознєс 10 за наявність, +5 за обидві разом, +1 за кожен рівень точки кожної
+  shg: 15,
+  voznes: 10,
+  shgVoznesBonus: 5,
+  shgRefinePerLevel: 1,
+  voznesRefinePerLevel: 1,
   // Ело: +5 балів за кожні 100 пунктів понад 1000, не більше ±20 (рейтинг росте повільно: K=32)
   ratingWeight: 5,
   ratingCap: 20,
@@ -309,6 +324,11 @@ export function normalizeRules(raw: unknown): GearRules {
     specialSetsCap: isNum(r.specialSetsCap) ? r.specialSetsCap : BUILTIN.specialSetsCap,
     tract: numTable(r.tract, BUILTIN.tract),
     genie: numTable(r.genie, BUILTIN.genie),
+    shg: isNum(r.shg) ? r.shg : BUILTIN.shg,
+    voznes: isNum(r.voznes) ? r.voznes : BUILTIN.voznes,
+    shgVoznesBonus: isNum(r.shgVoznesBonus) ? r.shgVoznesBonus : BUILTIN.shgVoznesBonus,
+    shgRefinePerLevel: isNum(r.shgRefinePerLevel) ? r.shgRefinePerLevel : BUILTIN.shgRefinePerLevel,
+    voznesRefinePerLevel: isNum(r.voznesRefinePerLevel) ? r.voznesRefinePerLevel : BUILTIN.voznesRefinePerLevel,
     ratingWeight: isNum(r.ratingWeight) ? r.ratingWeight : BUILTIN.ratingWeight,
     ratingCap: isNum(r.ratingCap) ? r.ratingCap : BUILTIN.ratingCap,
     tiers: validTiers ? tiers : BUILTIN.tiers.map((t) => ({ ...t })),
@@ -353,6 +373,19 @@ export function specialSetGemsScore(g: Pick<PlayerGear, 'specialSets' | 'special
   return Math.min(r.specialSetGemsCap, Math.round(sum));
 }
 
+/** Точка ШГ / Вознєса в анкеті: 0–12. */
+export const ITEM_REFINE_MAX = 12;
+
+/** ШГ і Вознєс: наявність + точка кожної, і бонус за обидві разом. */
+export function shgVoznesScore(g: Pick<PlayerGear, 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine'>, r: ScoringRules): number {
+  const lvl = (n: number | null) => Math.max(0, Math.min(ITEM_REFINE_MAX, Math.round(n ?? 0)));
+  return (
+    (g.shg ? r.shg + r.shgRefinePerLevel * lvl(g.shgRefine) : 0) +
+    (g.voznes ? r.voznes + r.voznesRefinePerLevel * lvl(g.voznesRefine) : 0) +
+    (g.shg && g.voznes ? r.shgVoznesBonus : 0)
+  );
+}
+
 /** Бали за клас для команди такого розміру. */
 export function classPointsFor(r: ScoringRules, cls: CharClass, teamSize: number | null | undefined): number {
   return r.classPointsBySize[sizeBucket(teamSize)][cls];
@@ -371,7 +404,8 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
     specialSetGemsScore(g, r) +
     specialSetsScore(g.specialSets, r) +
     r.tract[g.tract] +
-    r.genie[g.genie]
+    r.genie[g.genie] +
+    shgVoznesScore(g, r)
   );
 }
 
@@ -383,7 +417,8 @@ export function maxGearScoreOf(r: ScoringRules): number {
   const mx = (o: Record<string, number>) => Math.max(...Object.values(o));
   const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
   const maxClass = Math.max(...SIZE_BUCKETS.map((s) => mx(r.classPointsBySize[s])));
-  return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie);
+  return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie)
+    + r.shg + r.voznes + r.shgVoznesBonus + ITEM_REFINE_MAX * (r.shgRefinePerLevel + r.voznesRefinePerLevel);
 }
 
 export function maxGearScore(version?: string | null): number {
@@ -455,6 +490,14 @@ export const GENIE_ORDER: Genie[] = ['g60', 'g61_70', 'g71_80', 'g81_90', 'g91_9
 
 export const ROLE_LABELS: Record<Role, string> = { support: 'Сапорт', tank: 'Танк', ranged: 'Дальній ДД', melee: 'Ближній ДД', control: 'Контроль' };
 
+/** «ШГ +7, Вознєс +5» / «ШГ +7» / '' — для підсумку анкети. */
+export function shgVoznesLabel(g: Pick<PlayerGear, 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine'>): string {
+  const parts: string[] = [];
+  if (g.shg) parts.push(`ШГ +${g.shgRefine ?? 0}`);
+  if (g.voznes) parts.push(`Вознєс +${g.voznesRefine ?? 0}`);
+  return parts.join(', ');
+}
+
 const shortGems = (gems: Gems) => GEMS_LABELS[gems].replace(/ \(.*\)$/, '');
 
 /** Компактний рядок для адмінки/публічної сторінки:
@@ -470,5 +513,7 @@ export function gearSummary(g: PlayerGear, version?: string | null): string {
   }
   parts.push(`Тракт ${TRACT_LABELS[g.tract].replace(/ \(.*\)$/, '').replace(' грейд', '')}`);
   parts.push(`Джин ${GENIE_LABELS[g.genie]}`);
+  const items = shgVoznesLabel(g);
+  if (items) parts.push(items);
   return parts.join(' · ');
 }

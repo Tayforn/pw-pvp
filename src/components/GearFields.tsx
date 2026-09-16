@@ -12,7 +12,8 @@
 // колонки — інакше колонки різної висоти і селекти «скачуть».
 //
 // Кожне емітоване значення нормалізоване: weaponPz завжди boolean,
-// specialSets завжди масив — так вимагає constraint registrations_gear_all_or_none.
+// specialSets завжди масив — так вимагає constraint registrations_gear_all_or_none;
+// shg / voznes завжди boolean, а їхня точка — null, коли шмотки немає (0023).
 // =========================================================
 
 import type { Gems, PlayerGear, SpecialSet } from '../data/types';
@@ -20,7 +21,7 @@ import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER,
   GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_HINTS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
   TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER, WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER,
-  computeGearScore, rulesFor,
+  ITEM_REFINE_MAX, computeGearScore, rulesFor,
 } from '../data/gearRules';
 import { useRules } from '../data/rulesStore';
 
@@ -50,7 +51,9 @@ export function isGearComplete(v: Partial<PlayerGear>): v is PlayerGear {
     v.charClass && v.weaponGrade && v.weaponRefine && typeof v.weaponPz === 'boolean' &&
     v.armorSet && v.armorRefine && v.gems && Array.isArray(v.specialSets) &&
     v.specialSetGems && v.specialSets.every((s) => !!v.specialSetGems![s]) && // для кожного відміченого сету обрано камені
-    v.tract && v.genie
+    v.tract && v.genie &&
+    typeof v.shg === 'boolean' && typeof v.voznes === 'boolean' &&
+    (!v.shg || v.shgRefine != null) && (!v.voznes || v.voznesRefine != null) // відмічена шмотка — обрано точку
   );
 }
 
@@ -81,6 +84,22 @@ function OptionSelect<T extends string>({ label, value, options, labels, onChang
   );
 }
 
+const REFINE_LEVELS = Array.from({ length: ITEM_REFINE_MAX + 1 }, (_, i) => String(i));
+const REFINE_LEVEL_LABELS = Object.fromEntries(REFINE_LEVELS.map((l) => [l, `+${l}`])) as Record<string, string>;
+
+/** Точка окремої шмотки (ШГ / Вознєс): +0…+12. */
+function RefineSelect({ label, value, onChange }: { label: string; value: number | null; onChange: (n: number | null) => void }) {
+  return (
+    <OptionSelect
+      label={label}
+      value={value == null ? undefined : String(value)}
+      options={REFINE_LEVELS}
+      labels={REFINE_LEVEL_LABELS}
+      onChange={(v) => onChange(v === undefined ? null : Number(v))}
+    />
+  );
+}
+
 export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize, hideSpecialSets }: Props) {
   // Підписка на реєстр версій: коли шкала з БД довантажиться (або адмін
   // збереже нову), живий гір-скор і список сетів перемалюються.
@@ -94,6 +113,10 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
     next.weaponPz = next.weaponPz ?? false;
     next.specialSets = hideSpecialSets ? [] : next.specialSets ?? [];
     next.specialSetGems = hideSpecialSets ? {} : next.specialSetGems ?? {};
+    next.shg = next.shg ?? false;
+    next.shgRefine = next.shg ? next.shgRefine ?? null : null;
+    next.voznes = next.voznes ?? false;
+    next.voznesRefine = next.voznes ? next.voznesRefine ?? null : null;
     onChange(next);
   };
 
@@ -167,6 +190,25 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
       )}
 
       <OptionSelect label="Джин" value={value.genie} options={GENIE_ORDER} labels={GENIE_LABELS} onChange={(v) => patch({ genie: v })} />
+
+      {/* ШГ і Вознєс — окремі шмотки: спершу чекбокси в один рядок, під ними
+          точка кожної відміченої (як свап-сети з каменями — колонки не скачуть). */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
+        <label className="checkbox-row">
+          <input type="checkbox" checked={!!value.shg} onChange={(e) => patch({ shg: e.target.checked })} />
+          Є ШГ
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" checked={!!value.voznes} onChange={(e) => patch({ voznes: e.target.checked })} />
+          Є Вознєс
+        </label>
+      </div>
+      {(value.shg || value.voznes) && (
+        <div className="field-row">
+          {value.shg && <RefineSelect label="Точка ШГ" value={value.shgRefine ?? null} onChange={(n) => patch({ shgRefine: n })} />}
+          {value.voznes && <RefineSelect label="Точка Вознєса" value={value.voznesRefine ?? null} onChange={(n) => patch({ voznesRefine: n })} />}
+        </div>
+      )}
 
       <details className="gear-extra">
         <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)', fontWeight: 500 }}>

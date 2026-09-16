@@ -30,6 +30,8 @@ interface RegistrationRow {
   armor_set?: ArmorSet | null; armor_refine?: ArmorRefine | null; gems?: Gems | null; special_sets?: SpecialSet[] | null;
   special_set_gems?: Partial<Record<SpecialSet, Gems>> | null; tract?: Tract | null; genie?: Genie | null;
   attack_level?: number | null; defense_level?: number | null;
+  // 0023
+  shg?: boolean | null; shg_refine?: number | null; voznes?: boolean | null; voznes_refine?: number | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -51,6 +53,9 @@ const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
     charClass: r.char_class, weaponGrade: r.weapon_grade, weaponRefine: r.weapon_refine, weaponPz: r.weapon_pz,
     armorSet: r.armor_set, armorRefine: r.armor_refine, gems: r.gems, specialSets: r.special_sets ?? [],
     specialSetGems: r.special_set_gems && typeof r.special_set_gems === 'object' ? r.special_set_gems : {}, tract: r.tract, genie: r.genie,
+    // до 0023 колонок не було — «немає шмотки»
+    shg: !!r.shg, shgRefine: r.shg ? r.shg_refine ?? 0 : null,
+    voznes: !!r.voznes, voznesRefine: r.voznes ? r.voznes_refine ?? 0 : null,
   };
 };
 const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
@@ -67,6 +72,8 @@ const gearToRow = (g: PlayerGear) => ({
   char_class: g.charClass, weapon_grade: g.weaponGrade, weapon_refine: g.weaponRefine, weapon_pz: g.weaponPz,
   armor_set: g.armorSet, armor_refine: g.armorRefine, gems: g.gems, special_sets: g.specialSets, special_set_gems: g.specialSetGems,
   tract: g.tract, genie: g.genie,
+  shg: g.shg, shg_refine: g.shg ? g.shgRefine ?? 0 : null,
+  voznes: g.voznes, voznes_refine: g.voznes ? g.voznesRefine ?? 0 : null,
 });
 
 export async function fetchSeries(): Promise<TournamentSeries[]> {
