@@ -16,6 +16,7 @@ import { supabase } from '../app/supabaseClient';
 import type { BracketMatch, BracketSide } from './types';
 import { setTournamentStatus } from './tournaments';
 import { createRng } from './balance';
+import { thirdFromLosersFinal } from './podium';
 
 interface BracketRow {
   id: string;
@@ -94,8 +95,9 @@ export interface Podium {
 }
 
 /** Топ-3 турніру — для п'єдесталу на Головній. 2-ге місце — програний
- * вирішального матчу; 3-тє — переможець матчу bracket_side='third_place',
- * якщо адмін вмикав цю опцію (single_elim), інакше null. */
+ * вирішального матчу; 3-тє — переможець матчу bracket_side='third_place'
+ * (одинарна елімінація, якщо адмін вмикав опцію), а в подвійній —
+ * програний фіналу нижньої сітки. */
 export async function fetchPodium(tournamentId: string): Promise<Podium | null> {
   const matches = await fetchBracket(tournamentId);
   const decisive = pickDecisiveMatch(matches);
@@ -103,7 +105,7 @@ export async function fetchPodium(tournamentId: string): Promise<Podium | null> 
 
   const firstId = decisive.winnerId;
   const secondId = decisive.participant1Id === firstId ? decisive.participant2Id : decisive.participant1Id;
-  const thirdId = matches.find((m) => m.bracketSide === 'third_place')?.winnerId ?? null;
+  const thirdId = matches.find((m) => m.bracketSide === 'third_place')?.winnerId ?? thirdFromLosersFinal(matches);
 
   const ids = [firstId, secondId, thirdId].filter((id): id is string => !!id);
   // select('*'), а не перелік колонок: до застосування міграції 0017 колонки
