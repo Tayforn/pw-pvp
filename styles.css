@@ -651,6 +651,11 @@ html[data-theme="light"] { --trn-accent: var(--accent); --trn-accent-rgb: 176, 1
    фіксованої ширини (TeamsPanel.PlayerLine), тому все вирівняне між рядками */
 .team-rows { display: flex; flex-direction: column; }
 .team-rows > .player-row + .player-row { box-shadow: inset 0 1px 0 var(--line); }
+/* Учасники фул-рандому до формування — сітка в кілька колонок. Розділювач під
+   кожною клітинкою: правило «між сусідами» з .team-rows у сітці малює лінію
+   лише над частиною першого рядка (сусід там праворуч, а не згори). */
+.participants-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); column-gap: 18px; }
+.participants-grid > .player-row { box-shadow: inset 0 -1px 0 var(--line); }
 .player-row {
   display: flex; gap: 8px; align-items: center; width: 100%; text-align: left;
   background: transparent; border: 1px solid transparent; border-radius: 8px;

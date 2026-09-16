@@ -271,7 +271,7 @@ export default function TournamentPage({ id }: { id: string }) {
               <p className="hint">Ще немає підтверджених учасників.</p>
             ) : (
               <>
-                <div className="team-rows" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', columnGap: 18 }}>
+                <div className="participants-grid">
                   {players.map((r) => <PlayerRow key={r.id} reg={r} info={publicInfo(r, tournament)} />)}
                 </div>
                 <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)} · натисни на ранг гравця, щоб побачити анкету</span>
