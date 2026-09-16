@@ -96,8 +96,10 @@ export default function RegisterPage() {
     fetchLastGearByNickname(nick)
       .then((found) => {
         if (!found || seq !== lookupSeq.current || gearRef.current.charClass) return;
-        prefilledRef.current = { nick, gear: found.gear };
-        setGear(found.gear);
+        // Свап-сети в публічній анкеті поки вимкнені — не тягнемо їх із минулої заявки.
+        const pfGear = { ...found.gear, specialSets: [], specialSetGems: {} };
+        prefilledRef.current = { nick, gear: pfGear };
+        setGear(pfGear);
         setAttackLevel(found.attackLevel);
         setDefenseLevel(found.defenseLevel);
         setPrefilledFrom({ nick, tournamentName: found.tournamentName, eventDate: found.eventDate });
@@ -299,6 +301,7 @@ export default function RegisterPage() {
               }}
               showScore
               teamSize={tournament?.teamSize}
+              hideSpecialSets
             />
           )}
           <label className="checkbox-row">

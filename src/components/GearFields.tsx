@@ -36,6 +36,10 @@ interface Props {
   showScore?: boolean;
   /** Розмір команди турніру — від нього залежать бали за клас у скорі. */
   teamSize?: number | null;
+  /** Сховати свап-сети (ПЗ / ПА / спів) і камені в них — у публічній анкеті
+   * тимчасово вимкнено; анкета тоді завжди віддає specialSets=[] і без каменів.
+   * Адмінка показує їх і далі (можна прибрати в старих заявках). */
+  hideSpecialSets?: boolean;
 }
 
 /** Анкета заповнена — усі 10 полів на місці. Чекбокси ніколи не null:
@@ -77,7 +81,7 @@ function OptionSelect<T extends string>({ label, value, options, labels, onChang
   );
 }
 
-export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize }: Props) {
+export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize, hideSpecialSets }: Props) {
   // Підписка на реєстр версій: коли шкала з БД довантажиться (або адмін
   // збереже нову), живий гір-скор і список сетів перемалюються.
   useRules();
@@ -88,8 +92,8 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
   const patch = (p: Partial<PlayerGear>) => {
     const next: Partial<PlayerGear> = { ...value, ...p };
     next.weaponPz = next.weaponPz ?? false;
-    next.specialSets = next.specialSets ?? [];
-    next.specialSetGems = next.specialSetGems ?? {};
+    next.specialSets = hideSpecialSets ? [] : next.specialSets ?? [];
+    next.specialSetGems = hideSpecialSets ? {} : next.specialSetGems ?? {};
     onChange(next);
   };
 
@@ -137,17 +141,17 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
         <OptionSelect label="Трактат" value={value.tract} options={TRACT_ORDER} labels={TRACT_LABELS} onChange={(v) => patch({ tract: v })} />
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
+      {!hideSpecialSets && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
         {SPECIAL_SET_ORDER.map((s) => (
           <label key={s} className="checkbox-row" title={SPECIAL_SET_HINTS[s]}>
             <input type="checkbox" checked={sets.includes(s)} onChange={(e) => toggleSet(s, e.target.checked)} />
             {SPECIAL_SET_LABELS[s]}
           </label>
         ))}
-      </div>
+      </div>}
       {/* Камені в кожному відміченому свап-сеті: «сет затиканий 7 бурштинками» і
           «сет із фул ПЗ-камінням» — різні речі (відгук гільдії). */}
-      {sets.length > 0 && (
+      {!hideSpecialSets && sets.length > 0 && (
         <div className="field-row">
           {SPECIAL_SET_ORDER.filter((s) => sets.includes(s)).map((s) => (
             <OptionSelect
