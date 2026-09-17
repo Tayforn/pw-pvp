@@ -409,18 +409,19 @@ export default function RulesEditor() {
           <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Допомагає вбивати, %</span>
           {CLASS_ORDER.map((c) => (
             <Fragment key={c}>
-              <span style={{ fontSize: 13 }}>{CLASS_LABELS[c]}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{CLASS_LABELS[c]}</span>
               {(['kill', 'amp'] as const).map((ax) => (
-                <input
-                  key={ax}
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={Math.round(comp.profiles[c][ax] * 100)}
-                  style={{ padding: '6px 8px', fontSize: 13, textAlign: 'center' }}
-                  onChange={(e) => patchComp({ profiles: { ...comp.profiles, [c]: { ...comp.profiles[c], [ax]: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) / 100 } } })}
-                />
+                <span key={ax} className="field">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={Math.round(comp.profiles[c][ax] * 100)}
+                    style={{ padding: '6px 8px', fontSize: 13, textAlign: 'center' }}
+                    onChange={(e) => patchComp({ profiles: { ...comp.profiles, [c]: { ...comp.profiles[c], [ax]: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) / 100 } } })}
+                  />
+                </span>
               ))}
             </Fragment>
           ))}
