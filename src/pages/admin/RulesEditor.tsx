@@ -447,18 +447,20 @@ export default function RulesEditor() {
           <b>Склад команди (ролі)</b>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => patchComp({ weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}>Рекомендовані ваги</button>
         </div>
-        <p className="hint" style={{ margin: '0 0 8px' }}>
-          Гір показує, наскільки сильний кожен гравець окремо. Цей блок дивиться на команду в цілому: хто в ній убиває, а хто допомагає.
-          Команда з сапорта і Стража програє навіть із високим гіром, бо їй нікому вбивати, — алгоритм намагається таких команд не збирати.
+        <p className="hint" style={{ margin: '0 0 10px' }}>
+          Гір каже, наскільки сильний кожен гравець сам по собі. Цей блок — про те, чи команда взагалі зможе когось убити:
+          двоє сапортів і Страж програють навіть з найбільшим гіром. Тут ти задаєш, хто вбиває, а хто допомагає, і наскільки це важливо для алгоритму.
         </p>
-        <p className="hint" style={{ margin: '0 0 8px' }}>
-          <b>Вбиває сам</b>: 100 — повноцінний ДД (Лук, Сін, Шаман, Маг); 50 — б'є, але сам ціль не винесе (Танк з Армагеддоном, Вар); 20–30 — сам не вбиває.
-          <b> Допомагає вбивати</b>: наскільки клас підсилює урон союзників — 100 у Дру (Пурга, Amp), 50 — бафи Приста і Танка, 0 — ніяк.
+
+        <b style={{ fontSize: 13 }}>Що вміє клас</b>
+        <p className="hint" style={{ margin: '2px 0 8px' }}>
+          <b>Урон</b> — чи може вбити сам: 100 — так (Лук, Сін, Шаман, Маг); 50 — може добити, але сам не винесе (Танк, Вар); 20–30 — сам не вб'є.<br />
+          <b>Підтримка</b> — наскільки робить сильнішим напарника: хіл, бафи, зняття захисту з цілі. 100 — Дру; 50 — Прист (хіл, бафи) і Танк (бафи); 0 — чисті ДД.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, auto) repeat(2, 130px)', gap: '6px 10px', alignItems: 'center', width: 'fit-content' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, auto) repeat(2, 110px)', gap: '6px 10px', alignItems: 'center', width: 'fit-content' }}>
           <span />
-          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Вбиває сам, %</span>
-          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Допомагає вбивати, %</span>
+          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Урон, %</span>
+          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Підтримка, %</span>
           {CLASS_ORDER.map((c) => (
             <Fragment key={c}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>{CLASS_LABELS[c]}</span>
@@ -478,10 +480,12 @@ export default function RulesEditor() {
             </Fragment>
           ))}
         </div>
+
         <div style={{ marginTop: 16 }}>
           <b style={{ fontSize: 13 }}>Збірка персонажа (з анкети)</b>
           <p className="hint" style={{ margin: '2px 0 8px' }}>
-            Гравець вказує в анкеті, у що вкладені стати. Скільки відсотків урону свого класу в нього реально лишається:
+            Кон-збірка ріже урон: шмот той самий, а вбиває гірше. Число — скільки відсотків урону свого класу лишається гравцеві.
+            Приклад: Сін у кон-збірці = 100 % × {Math.round(comp.buildKill.con * 100)} % = {Math.round(comp.profiles.assassin.kill * comp.buildKill.con * 100)} % урону.
           </p>
           <div className="field-row" style={{ gap: 10 }}>
             {BUILD_ORDER.map((b) => (
@@ -491,45 +495,51 @@ export default function RulesEditor() {
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <b style={{ fontSize: 13 }}>Кого вважати небезпечним</b>
+          <b style={{ fontSize: 13 }}>Головний ДД команди</b>
+          <p className="hint" style={{ margin: '2px 0 0' }}>
+            Це гравець команди, у якого найбільший урон (колонка «Урон» × його збірка). <b>Не той, у кого найбільший гір.</b> Далі в правилах — «головний ДД».
+          </p>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <b style={{ fontSize: 13 }}>Кого суперник мусить фокусити</b>
           <p className="hint" style={{ margin: '2px 0 8px' }}>
-            Береться число з колонки «Вбиває сам, %» і множиться на збірку гравця. Якщо результат не менший за цей поріг — гравець «небезпечний»: той, кого суперник мусить фокусити.
-            Потрібно лише для правила «лише один ДД» нижче.
+            Гравець «небезпечний», якщо його урон не менший за це число. Потрібно лише для другого правила.
           </p>
           <div className="field-row" style={{ gap: 10, alignItems: 'flex-end' }}>
-            <PctInput label="Небезпечний, якщо «вбиває сам» ≥" value={comp.threatMinKill} onChange={(v) => patchComp({ threatMinKill: v })} />
+            <PctInput label="Небезпечний від, % урону" value={comp.threatMinKill} onChange={(v) => patchComp({ threatMinKill: v })} />
             <span className="hint" style={{ margin: '0 0 10px' }}>
-              За поточними числами: {dangerExample('archer')} · {dangerExample('barbarian')} · {dangerExample('seeker')} · {dangerExample('assassin', 'con')}.
+              Зараз: {dangerExample('archer')} · {dangerExample('barbarian')} · {dangerExample('seeker')} · {dangerExample('assassin', 'con')}.
             </span>
           </div>
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <b style={{ fontSize: 13 }}>Правила складу</b>
+          <b style={{ fontSize: 13 }}>Три правила</b>
           <p className="hint" style={{ margin: '2px 0 8px' }}>
-            Алгоритм шукає розклад із найменшим штрафом. Головний штраф — розкид сум гіру між командами (зараз це 10–45 балів). Число біля правила — скільки балів штрафу додає одне порушення,
-            тобто скільки балів розкиду гіру алгоритм готовий «віддати», аби його уникнути: <b>0</b> — правило не діє; <b>10</b> — виправить склад, лише якщо це майже нічого не коштує;
-            <b> 30</b> — піде на гірший баланс гіру до ~15–20 балів; <b>100</b> — виконає майже завжди, навіть ціною відверто нерівного гіру.
-            Порушення, якого не уникнути (ДД менше, ніж команд), не штрафується.
+            Алгоритм перебирає розклади й бере той, де найменше штрафу. Головний штраф — різниця сум гіру між командами (зазвичай 10–45 балів).
+            Число біля правила — скільки балів додається за одне порушення, тобто наскільки гіршим гіром алгоритм готовий заплатити, щоб його уникнути:
+            <b> 0</b> — правило вимкнене; <b>10</b> — виправить склад, тільки якщо це майже безкоштовно; <b>30</b> — піде на гірший гір до ~15–20 балів; <b>100</b> — виконає майже завжди.
+            Те, чого уникнути неможливо (ДД менше, ніж команд), не штрафується.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr', gap: '10px 14px', alignItems: 'start', maxWidth: 760 }}>
-            <RuleRow value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} title="Нема кому вбивати">
-              Дивиться на найкращого за «вбиває сам» у команді. Штраф = число × (100 % − його урон). При {comp.weights.killer || RECOMMENDED_COMPOSITION_WEIGHTS.killer}:
-              є Шаман (100 %) — 0; найкращий Танк (50 %) — {killerExample('barbarian')}; найкращий Страж (30 %) — {killerExample('seeker')}; найкращий Прист (20 %) — {killerExample('cleric')}.
+          <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr', gap: '12px 14px', alignItems: 'start', maxWidth: 780 }}>
+            <RuleRow value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} title="Команді нема ким убивати">
+              Штраф тим більший, чим слабший головний ДД команди: число × (100 % − його урон).
+              При {comp.weights.killer || RECOMMENDED_COMPOSITION_WEIGHTS.killer} це: Шаман — 0 · Танк — {killerExample('barbarian')} · Містик — {killerExample('mystic')} · Страж — {killerExample('seeker')} · Прист — {killerExample('cleric')}.
             </RuleRow>
-            <RuleRow value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} title="Лише один ДД (3+ у команді)">
-              Рахує «небезпечних» (див. вище) у команді. Менше двох — штраф = число, за кожну таку команду. Якщо один ДД, суперник фокусить його, і решта безсила.
-              Приклад: Лук + Прист + Страж — один небезпечний, штраф {comp.weights.twoThreats || RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats}; Лук + Танк + Прист — двоє, штрафу нема. Для пар не діє.
+            <RuleRow value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} title="У команді лише один небезпечний">
+              Кожна команда рахується окремо: якщо небезпечних у ній менше двох, саме ця команда отримує штраф = число. Суперник фокусить єдиного ДД — і решта нічого не зробить.
+              Лук + Прист + Страж — небезпечний один, штраф {comp.weights.twoThreats || RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats}; Лук + Танк + Прист — двоє, штрафу нема. Для команд по 2 правило вимкнене.
             </RuleRow>
-            <RuleRow value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} title="Не підсилювати топового ДД">
-              Для кожної команди рахується «сила складу» = «вбиває сам» найкращого × (1 + сума «допомагає вбивати» решти, не більше 1).
-              Сін + Танк + Прист = 1 × (1 + 0.5 + 0.5) = {strengthExample(['assassin', 'barbarian', 'cleric'])}; Сін + Страж + Містик = {strengthExample(['assassin', 'seeker', 'mystic'])}.
-              Штраф = число × різниця між найсильнішою і найслабшою командою. Тому підсилювачі (Дру, Прист, Танк) ідуть до слабших ДД, а топовий ДД отримує нейтральних тімейтів.
+            <RuleRow value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} title="Сильному ДД — слабку підтримку">
+              Прист і Танк тримають головного ДД живим, Дру знімає з цілі захист. Якщо дати це топовому ДД — його не вб'ють, а він уб'є всіх.
+              Для кожної команди рахується <b>зв'язка</b> = урон головного ДД × (1 + підтримка решти): Сін + Танк + Прист = {strengthExample(['assassin', 'barbarian', 'cleric'])}, а Сін + Страж + Містик = {strengthExample(['assassin', 'seeker', 'mystic'])}.
+              Штраф = число × різниця між найбільшою і найменшою зв'язкою. Через це підтримка дістається слабшим ДД.
             </RuleRow>
           </div>
         </div>
         <p className="hint" style={{ margin: '12px 0 0' }}>
-          Приклади штрафу за правилом «нема кому вбивати»{comp.weights.killer > 0 ? '' : ` (зараз воно вимкнене — показано при ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
+          Приклади за першим правилом{comp.weights.killer > 0 ? '' : ` (воно зараз вимкнене — показано, як було б при ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
           Шаман+Танк+Дру — {ex('psychic', 'barbarian', 'venomancer')} · Дру+Танк+Страж — {ex('venomancer', 'barbarian', 'seeker')} · Танк+Страж — {ex('barbarian', 'seeker')} · Прист+Страж — {ex('cleric', 'seeker')} · Дру+Танк — {ex('venomancer', 'barbarian')}.
         </p>
       </div>

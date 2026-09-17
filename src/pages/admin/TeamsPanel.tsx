@@ -72,14 +72,14 @@ function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: n
   return (
     <>
       {st.maxKill < 0.5 ? (
-        <span className="badge bad" title="Нема повноцінного ДД — нікому вбивати">нема ДД</span>
+        <span className="badge bad" title="Головний ДД команди майже не б'є — нікому вбивати">нема ДД</span>
       ) : st.maxKill < 0.8 ? (
-        <span className="badge warn" title="Найкращий урон у команді — половинка (Танк, Вар або кон-збірка)">слабкий ДД</span>
+        <span className="badge warn" title="Головний ДД команди — половинка (Танк, Вар або кон-збірка)">слабкий ДД</span>
       ) : null}
       {teamSize >= 3 && st.maxKill >= 0.8 && st.threats < 2 && (
-        <span className="badge warn" title="Один небезпечний гравець: сфокусують його — решта безсила">один ДД</span>
+        <span className="badge warn" title="Небезпечний лише один: сфокусують його — решта безсила">один ДД</span>
       )}
-      <span className="badge mute" title="Сила складу: найкращий ДД × (1 + підсилення від тімейтів)">сила {st.kp.toFixed(2)}</span>
+      <span className="badge mute" title="Зв'язка: урон головного ДД × (1 + підтримка тімейтів)">зв'язка {st.kp.toFixed(2)}</span>
     </>
   );
 }
@@ -452,7 +452,7 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
                     З одним ДД: {single}{ev.unavoidable.singleThreat > 0 ? ` (неминучих ${ev.unavoidable.singleThreat})` : ''}
                   </span>
                 )}
-                <span className="badge mute" title="Сила складу = найкращий ДД × (1 + підсилення від тімейтів); менший розкид — рівніші шанси вбивати">Сила складу {Math.min(...kps).toFixed(2)}–{Math.max(...kps).toFixed(2)} · розкид {kpRange.toFixed(2)}</span>
+                <span className="badge mute" title="Зв'язка = урон головного ДД × (1 + підтримка тімейтів); менший розкид — рівніші шанси вбивати">Зв'язка {Math.min(...kps).toFixed(2)}–{Math.max(...kps).toFixed(2)} · розкид {kpRange.toFixed(2)}</span>
                 <span className="badge mute">Штраф: {ev.penalty.toFixed(1)}</span>
                 {!compOn && <span className="hint" style={{ margin: 0 }} title="У версії шкали цього турніру ваги правил складу = 0: бейджі лише інформують, на жеребку не впливають">правила складу вимкнені в шкалі</span>}
                 <span className="hint" style={{ margin: 0 }}>
