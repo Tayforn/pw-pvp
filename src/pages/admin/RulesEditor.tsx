@@ -168,10 +168,22 @@ export default function RulesEditor() {
   const comp = draft.balance.composition;
   const patchComp = (c: Partial<typeof comp>) => patch({ balance: { ...draft.balance, composition: { ...comp, ...c } } });
   /** Штраф за одну таку пачку без урахування неминучого — для підказки в картці. */
+  const killerW = comp.weights.killer || RECOMMENDED_COMPOSITION_WEIGHTS.killer;
   const ex = (...classes: CharClass[]) => {
     const maxKill = Math.max(...classes.map((c) => comp.profiles[c].kill));
-    const pen = (comp.weights.killer || RECOMMENDED_COMPOSITION_WEIGHTS.killer) * Math.max(0, 1 - maxKill);
+    const pen = killerW * Math.max(0, 1 - maxKill);
     return pen > 0 ? `${Math.round(pen)}` : '0 (ок)';
+  };
+  const killerExample = (c: CharClass) => Math.round(killerW * Math.max(0, 1 - comp.profiles[c].kill));
+  const dangerExample = (c: CharClass, build: 'dd' | 'con' = 'dd') => {
+    const kill = comp.profiles[c].kill * comp.buildKill[build];
+    return `${build === 'con' ? 'кон-' : ''}${CLASS_LABELS[c]} ${Math.round(kill * 100)} % — ${kill >= comp.threatMinKill ? 'так' : 'ні'}`;
+  };
+  const strengthExample = (classes: CharClass[]) => {
+    const best = Math.max(...classes.map((c) => comp.profiles[c].kill));
+    const bestIdx = classes.findIndex((c) => comp.profiles[c].kill === best);
+    const amp = classes.reduce((a, c, i) => a + (i === bestIdx ? 0 : comp.profiles[c].amp), 0);
+    return (best * (1 + Math.min(1, amp))).toFixed(2);
   };
   // Матриця «клас × розмір паті»
   const classMax = Math.max(...SIZE_BUCKETS.flatMap((s) => CLASS_ORDER.map((c) => draft.classPointsBySize[s][c])));
@@ -481,29 +493,38 @@ export default function RulesEditor() {
         <div style={{ marginTop: 16 }}>
           <b style={{ fontSize: 13 }}>Кого вважати небезпечним</b>
           <p className="hint" style={{ margin: '2px 0 8px' }}>
-            Гравець з уроном не нижче цього відсотка — той, кого суперник мусить фокусити. При 50 це всі ДД і Танк, при 100 — лише чисті ДД.
-            Використовується правилом «лише один ДД» нижче.
+            Береться число з колонки «Вбиває сам, %» і множиться на збірку гравця. Якщо результат не менший за цей поріг — гравець «небезпечний»: той, кого суперник мусить фокусити.
+            Потрібно лише для правила «лише один ДД» нижче.
           </p>
-          <div className="field-row" style={{ gap: 10 }}>
-            <PctInput label="Урон від, %" value={comp.threatMinKill} onChange={(v) => patchComp({ threatMinKill: v })} />
+          <div className="field-row" style={{ gap: 10, alignItems: 'flex-end' }}>
+            <PctInput label="Небезпечний, якщо «вбиває сам» ≥" value={comp.threatMinKill} onChange={(v) => patchComp({ threatMinKill: v })} />
+            <span className="hint" style={{ margin: '0 0 10px' }}>
+              За поточними числами: {dangerExample('archer')} · {dangerExample('barbarian')} · {dangerExample('seeker')} · {dangerExample('assassin', 'con')}.
+            </span>
           </div>
         </div>
 
         <div style={{ marginTop: 16 }}>
           <b style={{ fontSize: 13 }}>Правила складу</b>
           <p className="hint" style={{ margin: '2px 0 8px' }}>
-            Число біля правила — наскільки воно важливе. 0 — вимкнене. 30 — алгоритм погодиться зробити баланс гіру гіршим на 15–20 балів, аби правило виконати.
-            Якщо виконати неможливо (наприклад, ДД менше, ніж команд), штрафу за це немає.
+            Алгоритм шукає розклад із найменшим штрафом. Головний штраф — розкид сум гіру між командами (зараз це 10–45 балів). Число біля правила — скільки балів штрафу додає одне порушення,
+            тобто скільки балів розкиду гіру алгоритм готовий «віддати», аби його уникнути: <b>0</b> — правило не діє; <b>10</b> — виправить склад, лише якщо це майже нічого не коштує;
+            <b> 30</b> — піде на гірший баланс гіру до ~15–20 балів; <b>100</b> — виконає майже завжди, навіть ціною відверто нерівного гіру.
+            Порушення, якого не уникнути (ДД менше, ніж команд), не штрафується.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr', gap: '10px 14px', alignItems: 'start', maxWidth: 760 }}>
             <RuleRow value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} title="Нема кому вбивати">
-              Команда без жодного ДД (сапорт + Страж, Дру + Танк у парі) програє за будь-якого гіру. Правило не дає таких команд збирати.
+              Дивиться на найкращого за «вбиває сам» у команді. Штраф = число × (100 % − його урон). При {comp.weights.killer || RECOMMENDED_COMPOSITION_WEIGHTS.killer}:
+              є Шаман (100 %) — 0; найкращий Танк (50 %) — {killerExample('barbarian')}; найкращий Страж (30 %) — {killerExample('seeker')}; найкращий Прист (20 %) — {killerExample('cleric')}.
             </RuleRow>
             <RuleRow value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} title="Лише один ДД (3+ у команді)">
-              Якщо в команді один ДД, суперник фокусить його — і решта безсила. Правило хоче хоча б двох небезпечних гравців у команді.
+              Рахує «небезпечних» (див. вище) у команді. Менше двох — штраф = число, за кожну таку команду. Якщо один ДД, суперник фокусить його, і решта безсила.
+              Приклад: Лук + Прист + Страж — один небезпечний, штраф {comp.weights.twoThreats || RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats}; Лук + Танк + Прист — двоє, штрафу нема. Для пар не діє.
             </RuleRow>
             <RuleRow value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} title="Не підсилювати топового ДД">
-              Сильному ДД (Сін у R9R2) — нейтральні тімейти. Дру, Прист і Танк ідуть до слабших ДД, а не множать того, хто й так усіх убиває.
+              Для кожної команди рахується «сила складу» = «вбиває сам» найкращого × (1 + сума «допомагає вбивати» решти, не більше 1).
+              Сін + Танк + Прист = 1 × (1 + 0.5 + 0.5) = {strengthExample(['assassin', 'barbarian', 'cleric'])}; Сін + Страж + Містик = {strengthExample(['assassin', 'seeker', 'mystic'])}.
+              Штраф = число × різниця між найсильнішою і найслабшою командою. Тому підсилювачі (Дру, Прист, Танк) ідуть до слабших ДД, а топовий ДД отримує нейтральних тімейтів.
             </RuleRow>
           </div>
         </div>

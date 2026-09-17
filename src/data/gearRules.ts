@@ -567,7 +567,7 @@ export const TRACT_ORDER: Tract[] = ['t1_3', 't4_5', 't6', 't7', 't8', 'emperor'
 export const GENIE_LABELS: Record<Genie, string> = { g60: 'до 60', g61_70: '61–70', g71_80: '71–80', g81_90: '81–90', g91_99: '91–99', g100: '100/100' };
 export const GENIE_ORDER: Genie[] = ['g60', 'g61_70', 'g71_80', 'g81_90', 'g91_99', 'g100'];
 
-export const BUILD_LABELS: Record<Build, string> = { dd: 'ДД', hybrid: 'Гібрид', con: 'Кон (у захист)' };
+export const BUILD_LABELS: Record<Build, string> = { dd: 'ДД', hybrid: 'Гібрид', con: 'Кон' };
 export const BUILD_ORDER: Build[] = ['dd', 'hybrid', 'con'];
 
 export const CHAR_LEVEL_LABELS: Record<CharLevel, string> = { l90_100: '90–100', l101: '101', l102: '102', l103: '103', l104: '104', l105: '105' };
