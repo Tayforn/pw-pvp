@@ -72,14 +72,14 @@ function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: n
   return (
     <>
       {st.maxKill < 0.5 ? (
-        <span className="badge bad" title="Нема реального ДД — нікому вбивати">без кілера</span>
+        <span className="badge bad" title="Нема повноцінного ДД — нікому вбивати">нема ДД</span>
       ) : st.maxKill < 0.8 ? (
-        <span className="badge warn" title="Єдиний урон — половинка (Танк/Вар/кон-збірка)">слабкий кілер</span>
+        <span className="badge warn" title="Найкращий урон у команді — половинка (Танк, Вар або кон-збірка)">слабкий ДД</span>
       ) : null}
       {teamSize >= 3 && st.maxKill >= 0.8 && st.threats < 2 && (
-        <span className="badge warn" title="Один ДД: сфокусують його — пачка не зробить нічого">1 загроза</span>
+        <span className="badge warn" title="Один небезпечний гравець: сфокусують його — решта безсила">один ДД</span>
       )}
-      <span className="badge mute" title="Kill pressure: найкращий кілер × (1 + підсилення тімейтів)">KP {st.kp.toFixed(2)}</span>
+      <span className="badge mute" title="Сила складу: найкращий ДД × (1 + підсилення від тімейтів)">сила {st.kp.toFixed(2)}</span>
     </>
   );
 }
@@ -444,17 +444,17 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className={'badge ' + (spread <= 10 ? 'good' : 'warn')}>Сума гіру {minT}–{maxT} · розкид {spread}</span>
                 <span className={'badge ' + (dups === ev.unavoidableDups ? 'good' : 'warn')}>Дублікати класів: {dups}{ev.unavoidableDups > 0 ? ` (неминучих ${ev.unavoidableDups})` : ''}</span>
-                <span className={'badge ' + (noKiller > unavoidNoKiller ? 'bad' : noKiller > 0 ? 'warn' : 'good')} title="Пачки, де найкращий урон < 0.5 (нема кілера, лише Страж/сапорти)">
-                  Без кілера: {noKiller}{unavoidNoKiller > 0 ? ` (неминучих ${unavoidNoKiller})` : ''}
+                <span className={'badge ' + (noKiller > unavoidNoKiller ? 'bad' : noKiller > 0 ? 'warn' : 'good')} title="Команди, де нікому вбивати (лише Страж/сапорти)">
+                  Команд без ДД: {noKiller}{unavoidNoKiller > 0 ? ` (неминучих ${unavoidNoKiller})` : ''}
                 </span>
                 {S >= 3 && (
-                  <span className={'badge ' + (single > ev.unavoidable.singleThreat ? 'warn' : 'mute')} title="Пачки з одним ДД/Танком: сфокусують його — решта нічого не зробить">
-                    З однією загрозою: {single}{ev.unavoidable.singleThreat > 0 ? ` (неминучих ${ev.unavoidable.singleThreat})` : ''}
+                  <span className={'badge ' + (single > ev.unavoidable.singleThreat ? 'warn' : 'mute')} title="Команди з одним небезпечним гравцем: сфокусують його — решта безсила">
+                    З одним ДД: {single}{ev.unavoidable.singleThreat > 0 ? ` (неминучих ${ev.unavoidable.singleThreat})` : ''}
                   </span>
                 )}
-                <span className="badge mute" title="Kill pressure = найкращий кілер × (1 + підсилення тімейтів); менший розкид — рівніші шанси вбивати">KP {Math.min(...kps).toFixed(2)}–{Math.max(...kps).toFixed(2)} · розкид {kpRange.toFixed(2)}</span>
+                <span className="badge mute" title="Сила складу = найкращий ДД × (1 + підсилення від тімейтів); менший розкид — рівніші шанси вбивати">Сила складу {Math.min(...kps).toFixed(2)}–{Math.max(...kps).toFixed(2)} · розкид {kpRange.toFixed(2)}</span>
                 <span className="badge mute">Штраф: {ev.penalty.toFixed(1)}</span>
-                {!compOn && <span className="hint" style={{ margin: 0 }} title="У версії шкали цього турніру ваги шару «функціональність пачки» = 0: бейджі лише інформують">рольовий шар вимкнено у шкалі</span>}
+                {!compOn && <span className="hint" style={{ margin: 0 }} title="У версії шкали цього турніру ваги правил складу = 0: бейджі лише інформують, на жеребку не впливають">правила складу вимкнені в шкалі</span>}
                 <span className="hint" style={{ margin: 0 }}>
                   кандидатів у коридорі: {draft.result.candidates} з {draft.result.distinct}
                   {swapped ? ' · є ручні зміни' : ''}

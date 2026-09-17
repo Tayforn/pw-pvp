@@ -392,17 +392,21 @@ export default function RulesEditor() {
 
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          <b>Функціональність пачки (ролі)</b>
+          <b>Склад команди (ролі)</b>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => patchComp({ weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}>Рекомендовані ваги</button>
         </div>
         <p className="hint" style={{ margin: '0 0 8px' }}>
-          Сила пачки — найкращий кілер × підсилювачі, а не сума урону. «Урон»: 100 = реальний кілер, 50 = половинка (Танк з Армагеддоном), 20–30 = не вбиває.
-          «Підсилення» — наскільки клас множить урон союзників (Пурга/Amp/бафи). Штрафується лише те, чого можна уникнути: 7 кілерів на 8 пар — одна пачка без кілера не карається.
+          Гір показує, наскільки сильний кожен гравець окремо. Цей блок дивиться на команду в цілому: хто в ній убиває, а хто допомагає.
+          Команда з сапорта і Стража програє навіть із високим гіром, бо їй нікому вбивати, — алгоритм намагається таких команд не збирати.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, auto) repeat(2, 84px)', gap: '6px 10px', alignItems: 'center', width: 'fit-content' }}>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          <b>Вбиває сам</b>: 100 — повноцінний ДД (Лук, Сін, Шаман, Маг); 50 — б'є, але сам ціль не винесе (Танк з Армагеддоном, Вар); 20–30 — сам не вбиває.
+          <b> Допомагає вбивати</b>: наскільки клас підсилює урон союзників — 100 у Дру (Пурга, Amp), 50 — бафи Приста і Танка, 0 — ніяк.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, auto) repeat(2, 130px)', gap: '6px 10px', alignItems: 'center', width: 'fit-content' }}>
           <span />
-          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Урон, %</span>
-          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Підсил., %</span>
+          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Вбиває сам, %</span>
+          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Допомагає вбивати, %</span>
           {CLASS_ORDER.map((c) => (
             <Fragment key={c}>
               <span style={{ fontSize: 13 }}>{CLASS_LABELS[c]}</span>
@@ -422,28 +426,37 @@ export default function RulesEditor() {
           ))}
         </div>
         <div style={{ marginTop: 14 }}>
-          <b style={{ fontSize: 13 }}>Збірка гравця — % урону класу</b>
-          <p className="hint" style={{ margin: '2px 0 6px' }}>З анкети: кон-збірка в топ-шмоті не вбиває. «Загроза» — гравець, чий урон після множника не нижчий за поріг (кілер або Танк).</p>
+          <b style={{ fontSize: 13 }}>Збірка з анкети</b>
+          <p className="hint" style={{ margin: '2px 0 6px' }}>
+            Скільки відсотків свого урону лишає гравець за збіркою: кон-Сін навіть у топ-шмоті вбиває на 40 % від звичайного, тому йому в команду треба другий ДД.
+            «Небезпечний від» — гравець, у якого після цього множника лишається не менше стількох відсотків урону, рахується небезпечним для суперника (при 50 — усі ДД і Танк). Потрібно для правила «команда з одним ДД» нижче.
+          </p>
           <div className="field-row" style={{ gap: 10 }}>
             {BUILD_ORDER.map((b) => (
               <NumInput key={b} label={BUILD_LABELS[b]} value={Math.round(comp.buildKill[b] * 100)} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [b]: Math.min(100, v) / 100 } })} width={120} />
             ))}
-            <NumInput label="Загроза від, %" value={Math.round(comp.threatMinKill * 100)} onChange={(v) => patchComp({ threatMinKill: Math.min(100, v) / 100 })} width={130} />
+            <NumInput label="Небезпечний від, %" value={Math.round(comp.threatMinKill * 100)} onChange={(v) => patchComp({ threatMinKill: Math.min(100, v) / 100 })} width={160} />
           </div>
         </div>
         <div style={{ marginTop: 14 }}>
-          <b style={{ fontSize: 13 }}>Ваги правил (балів штрафу)</b>
+          <b style={{ fontSize: 13 }}>Три правила — і скільки балів гіру алгоритм готовий «віддати», щоб їх виконати</b>
           <p className="hint" style={{ margin: '2px 0 6px' }}>
-            0 = вимкнено. Рекомендовано {RECOMMENDED_COMPOSITION_WEIGHTS.killer} / {RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats} / {RECOMMENDED_COMPOSITION_WEIGHTS.kpRange}: виправлення складу приймається, якщо коштує до ~10–20 балів розкиду гіру.
+            0 — правило вимкнене. Що більше число, то важливіше правило порівняно з рівним гіром: при 30 алгоритм погодиться на гірший баланс гіру приблизно до 15–20 балів, аби дати команді ДД.
+            Якщо ДД на всі команди не вистачає, одна команда без ДД неминуча — за неї штрафу немає.
           </p>
+          <ul className="hint" style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+            <li><b>Команда без ДД</b> — нікому вбивати (сапорт + Страж; Дру + Танк у парі).</li>
+            <li><b>Команда з одним ДД</b> (лише при 3+ у команді) — сфокусували єдиного ДД, і решта безсила. Хочемо хоча б двох «небезпечних».</li>
+            <li><b>Різниця сили складу</b> — сила складу = найкращий ДД × ті, хто йому допомагає. Не дає скласти топового Сіна з Танком і Пристом: він отримує нейтральних тімейтів, а Дру/Прист/Танк ідуть до слабших ДД.</li>
+          </ul>
           <div className="field-row" style={{ gap: 10 }}>
-            <NumInput label="Без кілера" value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} width={120} />
-            <NumInput label="Одна загроза (3+)" value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} width={150} />
-            <NumInput label="Розкид KP" value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} width={120} />
+            <NumInput label="Команда без ДД" value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} width={150} />
+            <NumInput label="Команда з одним ДД" value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} width={170} />
+            <NumInput label="Різниця сили складу" value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} width={170} />
           </div>
         </div>
         <p className="hint" style={{ margin: '10px 0 0' }}>
-          Штраф за пачку за поточними числами{comp.weights.killer > 0 ? '' : ` (вага «без кілера» 0 — показано за рекомендованою ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
+          Скільки балів штрафу отримає команда за правилом «без ДД»{comp.weights.killer > 0 ? '' : ` (зараз вага 0 — показано за рекомендованою ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
           Шаман+Танк+Дру — {ex('psychic', 'barbarian', 'venomancer')} · Дру+Танк+Страж — {ex('venomancer', 'barbarian', 'seeker')} · Танк+Страж — {ex('barbarian', 'seeker')} · Прист+Страж — {ex('cleric', 'seeker')} · Дру+Танк — {ex('venomancer', 'barbarian')}.
         </p>
       </div>
