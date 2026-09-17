@@ -22,7 +22,7 @@ import type { CharClass, Registration, Tier, Tournament } from '../../data/types
 import { isRegistrationOpen } from '../../data/types';
 import { fetchRegistrations, setTournamentStatus, subscribeToTournamentChanges } from '../../data/tournaments';
 import { bracketHasResults, fetchBracket, isPowerOfTwo } from '../../data/bracket';
-import { estimateSpread, evaluateTeams, formTeams, newSeed, spreadOf, suggestReplacement, type BalancePlayer, type ReservePolicy } from '../../data/balance';
+import { estimateSpread, evaluateTeams, formTeams, newSeed, penalty as penaltyOf, spreadOf, suggestReplacement, teamStats, unavoidable, type BalancePlayer, type ReservePolicy } from '../../data/balance';
 import { CLASS_LABELS, CLASS_ORDER, playerProfile, rulesFor, tierFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
@@ -349,6 +349,22 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const kps = ev ? ev.stats.map((x) => x.kp) : [];
   const kpRange = kps.length ? Math.max(...kps) - Math.min(...kps) : 0;
   const compOn = rules.composition.weights.killer > 0 || rules.composition.weights.twoThreats > 0 || rules.composition.weights.kpRange > 0;
+  // Розшифровка штрафу: скільки в ньому «за гір», а скільки — за кожне правило складу.
+  // Базовий штраф рахуємо тими самими функціями з нульовими вагами правил.
+  const cw = rules.composition.weights;
+  const parts = (() => {
+    if (!draft || !ev) return null;
+    const teams = draft.teams.map((tm) => tm.members);
+    const off = { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0 } } };
+    const gear = penaltyOf(teams.map((t) => teamStats(t, off)), S, unavoidable(teams.flat(), teams.length, off), off);
+    const lack = ev.stats.reduce((a, x) => a + Math.max(0, 1 - x.maxKill), 0);
+    return {
+      gear,
+      killer: cw.killer * Math.max(0, lack - ev.unavoidable.killLack),
+      twoThreats: S >= 3 ? cw.twoThreats * Math.max(0, single - ev.unavoidable.singleThreat) : 0,
+      kpRange: cw.kpRange * kpRange,
+    };
+  })();
 
   // Підсумок оцінки межі — проти розкиду поточної чернетки (зі свопами):
   // яка частка прогонів дала розкид НЕ МЕНШИЙ за наш (рівні теж рахуються —
@@ -453,7 +469,15 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
                   </span>
                 )}
                 <span className="badge mute" title="Зв'язка = урон головного ДД × (1 + підтримка тімейтів); менший розкид — рівніші шанси вбивати">Зв'язка {Math.min(...kps).toFixed(2)}–{Math.max(...kps).toFixed(2)} · розкид {kpRange.toFixed(2)}</span>
-                <span className="badge mute">Штраф: {ev.penalty.toFixed(1)}</span>
+                <span className="badge mute" title="Алгоритм обирає розклад із найменшим штрафом. Це не бали гіру команд — лише оцінка, наскільки розклад поганий.">Штраф: {ev.penalty.toFixed(1)}</span>
+                {parts && (
+                  <span className="hint" style={{ margin: 0 }}>
+                    = гір {parts.gear.toFixed(1)}
+                    {' · нема ДД '}{parts.killer.toFixed(1)}
+                    {S >= 3 ? ` · один ДД ${parts.twoThreats.toFixed(1)}` : ''}
+                    {' · зв\'язка '}{parts.kpRange.toFixed(1)}
+                  </span>
+                )}
                 {!compOn && <span className="hint" style={{ margin: 0 }} title="У версії шкали цього турніру ваги правил складу = 0: бейджі лише інформують, на жеребку не впливають">правила складу вимкнені в шкалі</span>}
                 <span className="hint" style={{ margin: 0 }}>
                   кандидатів у коридорі: {draft.result.candidates} з {draft.result.distinct}
