@@ -9,7 +9,7 @@
 // стару в чернетку.
 // =========================================================
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { errorMessage } from '../../app/errorMessage';
 import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../data/types';
 import {
@@ -49,6 +49,46 @@ function NumInput({ label, value, onChange, width = 92 }: { label: string; value
         onChange={(e) => onChange(e.target.value === '' ? 0 : Math.max(0, Math.round(Number(e.target.value))))}
       />
     </label>
+  );
+}
+
+/** Відсоток (0–100) для значення 0–1 — підпис не обрізається. */
+function PctInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="field" style={{ flex: '0 0 auto', width: 150 }}>
+      <span style={{ whiteSpace: 'normal' }}>{label}</span>
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step={5}
+        value={Math.round(value * 100)}
+        style={{ padding: '8px 10px', fontSize: 14 }}
+        onChange={(e) => onChange(Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) / 100)}
+      />
+    </label>
+  );
+}
+
+/** Ряд правила складу: поле ваги + назва + пояснення людською мовою. */
+function RuleRow({ title, value, onChange, children }: { title: string; value: number; onChange: (v: number) => void; children: ReactNode }) {
+  return (
+    <>
+      <label className="field" style={{ width: 92 }}>
+        <input
+          type="number"
+          min={0}
+          step={5}
+          value={Number.isFinite(value) ? value : ''}
+          style={{ padding: '8px 10px', fontSize: 14 }}
+          onChange={(e) => onChange(e.target.value === '' ? 0 : Math.max(0, Math.round(Number(e.target.value))))}
+        />
+      </label>
+      <div style={{ paddingTop: 4 }}>
+        <b style={{ fontSize: 13.5 }}>{title}</b>
+        <span className="hint" style={{ margin: '2px 0 0' }}>{children}</span>
+      </div>
+    </>
   );
 }
 
@@ -426,38 +466,49 @@ export default function RulesEditor() {
             </Fragment>
           ))}
         </div>
-        <div style={{ marginTop: 14 }}>
-          <b style={{ fontSize: 13 }}>Збірка з анкети</b>
-          <p className="hint" style={{ margin: '2px 0 6px' }}>
-            Скільки відсотків свого урону лишає гравець за збіркою: кон-Сін навіть у топ-шмоті вбиває на 40 % від звичайного, тому йому в команду треба другий ДД.
-            «Небезпечний від» — гравець, у якого після цього множника лишається не менше стількох відсотків урону, рахується небезпечним для суперника (при 50 — усі ДД і Танк). Потрібно для правила «команда з одним ДД» нижче.
+        <div style={{ marginTop: 16 }}>
+          <b style={{ fontSize: 13 }}>Збірка персонажа (з анкети)</b>
+          <p className="hint" style={{ margin: '2px 0 8px' }}>
+            Гравець вказує в анкеті, у що вкладені стати. Скільки відсотків урону свого класу в нього реально лишається:
           </p>
           <div className="field-row" style={{ gap: 10 }}>
             {BUILD_ORDER.map((b) => (
-              <NumInput key={b} label={BUILD_LABELS[b]} value={Math.round(comp.buildKill[b] * 100)} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [b]: Math.min(100, v) / 100 } })} width={120} />
+              <PctInput key={b} label={BUILD_LABELS[b]} value={comp.buildKill[b]} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [b]: v } })} />
             ))}
-            <NumInput label="Небезпечний від, %" value={Math.round(comp.threatMinKill * 100)} onChange={(v) => patchComp({ threatMinKill: Math.min(100, v) / 100 })} width={160} />
           </div>
         </div>
-        <div style={{ marginTop: 14 }}>
-          <b style={{ fontSize: 13 }}>Три правила — і скільки балів гіру алгоритм готовий «віддати», щоб їх виконати</b>
-          <p className="hint" style={{ margin: '2px 0 6px' }}>
-            0 — правило вимкнене. Що більше число, то важливіше правило порівняно з рівним гіром: при 30 алгоритм погодиться на гірший баланс гіру приблизно до 15–20 балів, аби дати команді ДД.
-            Якщо ДД на всі команди не вистачає, одна команда без ДД неминуча — за неї штрафу немає.
+
+        <div style={{ marginTop: 16 }}>
+          <b style={{ fontSize: 13 }}>Кого вважати небезпечним</b>
+          <p className="hint" style={{ margin: '2px 0 8px' }}>
+            Гравець з уроном не нижче цього відсотка — той, кого суперник мусить фокусити. При 50 це всі ДД і Танк, при 100 — лише чисті ДД.
+            Використовується правилом «лише один ДД» нижче.
           </p>
-          <ul className="hint" style={{ margin: '0 0 8px', paddingLeft: 18 }}>
-            <li><b>Команда без ДД</b> — нікому вбивати (сапорт + Страж; Дру + Танк у парі).</li>
-            <li><b>Команда з одним ДД</b> (лише при 3+ у команді) — сфокусували єдиного ДД, і решта безсила. Хочемо хоча б двох «небезпечних».</li>
-            <li><b>Різниця сили складу</b> — сила складу = найкращий ДД × ті, хто йому допомагає. Не дає скласти топового Сіна з Танком і Пристом: він отримує нейтральних тімейтів, а Дру/Прист/Танк ідуть до слабших ДД.</li>
-          </ul>
           <div className="field-row" style={{ gap: 10 }}>
-            <NumInput label="Команда без ДД" value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} width={150} />
-            <NumInput label="Команда з одним ДД" value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} width={170} />
-            <NumInput label="Різниця сили складу" value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} width={170} />
+            <PctInput label="Урон від, %" value={comp.threatMinKill} onChange={(v) => patchComp({ threatMinKill: v })} />
           </div>
         </div>
-        <p className="hint" style={{ margin: '10px 0 0' }}>
-          Скільки балів штрафу отримає команда за правилом «без ДД»{comp.weights.killer > 0 ? '' : ` (зараз вага 0 — показано за рекомендованою ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
+
+        <div style={{ marginTop: 16 }}>
+          <b style={{ fontSize: 13 }}>Правила складу</b>
+          <p className="hint" style={{ margin: '2px 0 8px' }}>
+            Число біля правила — наскільки воно важливе. 0 — вимкнене. 30 — алгоритм погодиться зробити баланс гіру гіршим на 15–20 балів, аби правило виконати.
+            Якщо виконати неможливо (наприклад, ДД менше, ніж команд), штрафу за це немає.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr', gap: '10px 14px', alignItems: 'start', maxWidth: 760 }}>
+            <RuleRow value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} title="Нема кому вбивати">
+              Команда без жодного ДД (сапорт + Страж, Дру + Танк у парі) програє за будь-якого гіру. Правило не дає таких команд збирати.
+            </RuleRow>
+            <RuleRow value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} title="Лише один ДД (3+ у команді)">
+              Якщо в команді один ДД, суперник фокусить його — і решта безсила. Правило хоче хоча б двох небезпечних гравців у команді.
+            </RuleRow>
+            <RuleRow value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} title="Не підсилювати топового ДД">
+              Сильному ДД (Сін у R9R2) — нейтральні тімейти. Дру, Прист і Танк ідуть до слабших ДД, а не множать того, хто й так усіх убиває.
+            </RuleRow>
+          </div>
+        </div>
+        <p className="hint" style={{ margin: '12px 0 0' }}>
+          Приклади штрафу за правилом «нема кому вбивати»{comp.weights.killer > 0 ? '' : ` (зараз воно вимкнене — показано при ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
           Шаман+Танк+Дру — {ex('psychic', 'barbarian', 'venomancer')} · Дру+Танк+Страж — {ex('venomancer', 'barbarian', 'seeker')} · Танк+Страж — {ex('barbarian', 'seeker')} · Прист+Страж — {ex('cleric', 'seeker')} · Дру+Танк — {ex('venomancer', 'barbarian')}.
         </p>
       </div>
