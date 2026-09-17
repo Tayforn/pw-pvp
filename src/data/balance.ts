@@ -22,7 +22,7 @@
 import type { BalanceSnapshot, CharClass } from './types';
 import { ROLES, type BalanceRules, type Role } from './gearRules';
 
-export const ALGO_VERSION = 'teams-ls-v2';
+export const ALGO_VERSION = 'teams-ls-v3';
 
 export interface BalancePlayer {
   id: string;
@@ -64,7 +64,9 @@ export interface TeamStats {
   maxKill: number;
   /** гравців із kill ≥ threatMinKill */
   threats: number;
-  /** kill pressure: maxKill × (1 + Σ amp решти, не більше 1) */
+  /** «зв'язка» команди: (гір×урон головного ДД + secondDd × Σ гір×урон решти) / 100,
+   * помножене на (1 + Σ підтримки решти, не більше 1). Гір важливий: R9R2-сін
+   * і слабкий сін — не однакові ДД (відгук гравців 18.09.2026). */
   kp: number;
 }
 
@@ -184,15 +186,28 @@ export function teamStats(team: BalancePlayer[], rules: BalanceRules): TeamStats
   const roleCount = {} as Record<Role, number>;
   for (const r of ROLES) roleCount[r] = 0;
   for (const p of team) roleCount[rules.roleOf[p.cls]]++;
-  // Кілер — той, у кого kill найбільший (нічия → менший id, детерміновано);
-  // підсилення рахуємо лише від решти: Дру сама себе не множить.
+  // «Нема ким убивати» дивиться лише на клас і збірку — гір тут ні до чого.
   const comp = rules.composition;
-  let best: BalancePlayer | null = null;
-  for (const p of team) if (!best || p.kill > best.kill || (p.kill === best.kill && byId(p, best) < 0)) best = p;
-  const maxKill = best ? best.kill : 0;
-  let ampOthers = 0, threats = 0;
-  for (const p of team) { if (p !== best) ampOthers += p.amp; if (p.kill >= comp.threatMinKill) threats++; }
-  const kp = maxKill * (1 + Math.min(1, ampOthers));
+  let maxKill = 0, threats = 0;
+  for (const p of team) {
+    if (p.kill > maxKill) maxKill = p.kill;
+    if (p.kill >= comp.threatMinKill) threats++;
+  }
+  // «Зв'язка» — навпаки, зважена гіром: головний ДД = найбільший гір×урон
+  // (нічия → менший id, детерміновано), підсилення беремо лише від решти
+  // (Дру сама себе не множить), другий ДД входить із коефіцієнтом secondDd.
+  let bestIdx = -1, bestDmg = -1;
+  for (let i = 0; i < team.length; i++) {
+    const d = team[i].score * team[i].kill;
+    if (d > bestDmg || (d === bestDmg && bestIdx >= 0 && byId(team[i], team[bestIdx]) < 0)) { bestDmg = d; bestIdx = i; }
+  }
+  let restDmg = 0, ampOthers = 0;
+  for (let i = 0; i < team.length; i++) {
+    if (i === bestIdx) continue;
+    restDmg += team[i].score * team[i].kill;
+    ampOthers += team[i].amp;
+  }
+  const kp = ((Math.max(0, bestDmg) + comp.secondDd * restDmg) / 100) * (1 + Math.min(1, ampOthers));
   return { prefix, total: s, dup, roleCount, maxKill, threats, kp };
 }
 

@@ -122,7 +122,7 @@ describe('formTeams', () => {
     const b = formTeams(changed, baseOpts());
     expect(a.snapshot.inputHash).not.toBe(b.snapshot.inputHash);
     expect(a.snapshot.players.map((x) => x[0])).toEqual(players.map((p) => p.id).sort());
-    expect(a.snapshot.algoVersion).toBe('teams-ls-v2');
+    expect(a.snapshot.algoVersion).toBe('teams-ls-v3');
     expect(a.snapshot.players[0].length).toBe(5); // id, клас, score, kill, amp
   });
 });
@@ -208,14 +208,26 @@ describe('шар «функціональність пачки» (teams-ls-v2)',
     expect(a.penalty).toBe(b.penalty);
   });
 
-  it('teamStats: найкращий кілер, загрози, kill pressure без самопідсилення', () => {
+  it('teamStats: найкращий кілер, загрози, зв\'язка з гіру й підтримки', () => {
     const st = teamStats([bp('psychic', 100), bp('barbarian', 100), bp('venomancer', 100)], on);
     expect(st.maxKill).toBe(1);
     expect(st.threats).toBe(2); // Шаман 1.0 і Танк 0.5 ≥ 0.5; Дру 0.2 — ні
-    expect(st.kp).toBeCloseTo(1 * (1 + Math.min(1, 0.5 + 1)), 5); // amp Танка + Дру, кеп 1
+    // головний ДД — Шаман (100×1.0), решта входить на secondDd; підтримка Танка й Дру з кепом 1
+    expect(st.kp).toBeCloseTo(((100 + 0.5 * (100 * 0.5 + 100 * 0.2)) / 100) * 2, 5);
     const only = teamStats([bp('venomancer', 100), bp('barbarian', 100), bp('seeker', 100)], on);
     expect(only.maxKill).toBe(0.5);
-    expect(only.kp).toBeCloseTo(0.5 * (1 + Math.min(1, 1 + 0.1)), 5); // кілер — Танк, підсилюють Дру і Страж
+    expect(only.kp).toBeCloseTo(((100 * 0.5 + 0.5 * (100 * 0.2 + 100 * 0.3)) / 100) * 2, 5);
+  });
+
+  it('зв\'язка зважена гіром: той самий клас із вищим гіром дає більшу зв\'язку', () => {
+    const weak = teamStats([bp('assassin', 100), bp('seeker', 100)], on);
+    const strong = teamStats([bp('assassin', 200), bp('seeker', 100)], on);
+    expect(strong.kp).toBeGreaterThan(weak.kp);
+    // другий ДД додає половину свого гіру×урону
+    const solo = teamStats([bp('assassin', 200), bp('cleric', 100)], on);
+    const duo = teamStats([bp('assassin', 200), bp('wizard', 100)], on);
+    expect(duo.kp).toBeCloseTo((200 + 0.5 * 100) / 100, 5); // Маг підтримки не дає
+    expect(solo.kp).toBeCloseTo(((200 + 0.5 * 100 * 0.2) / 100) * 1.5, 5); // Прист: мало урону, але підтримка 0.5
   });
 
   it('контрольні пачки: Шаман+Танк+Дру — 0, Дру+Танк+Страж — половинка, Прист+Страж — без кілера', () => {
@@ -245,9 +257,9 @@ describe('шар «функціональність пачки» (teams-ls-v2)',
     expect(ev.unavoidable.killLack).toBeCloseTo(0.5, 5); // 4-й найкращий kill — Танк 0.5
     const lack = ev.stats.reduce((s, x) => s + Math.max(0, 1 - x.maxKill), 0);
     expect(lack).toBeCloseTo(0.5, 5); // лише Танк+Страж
-    // штраф за кілера = 30·max(0, 0.5 − 0.5) = 0; лишається тільки KP-розкид
+    // штраф за кілера = 30·max(0, 0.5 − 0.5) = 0; лишається тільки розкид зв'язки
     const kps = ev.stats.map((x) => x.kp);
-    expect(compPen(teams)).toBeCloseTo(10 * (Math.max(...kps) - Math.min(...kps)), 5);
+    expect(compPen(teams)).toBeCloseTo(RECOMMENDED_COMPOSITION_WEIGHTS.kpRange * (Math.max(...kps) - Math.min(...kps)), 5);
   });
 
   it('кон-збірка перетворює кілера на половинку', () => {

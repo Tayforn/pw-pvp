@@ -15,7 +15,7 @@ import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../d
 import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, BUILD_LABELS, BUILD_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
-  RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
+  BUILTIN_COMPOSITION, RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, sameForAllSizes, tierForWith,
   type SizeBucket,
   type GearRules,
@@ -179,11 +179,13 @@ export default function RulesEditor() {
     const kill = comp.profiles[c].kill * comp.buildKill[build];
     return `${build === 'con' ? 'кон-' : ''}${CLASS_LABELS[c]} ${Math.round(kill * 100)} % — ${kill >= comp.threatMinKill ? 'так' : 'ні'}`;
   };
-  const strengthExample = (classes: CharClass[]) => {
-    const best = Math.max(...classes.map((c) => comp.profiles[c].kill));
-    const bestIdx = classes.findIndex((c) => comp.profiles[c].kill === best);
-    const amp = classes.reduce((a, c, i) => a + (i === bestIdx ? 0 : comp.profiles[c].amp), 0);
-    return (best * (1 + Math.min(1, amp))).toFixed(2);
+  /** «Зв'язка» для прикладу: пари [клас, гір] — так само, як рахує алгоритм. */
+  const strengthExample = (team: Array<[CharClass, number]>) => {
+    const dmg = team.map(([c, score]) => score * comp.profiles[c].kill);
+    const bestIdx = dmg.indexOf(Math.max(...dmg));
+    const rest = dmg.reduce((a, d, i) => a + (i === bestIdx ? 0 : d), 0);
+    const amp = team.reduce((a, [c], i) => a + (i === bestIdx ? 0 : comp.profiles[c].amp), 0);
+    return (((dmg[bestIdx] + comp.secondDd * rest) / 100) * (1 + Math.min(1, amp))).toFixed(2);
   };
   // Матриця «клас × розмір паті»
   const classMax = Math.max(...SIZE_BUCKETS.flatMap((s) => CLASS_ORDER.map((c) => draft.classPointsBySize[s][c])));
@@ -445,7 +447,14 @@ export default function RulesEditor() {
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <b>Склад команди (ролі)</b>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => patchComp({ weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}>Рекомендовані ваги</button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            title="Заповнити весь блок узгодженими значеннями: профілі класів, збірки, другий ДД і ваги правил"
+            onClick={() => patchComp({ ...BUILTIN_COMPOSITION, weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}
+          >
+            Рекомендовані значення
+          </button>
         </div>
         <p className="hint" style={{ margin: '0 0 10px' }}>
           Гір каже, наскільки сильний кожен гравець сам по собі. Цей блок — про те, чи команда взагалі зможе когось убити:
@@ -495,6 +504,16 @@ export default function RulesEditor() {
         </div>
 
         <div style={{ marginTop: 16 }}>
+          <b style={{ fontSize: 13 }}>Другий ДД у команді</b>
+          <p className="hint" style={{ margin: '2px 0 8px' }}>
+            Другий ДД теж завдає шкоди, але його урон не збирається з першим в один бурст. Число — з якою часткою він входить у «зв'язку» команди (третій і далі так само).
+          </p>
+          <div className="field-row" style={{ gap: 10 }}>
+            <PctInput label="Другий ДД додає, %" value={comp.secondDd} onChange={(v) => patchComp({ secondDd: v })} />
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
           <b style={{ fontSize: 13 }}>Головний ДД команди</b>
           <p className="hint" style={{ margin: '2px 0 0' }}>
             Це гравець команди, у якого найбільший урон (колонка «Урон» × його збірка). <b>Не той, у кого найбільший гір.</b> Далі в правилах — «головний ДД».
@@ -533,8 +552,10 @@ export default function RulesEditor() {
             </RuleRow>
             <RuleRow value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} title="Сильному ДД — слабку підтримку">
               Прист і Танк тримають головного ДД живим, Дру знімає з цілі захист. Якщо дати це топовому ДД — його не вб'ють, а він уб'є всіх.
-              Для кожної команди рахується <b>зв'язка</b> = урон головного ДД × (1 + підтримка решти): Сін + Танк + Прист = {strengthExample(['assassin', 'barbarian', 'cleric'])}, а Сін + Страж + Містик = {strengthExample(['assassin', 'seeker', 'mystic'])}.
-              Штраф = число × різниця між найбільшою і найменшою зв'язкою. Через це підтримка дістається слабшим ДД.
+              Для кожної команди рахується <b>зв'язка</b> = (гір×урон головного ДД + {Math.round(comp.secondDd * 100)} % від решти ДД) ÷ 100 × (1 + підтримка решти).
+              Приклад із гіром 200 + 150 + 100: Сін + Танк + Прист = {strengthExample([['assassin', 200], ['barbarian', 150], ['cleric', 100]])}, Сін + Страж + Містик = {strengthExample([['assassin', 200], ['seeker', 150], ['mystic', 100]])},
+              а два ДД разом Сін + Маг + Страж = {strengthExample([['assassin', 200], ['wizard', 150], ['seeker', 100]])}.
+              Штраф = число × різниця між найбільшою і найменшою зв'язкою в жеребці. Через це підтримка дістається слабшим ДД, а два сильних ДД не збираються в одній команді.
             </RuleRow>
           </div>
         </div>

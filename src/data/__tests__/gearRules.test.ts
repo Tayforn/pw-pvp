@@ -256,6 +256,7 @@ describe('рольовий шар у версіях шкали', () => {
     const old = normalizeRules({ ...legacy, balance: b });
     expect(old.balance.composition.weights).toEqual({ killer: 0, twoThreats: 0, kpRange: 0 });
     expect(old.balance.composition.profiles.venomancer).toEqual({ kill: 0.2, amp: 1 });
+    expect(old.balance.composition.secondDd).toBe(0.5);
     const custom = normalizeRules({ ...legacy, balance: { ...b, composition: { profiles: { seeker: { kill: 0.6 } }, weights: { killer: 30 } } } });
     expect(custom.balance.composition.profiles.seeker).toEqual({ kill: 0.6, amp: 0.1 }); // amp — з вбудованої
     expect(custom.balance.composition.weights).toEqual({ killer: 30, twoThreats: 0, kpRange: 0 });

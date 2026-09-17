@@ -47,6 +47,9 @@ export interface CompositionRules {
   /** множник kill за збіркою гравця (анкета): кон у топ-шмоті не вбиває */
   buildKill: Record<Build, number>;
   threatMinKill: number;
+  /** Частка, з якою в «зв'язку» команди входить урон другого і далі ДД:
+   * другий ДД додає шкоди, але не збирається з першим в один бурст. */
+  secondDd: number;
   weights: { killer: number; twoThreats: number; kpRange: number };
 }
 
@@ -152,15 +155,16 @@ export const BUILTIN_RULES_VERSION = 'balance-v1.0';
 export const BUILTIN_CLASS_PROFILES: Record<CharClass, ClassProfile> = {
   archer: { kill: 1, amp: 0 }, assassin: { kill: 1, amp: 0 }, psychic: { kill: 1, amp: 0 }, wizard: { kill: 1, amp: 0 },
   barbarian: { kill: 0.5, amp: 0.5 }, blademaster: { kill: 0.5, amp: 0.3 }, seeker: { kill: 0.3, amp: 0.1 },
-  cleric: { kill: 0.2, amp: 0.5 }, mystic: { kill: 0.3, amp: 0.3 }, venomancer: { kill: 0.2, amp: 1 },
+  cleric: { kill: 0.2, amp: 0.5 }, mystic: { kill: 0.3, amp: 0.5 }, venomancer: { kill: 0.2, amp: 1 },
 };
 /** Рекомендовані ваги шару (кнопка в редакторі); у вбудованій версії — нулі,
  * щоб версії, збережені до появи шару, рахувались як раніше. */
-export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 10 };
+export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 25 };
 export const BUILTIN_COMPOSITION: CompositionRules = {
   profiles: BUILTIN_CLASS_PROFILES,
   buildKill: { dd: 1, hybrid: 0.7, con: 0.4 },
   threatMinKill: 0.5,
+  secondDd: 0.5,
   weights: { killer: 0, twoThreats: 0, kpRange: 0 },
 };
 
@@ -349,6 +353,7 @@ function normalizeComposition(raw: unknown): CompositionRules {
     profiles,
     buildKill: numTable(c.buildKill, BUILTIN_COMPOSITION.buildKill),
     threatMinKill: isNum(c.threatMinKill) ? c.threatMinKill : BUILTIN_COMPOSITION.threatMinKill,
+    secondDd: isNum(c.secondDd) ? c.secondDd : BUILTIN_COMPOSITION.secondDd,
     weights: {
       killer: isNum(w.killer) ? w.killer : 0,
       twoThreats: isNum(w.twoThreats) ? w.twoThreats : 0,
