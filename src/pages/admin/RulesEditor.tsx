@@ -130,8 +130,8 @@ export default function RulesEditor() {
   /** Штраф за одну таку пачку без урахування неминучого — для підказки в картці. */
   const ex = (...classes: CharClass[]) => {
     const maxKill = Math.max(...classes.map((c) => comp.profiles[c].kill));
-    const pen = comp.weights.killer * Math.max(0, 1 - maxKill);
-    return pen > 0 ? `штраф ${Math.round(pen)}` : 'ок';
+    const pen = (comp.weights.killer || RECOMMENDED_COMPOSITION_WEIGHTS.killer) * Math.max(0, 1 - maxKill);
+    return pen > 0 ? `${Math.round(pen)}` : '0 (ок)';
   };
   // Матриця «клас × розмір паті»
   const classMax = Math.max(...SIZE_BUCKETS.flatMap((s) => CLASS_ORDER.map((c) => draft.classPointsBySize[s][c])));
@@ -396,11 +396,10 @@ export default function RulesEditor() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => patchComp({ weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}>Рекомендовані ваги</button>
         </div>
         <p className="hint" style={{ margin: '0 0 8px' }}>
-          Сила пачки — це найкращий кілер, помножений на підсилювачів, а не сума урону. «Урон» класу: 100 = реальний кілер (без нього пачка не вбиває),
-          50 = половинка (Танк з Армагеддоном), 20–30 = не вбиває. «Підсилення» — наскільки клас множить урон союзників (Пурга/Amp/бафи).
-          Кон-збірка з анкети множить урон гравця. Ваги: 0 = правило вимкнене; штрафується лише те, чого можна уникнути (7 кілерів на 8 пар — одна пачка без кілера не карається).
+          Сила пачки — найкращий кілер × підсилювачі, а не сума урону. «Урон»: 100 = реальний кілер, 50 = половинка (Танк з Армагеддоном), 20–30 = не вбиває.
+          «Підсилення» — наскільки клас множить урон союзників (Пурга/Amp/бафи). Штрафується лише те, чого можна уникнути: 7 кілерів на 8 пар — одна пачка без кілера не карається.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(2, 84px)', gap: '6px 10px', alignItems: 'center', maxWidth: 420 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, auto) repeat(2, 84px)', gap: '6px 10px', alignItems: 'center', width: 'fit-content' }}>
           <span />
           <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Урон, %</span>
           <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Підсил., %</span>
@@ -422,20 +421,30 @@ export default function RulesEditor() {
             </Fragment>
           ))}
         </div>
-        <div className="field-row" style={{ gap: 10, marginTop: 12 }}>
-          {BUILD_ORDER.map((b) => (
-            <NumInput key={b} label={`Збірка «${BUILD_LABELS[b]}», % урону`} value={Math.round(comp.buildKill[b] * 100)} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [b]: Math.min(100, v) / 100 } })} width={170} />
-          ))}
-          <NumInput label="Загроза від, % урону" value={Math.round(comp.threatMinKill * 100)} onChange={(v) => patchComp({ threatMinKill: Math.min(100, v) / 100 })} width={160} />
+        <div style={{ marginTop: 14 }}>
+          <b style={{ fontSize: 13 }}>Збірка гравця — % урону класу</b>
+          <p className="hint" style={{ margin: '2px 0 6px' }}>З анкети: кон-збірка в топ-шмоті не вбиває. «Загроза» — гравець, чий урон після множника не нижчий за поріг (кілер або Танк).</p>
+          <div className="field-row" style={{ gap: 10 }}>
+            {BUILD_ORDER.map((b) => (
+              <NumInput key={b} label={BUILD_LABELS[b]} value={Math.round(comp.buildKill[b] * 100)} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [b]: Math.min(100, v) / 100 } })} width={120} />
+            ))}
+            <NumInput label="Загроза від, %" value={Math.round(comp.threatMinKill * 100)} onChange={(v) => patchComp({ threatMinKill: Math.min(100, v) / 100 })} width={130} />
+          </div>
         </div>
-        <div className="field-row" style={{ gap: 10, marginTop: 8 }}>
-          <NumInput label="Пачка без кілера" value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} width={150} />
-          <NumInput label="Одна загроза (3+ у пачці)" value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} width={190} />
-          <NumInput label="Розкид kill pressure" value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} width={160} />
+        <div style={{ marginTop: 14 }}>
+          <b style={{ fontSize: 13 }}>Ваги правил (балів штрафу)</b>
+          <p className="hint" style={{ margin: '2px 0 6px' }}>
+            0 = вимкнено. Рекомендовано {RECOMMENDED_COMPOSITION_WEIGHTS.killer} / {RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats} / {RECOMMENDED_COMPOSITION_WEIGHTS.kpRange}: виправлення складу приймається, якщо коштує до ~10–20 балів розкиду гіру.
+          </p>
+          <div className="field-row" style={{ gap: 10 }}>
+            <NumInput label="Без кілера" value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} width={120} />
+            <NumInput label="Одна загроза (3+)" value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} width={150} />
+            <NumInput label="Розкид KP" value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} width={120} />
+          </div>
         </div>
-        <p className="hint" style={{ margin: '8px 0 0' }}>
-          Рекомендовано {RECOMMENDED_COMPOSITION_WEIGHTS.killer} / {RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats} / {RECOMMENDED_COMPOSITION_WEIGHTS.kpRange}: виправлення складу приймається, якщо коштує до ~10–20 балів розкиду гіру.
-          Приклади за поточними числами: Шаман+Танк+Дру — {ex('psychic', 'barbarian', 'venomancer')}; Дру+Танк+Страж — {ex('venomancer', 'barbarian', 'seeker')}; Танк+Страж (пара) — {ex('barbarian', 'seeker')}; Прист+Страж — {ex('cleric', 'seeker')}.
+        <p className="hint" style={{ margin: '10px 0 0' }}>
+          Штраф за пачку за поточними числами{comp.weights.killer > 0 ? '' : ` (вага «без кілера» 0 — показано за рекомендованою ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
+          Шаман+Танк+Дру — {ex('psychic', 'barbarian', 'venomancer')} · Дру+Танк+Страж — {ex('venomancer', 'barbarian', 'seeker')} · Танк+Страж — {ex('barbarian', 'seeker')} · Прист+Страж — {ex('cleric', 'seeker')} · Дру+Танк — {ex('venomancer', 'barbarian')}.
         </p>
       </div>
 
