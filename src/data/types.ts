@@ -40,6 +40,9 @@ export type Genie = 'g60' | 'g61_70' | 'g71_80' | 'g81_90' | 'g91_99' | 'g100';
 export type Gems = 'g0_9' | 'g10' | 'g11' | 'xuan' | 'xuan_pa' | 'pa' | 'xuan_camp' | 'camp';
 /** Рівень персонажа (0024): 90–100 одним кошиком, далі кожен рівень окремо. */
 export type CharLevel = 'l90_100' | 'l101' | 'l102' | 'l103' | 'l104' | 'l105';
+/** Збірка персонажа (0025): ДД / гібрид / кон. Гір той самий, а урон — ні:
+ * кон-Сін не вбиває, тому в рольовому шарі його kill множиться на коефіцієнт збірки. */
+export type Build = 'dd' | 'hybrid' | 'con';
 export type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
 
 /** Усі поля завжди присутні (constraint registrations_gear_all_or_none):
@@ -48,6 +51,8 @@ export interface PlayerGear {
   charClass: CharClass;
   /** Рівень персонажа (0024); null — анкета, подана до появи поля (рахується як 90–100). */
   charLevel: CharLevel | null;
+  /** Збірка (0025); null — анкета до появи поля (рахується як ДД). */
+  build: Build | null;
   weaponGrade: WeaponGrade;
   weaponRefine: WeaponRefine;
   /** ПЗ-зброя — запасна зброя з показником захисту, на яку свапаються під уроном. */
@@ -79,8 +84,9 @@ export interface BalanceSnapshot {
   teamCount: number;
   reservePolicy: string;
   inputHash: string;
-  /** [registrationId, клас, score] — відсортовано за id. */
-  players: Array<[string, CharClass, number]>;
+  /** [registrationId, клас, score, kill, amp] — відсортовано за id; kill/amp
+   * (профіль для рольового шару, teams-ls-v2) у старих знімках відсутні. */
+  players: Array<[string, CharClass, number, number?, number?]>;
 }
 
 /** tournaments.balance_stats — знімок генерації + склади на момент затвердження. */

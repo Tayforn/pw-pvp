@@ -12,6 +12,8 @@
 //      «кількість дублів класу в команді не зростає»;
 //   штраф — на впорядкованих статистиках (діапазони сум top-1, top-2, …),
 //      без tier-порогів: ловить «стек» топів при рівних сумах;
+//   + шар «функціональність пачки» (teams-ls-v2, rules.composition): є кілер,
+//      дві загрози, вирівнювання kill pressure — м'які члени понад неминуче;
 //   вибір — випадковий серед різних розв'язків у ε-коридорі від найкращого,
 //      щоб той самий пул не давав завжди один і той самий склад.
 // Чому не «10 000 випадкових → фільтр» зі спеки — див. §2.5 документа.
@@ -20,13 +22,16 @@
 import type { BalanceSnapshot, CharClass } from './types';
 import { ROLES, type BalanceRules, type Role } from './gearRules';
 
-export const ALGO_VERSION = 'teams-ls-v1';
+export const ALGO_VERSION = 'teams-ls-v2';
 
 export interface BalancePlayer {
   id: string;
   nickname: string;
   cls: CharClass;
   score: number;
+  /** Профіль для рольового шару (gearRules.playerProfile: клас × збірка). */
+  kill: number;
+  amp: number;
   /** ISO — для політики резерву 'latest' */
   createdAt: string;
 }
@@ -55,6 +60,22 @@ export interface TeamStats {
   /** дублікати класів у команді (Σ_c max(0, count_c − 1)) */
   dup: number;
   roleCount: Record<Role, number>;
+  /** найкращий кілер пачки (0–1); 1 − maxKill = «нестача кілера» */
+  maxKill: number;
+  /** гравців із kill ≥ threatMinKill */
+  threats: number;
+  /** kill pressure: maxKill × (1 + Σ amp решти, не більше 1) */
+  kp: number;
+}
+
+/** Неминуче — те, за що не штрафуємо, бо цього не уникнути за будь-якого розкладу. */
+export interface Unavoidable {
+  dups: number;
+  roleSlack: Record<Role, number>;
+  /** Σ (1 − kill) по K найкращих кілерах серед активних: менше нестачі не буває */
+  killLack: number;
+  /** пачок з однією загрозою щонайменше: max(0, 2K − загроз серед активних) */
+  singleThreat: number;
 }
 
 export interface FormTeamsResult {
@@ -134,7 +155,7 @@ const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id 
 
 /** Неминучі дублікати класів (Σ_c max(0, N_c − K)) і slack ролей:
  * нерівний поділ ролі на 1 між командами не штрафується, якщо N_r не ділиться на K. */
-export function unavoidable(players: BalancePlayer[], K: number, rules: BalanceRules): { dups: number; roleSlack: Record<Role, number> } {
+export function unavoidable(players: BalancePlayer[], K: number, rules: BalanceRules): Unavoidable {
   const cc: Partial<Record<CharClass, number>> = {};
   for (const p of players) cc[p.cls] = (cc[p.cls] ?? 0) + 1;
   let dups = 0;
@@ -143,7 +164,13 @@ export function unavoidable(players: BalancePlayer[], K: number, rules: BalanceR
   for (const p of players) { const r = rules.roleOf[p.cls]; rc[r] = (rc[r] ?? 0) + 1; }
   const roleSlack = {} as Record<Role, number>;
   for (const r of ROLES) roleSlack[r] = (rc[r] ?? 0) % K === 0 ? 0 : 1;
-  return { dups, roleSlack };
+  // Кожна команда має свого «найкращого кілера» — окремого гравця, тож сума
+  // нестач не менша за суму по K найбільших kill (досяжно: K найкращих у різних командах).
+  const kills = players.map((p) => p.kill).sort((a, b) => b - a);
+  let killLack = 0;
+  for (let i = 0; i < K; i++) killLack += Math.max(0, 1 - (kills[i] ?? 0));
+  const threats = players.filter((p) => p.kill >= rules.composition.threatMinKill).length;
+  return { dups, roleSlack, killLack, singleThreat: Math.max(0, 2 * K - threats) };
 }
 
 export function teamStats(team: BalancePlayer[], rules: BalanceRules): TeamStats {
@@ -157,11 +184,20 @@ export function teamStats(team: BalancePlayer[], rules: BalanceRules): TeamStats
   const roleCount = {} as Record<Role, number>;
   for (const r of ROLES) roleCount[r] = 0;
   for (const p of team) roleCount[rules.roleOf[p.cls]]++;
-  return { prefix, total: s, dup, roleCount };
+  // Кілер — той, у кого kill найбільший (нічия → менший id, детерміновано);
+  // підсилення рахуємо лише від решти: Дру сама себе не множить.
+  const comp = rules.composition;
+  let best: BalancePlayer | null = null;
+  for (const p of team) if (!best || p.kill > best.kill || (p.kill === best.kill && byId(p, best) < 0)) best = p;
+  const maxKill = best ? best.kill : 0;
+  let ampOthers = 0, threats = 0;
+  for (const p of team) { if (p !== best) ampOthers += p.amp; if (p.kill >= comp.threatMinKill) threats++; }
+  const kp = maxKill * (1 + Math.min(1, ampOthers));
+  return { prefix, total: s, dup, roleCount, maxKill, threats, kp };
 }
 
 /** Balance penalty (усі члени — в балах score). Менше = краще. */
-export function penalty(stats: TeamStats[], S: number, unav: { dups: number; roleSlack: Record<Role, number> }, rules: BalanceRules): number {
+export function penalty(stats: TeamStats[], S: number, unav: Unavoidable, rules: BalanceRules): number {
   const K = stats.length;
   const w = rules.weights;
   let pen = 0;
@@ -184,16 +220,35 @@ export function penalty(stats: TeamStats[], S: number, unav: { dups: number; rol
     for (const st of stats) { const c = st.roleCount[r]; if (c > mx) mx = c; if (c < mn) mn = c; }
     pen += w.role * Math.max(0, mx - mn - unav.roleSlack[r]);
   }
+  // Шар «функціональність пачки» — окремі адитивні члени: не чіпають суми
+  // (інакше алгоритм «лікував» би пачку без кілера гіром), штрафують лише
+  // понад неминуче. Усі ваги 0 → рівно старий штраф (teams-ls-v1).
+  const cw = rules.composition.weights;
+  if (cw.killer > 0) {
+    let lack = 0;
+    for (const st of stats) lack += Math.max(0, 1 - st.maxKill);
+    pen += cw.killer * Math.max(0, lack - unav.killLack);
+  }
+  if (cw.twoThreats > 0 && S >= 3) {
+    let single = 0;
+    for (const st of stats) if (st.threats < 2) single++;
+    pen += cw.twoThreats * Math.max(0, single - unav.singleThreat);
+  }
+  if (cw.kpRange > 0) {
+    let mx = -Infinity, mn = Infinity;
+    for (const st of stats) { if (st.kp > mx) mx = st.kp; if (st.kp < mn) mn = st.kp; }
+    pen += cw.kpRange * (mx - mn);
+  }
   return pen;
 }
 
 /** Оцінка довільного розкладу (напр. після ручних свопів у модалці). */
-export function evaluateTeams(teams: BalancePlayer[][], rules: BalanceRules): { penalty: number; stats: TeamStats[]; unavoidableDups: number } {
+export function evaluateTeams(teams: BalancePlayer[][], rules: BalanceRules): { penalty: number; stats: TeamStats[]; unavoidableDups: number; unavoidable: Unavoidable } {
   const K = teams.length;
   const S = Math.max(...teams.map((t) => t.length));
   const unav = unavoidable(teams.flat(), K, rules);
   const stats = teams.map((t) => teamStats(t, rules));
-  return { penalty: penalty(stats, S, unav, rules), stats, unavoidableDups: unav.dups };
+  return { penalty: penalty(stats, S, unav, rules), stats, unavoidableDups: unav.dups, unavoidable: unav };
 }
 
 // ── Крок A: конструктивний старт ─────────────────────────────────
@@ -244,7 +299,7 @@ function localSearch(
     if (b >= a) b++;
     const i = Math.floor(rng() * S), j = Math.floor(rng() * S);
     const pa = teams[a][i], pb = teams[b][j];
-    if (pa.cls === pb.cls && pa.score === pb.score) continue;
+    if (pa.cls === pb.cls && pa.score === pb.score && pa.kill === pb.kill && pa.amp === pb.amp) continue;
     teams[a][i] = pb; teams[b][j] = pa;
     const sa = teamStats(teams[a], rules), sb = teamStats(teams[b], rules);
     if (sa.dup > stats[a].dup || sb.dup > stats[b].dup) { teams[a][i] = pa; teams[b][j] = pb; continue; } // інваріант класів
@@ -315,7 +370,7 @@ export function formTeams(input: BalancePlayer[], opts: FormTeamsOptions): FormT
   const cands = list.filter((s) => s.penalty <= list[0].penalty + rules.epsilon).slice(0, rules.topN);
   const chosen = cands[Math.floor(rng() * cands.length)];
 
-  const snapshotPlayers: Array<[string, CharClass, number]> = players.map((p) => [p.id, p.cls, p.score]);
+  const snapshotPlayers: Array<[string, CharClass, number, number, number]> = players.map((p) => [p.id, p.cls, p.score, p.kill, p.amp]);
   const snapshot: BalanceSnapshot = {
     algoVersion: ALGO_VERSION,
     rulesVersion: opts.rulesVersion,

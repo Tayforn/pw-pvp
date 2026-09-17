@@ -23,7 +23,7 @@ import { isRegistrationOpen } from '../../data/types';
 import { fetchRegistrations, setTournamentStatus, subscribeToTournamentChanges } from '../../data/tournaments';
 import { bracketHasResults, fetchBracket, isPowerOfTwo } from '../../data/bracket';
 import { estimateSpread, evaluateTeams, formTeams, newSeed, spreadOf, suggestReplacement, type BalancePlayer, type ReservePolicy } from '../../data/balance';
-import { CLASS_LABELS, CLASS_ORDER, rulesFor, tierFor } from '../../data/gearRules';
+import { CLASS_LABELS, CLASS_ORDER, playerProfile, rulesFor, tierFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import TierBadge, { type PlayerCardInfo } from '../../components/PlayerPopover';
@@ -60,7 +60,28 @@ function fmtDateTime(iso: string): string {
 function toBalancePlayer(r: Registration, version: string, teamSize: number | null | undefined, ratings?: Map<string, PlayerRating>, frozen?: Map<string, number>): BalancePlayer | null {
   const b = scoreBreakdown(r, version, ratings, teamSize);
   if (!b || !r.gear) return null;
-  return { id: r.id, nickname: r.nickname, cls: r.gear.charClass, score: frozen?.get(r.id) ?? b.total, createdAt: r.createdAt };
+  return {
+    id: r.id, nickname: r.nickname, cls: r.gear.charClass, score: frozen?.get(r.id) ?? b.total, createdAt: r.createdAt,
+    ...playerProfile(r.gear.charClass, r.gear.build, rulesFor(version).balance.composition),
+  };
+}
+
+/** Бейджі рольового шару для картки команди (те саме, що штрафує алгоритм;
+ * показуємо завжди, навіть якщо ваги в шкалі 0 — адміну корисно бачити). */
+function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: number; kp: number }; teamSize: number }) {
+  return (
+    <>
+      {st.maxKill < 0.5 ? (
+        <span className="badge bad" title="Нема реального ДД — нікому вбивати">без кілера</span>
+      ) : st.maxKill < 0.8 ? (
+        <span className="badge warn" title="Єдиний урон — половинка (Танк/Вар/кон-збірка)">слабкий кілер</span>
+      ) : null}
+      {teamSize >= 3 && st.maxKill >= 0.8 && st.threats < 2 && (
+        <span className="badge warn" title="Один ДД: сфокусують його — пачка не зробить нічого">1 загроза</span>
+      )}
+      <span className="badge mute" title="Kill pressure: найкращий кілер × (1 + підсилення тімейтів)">KP {st.kp.toFixed(2)}</span>
+    </>
+  );
 }
 
 /** id заявки → картка гравця для бейджа рангу (PlayerPopover): адмінська —
@@ -321,6 +342,13 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const maxT = totals.length ? Math.max(...totals) : 0;
   const spread = maxT - minT;
   const dups = ev ? ev.stats.reduce((s, x) => s + x.dup, 0) : 0;
+  // Рольовий шар: пачки без кілера (maxKill < 0.5) і з однією загрозою, понад неминуче.
+  const noKiller = ev ? ev.stats.filter((x) => x.maxKill < 0.5).length : 0;
+  const unavoidNoKiller = ev ? Math.ceil(ev.unavoidable.killLack - 1e-9) : 0;
+  const single = ev && S >= 3 ? ev.stats.filter((x) => x.threats < 2).length : 0;
+  const kps = ev ? ev.stats.map((x) => x.kp) : [];
+  const kpRange = kps.length ? Math.max(...kps) - Math.min(...kps) : 0;
+  const compOn = rules.composition.weights.killer > 0 || rules.composition.weights.twoThreats > 0 || rules.composition.weights.kpRange > 0;
 
   // Підсумок оцінки межі — проти розкиду поточної чернетки (зі свопами):
   // яка частка прогонів дала розкид НЕ МЕНШИЙ за наш (рівні теж рахуються —
@@ -416,7 +444,17 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className={'badge ' + (spread <= 10 ? 'good' : 'warn')}>Сума гіру {minT}–{maxT} · розкид {spread}</span>
                 <span className={'badge ' + (dups === ev.unavoidableDups ? 'good' : 'warn')}>Дублікати класів: {dups}{ev.unavoidableDups > 0 ? ` (неминучих ${ev.unavoidableDups})` : ''}</span>
+                <span className={'badge ' + (noKiller > unavoidNoKiller ? 'bad' : noKiller > 0 ? 'warn' : 'good')} title="Пачки, де найкращий урон < 0.5 (нема кілера, лише Страж/сапорти)">
+                  Без кілера: {noKiller}{unavoidNoKiller > 0 ? ` (неминучих ${unavoidNoKiller})` : ''}
+                </span>
+                {S >= 3 && (
+                  <span className={'badge ' + (single > ev.unavoidable.singleThreat ? 'warn' : 'mute')} title="Пачки з одним ДД/Танком: сфокусують його — решта нічого не зробить">
+                    З однією загрозою: {single}{ev.unavoidable.singleThreat > 0 ? ` (неминучих ${ev.unavoidable.singleThreat})` : ''}
+                  </span>
+                )}
+                <span className="badge mute" title="Kill pressure = найкращий кілер × (1 + підсилення тімейтів); менший розкид — рівніші шанси вбивати">KP {Math.min(...kps).toFixed(2)}–{Math.max(...kps).toFixed(2)} · розкид {kpRange.toFixed(2)}</span>
                 <span className="badge mute">Штраф: {ev.penalty.toFixed(1)}</span>
+                {!compOn && <span className="hint" style={{ margin: 0 }} title="У версії шкали цього турніру ваги шару «функціональність пачки» = 0: бейджі лише інформують">рольовий шар вимкнено у шкалі</span>}
                 <span className="hint" style={{ margin: 0 }}>
                   кандидатів у коридорі: {draft.result.candidates} з {draft.result.distinct}
                   {swapped ? ' · є ручні зміни' : ''}
@@ -437,6 +475,9 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
                           <input type="text" value={nameFor(ti)} maxLength={80} style={{ padding: '8px 10px', fontSize: 14, fontWeight: 600 }} onChange={(e) => setNames({ ...names, [ti]: e.target.value })} />
                         </label>
                         <span className={'badge ' + (st.dup > 0 ? 'warn' : 'mute')} style={{ whiteSpace: 'nowrap' }}>гір {st.total}{st.dup > 0 ? ` · дублі ${st.dup}` : ''}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <CompositionBadges st={st} teamSize={S} />
                       </div>
                       <div className="team-rows">
                         {tm.members.map((p) => (

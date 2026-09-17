@@ -19,7 +19,7 @@
 import type { Gems, PlayerGear, SpecialSet } from '../data/types';
 import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER,
-  CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_HINTS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
+  BUILD_LABELS, BUILD_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_HINTS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
   TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER, WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER,
   ITEM_REFINE_MAX, computeGearScore, rulesFor,
 } from '../data/gearRules';
@@ -48,7 +48,7 @@ interface Props {
  * тож до моменту, коли всі 8 select-ів обрано, вони гарантовано є. */
 export function isGearComplete(v: Partial<PlayerGear>): v is PlayerGear {
   return !!(
-    v.charClass && v.charLevel && v.weaponGrade && v.weaponRefine && typeof v.weaponPz === 'boolean' &&
+    v.charClass && v.charLevel && v.build && v.weaponGrade && v.weaponRefine && typeof v.weaponPz === 'boolean' &&
     v.armorSet && v.armorRefine && v.gems && Array.isArray(v.specialSets) &&
     v.specialSetGems && v.specialSets.every((s) => !!v.specialSetGems![s]) && // для кожного відміченого сету обрано камені
     v.tract && v.genie &&
@@ -142,7 +142,9 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
       <div className="field-row">
         <OptionSelect label="Клас" value={value.charClass} options={CLASS_ORDER} labels={CLASS_LABELS} onChange={(v) => patch({ charClass: v })} />
         <OptionSelect label="Рівень" value={value.charLevel ?? undefined} options={CHAR_LEVEL_ORDER} labels={CHAR_LEVEL_LABELS} onChange={(v) => patch({ charLevel: v ?? null })} />
+        <OptionSelect label="Збірка" value={value.build ?? undefined} options={BUILD_ORDER} labels={BUILD_LABELS} onChange={(v) => patch({ build: v ?? null })} />
       </div>
+      <small className="hint" style={{ marginTop: -6 }}>Збірка — куди вкладені стати: ДД (урон), гібрид, кон (HP/захист замість урону). На бали за шмот не впливає, впливає на добір складу команд.</small>
 
       <div className="field-row">
         <OptionSelect label="Зброя" value={value.weaponGrade} options={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} onChange={(v) => patch({ weaponGrade: v })} />

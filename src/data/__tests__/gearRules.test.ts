@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_RULES_VERSION, CLASS_ORDER, SIZE_BUCKETS, computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, maxGearScore,
-  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
+  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { CharClass, PlayerGear } from '../types';
 
@@ -9,7 +9,7 @@ import type { CharClass, PlayerGear } from '../types';
 const score = (g: PlayerGear, version?: string | null) => computeGearScore(g, version, 3);
 
 const base: PlayerGear = {
-  charClass: 'cleric', charLevel: null, weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
+  charClass: 'cleric', charLevel: null, build: null, weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
   armorSet: 'nirvana', armorRefine: 'a5', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't1_3', genie: 'g60',
   shg: false, shgRefine: null, voznes: false, voznesRefine: null,
 };
@@ -245,5 +245,31 @@ describe('рівень персонажа', () => {
   it('підсумок анкети', () => {
     expect(gearSummary(gear({ charLevel: 'l103' }))).toMatch(/^Рівень 103 · /);
     expect(gearSummary(base)).not.toContain('Рівень');
+  });
+});
+
+describe('рольовий шар у версіях шкали', () => {
+  it('версія без composition → профілі вбудовані, ваги 0 (вимкнено); збережене поважається', () => {
+    const legacy = serializeRules(rulesFor(BUILTIN_RULES_VERSION)) as Record<string, unknown>;
+    const b = { ...(legacy.balance as Record<string, unknown>) };
+    delete b.composition;
+    const old = normalizeRules({ ...legacy, balance: b });
+    expect(old.balance.composition.weights).toEqual({ killer: 0, twoThreats: 0, kpRange: 0 });
+    expect(old.balance.composition.profiles.venomancer).toEqual({ kill: 0.2, amp: 1 });
+    const custom = normalizeRules({ ...legacy, balance: { ...b, composition: { profiles: { seeker: { kill: 0.6 } }, weights: { killer: 30 } } } });
+    expect(custom.balance.composition.profiles.seeker).toEqual({ kill: 0.6, amp: 0.1 }); // amp — з вбудованої
+    expect(custom.balance.composition.weights).toEqual({ killer: 30, twoThreats: 0, kpRange: 0 });
+  });
+
+  it('playerProfile: клас × збірка; без збірки — ДД', () => {
+    const comp = rulesFor().balance.composition;
+    expect(playerProfile('psychic', null, comp)).toEqual({ kill: 1, amp: 0 });
+    expect(playerProfile('psychic', 'con', comp).kill).toBeCloseTo(0.4, 5);
+    expect(playerProfile('venomancer', 'hybrid', comp)).toEqual({ kill: 0.2 * 0.7, amp: 1 });
+  });
+
+  it('підсумок анкети показує збірку, крім ДД', () => {
+    expect(gearSummary(gear({ build: 'con' }))).toContain('Збірка: Кон');
+    expect(gearSummary(gear({ build: 'dd' }))).not.toContain('Збірка');
   });
 });

@@ -3,10 +3,12 @@ import {
   createRng, evaluateTeams, formTeams, hashString, penalty, signature, suggestReplacement, teamStats, unavoidable,
   type BalancePlayer, type FormTeamsOptions,
 } from '../balance';
-import { CLASS_ORDER, rulesFor } from '../gearRules';
-import type { CharClass } from '../types';
+import { BUILTIN_COMPOSITION, CLASS_ORDER, RECOMMENDED_COMPOSITION_WEIGHTS, playerProfile, rulesFor, type BalanceRules } from '../gearRules';
+import type { Build, CharClass } from '../types';
 
 const rules = rulesFor().balance;
+/** Профіль kill/amp за класом (збірка ДД) — як playersForBalance. */
+const prof = (c: CharClass, build: Build = 'dd') => playerProfile(c, build, rules.composition);
 const baseOpts = (over: Partial<FormTeamsOptions> = {}): FormTeamsOptions => ({
   teamSize: 6, seed: 'test-seed', rules, rulesVersion: 'balance-v1.0', restarts: 4, iterations: 3000, ...over,
 });
@@ -15,13 +17,17 @@ const baseOpts = (over: Partial<FormTeamsOptions> = {}): FormTeamsOptions => ({
 function population(n: number, seed: string, opts: { classes?: CharClass[] } = {}): BalancePlayer[] {
   const rng = createRng('pop:' + seed);
   const classes = opts.classes ?? CLASS_ORDER;
-  return Array.from({ length: n }, (_, i) => ({
-    id: `p${String(i).padStart(3, '0')}`,
-    nickname: `Nick${i}`,
-    cls: classes[Math.floor(rng() * classes.length)],
-    score: 20 + Math.floor(rng() * 150),
-    createdAt: new Date(Date.UTC(2026, 8, 1, 12, 0, i)).toISOString(),
-  }));
+  return Array.from({ length: n }, (_, i) => {
+    const cls = classes[Math.floor(rng() * classes.length)];
+    return {
+      id: `p${String(i).padStart(3, '0')}`,
+      nickname: `Nick${i}`,
+      cls,
+      score: 20 + Math.floor(rng() * 150),
+      createdAt: new Date(Date.UTC(2026, 8, 1, 12, 0, i)).toISOString(),
+      ...prof(cls),
+    };
+  });
 }
 
 const totals = (teams: BalancePlayer[][]) => teams.map((t) => t.reduce((s, p) => s + p.score, 0));
@@ -116,18 +122,19 @@ describe('formTeams', () => {
     const b = formTeams(changed, baseOpts());
     expect(a.snapshot.inputHash).not.toBe(b.snapshot.inputHash);
     expect(a.snapshot.players.map((x) => x[0])).toEqual(players.map((p) => p.id).sort());
-    expect(a.snapshot.algoVersion).toBe('teams-ls-v1');
+    expect(a.snapshot.algoVersion).toBe('teams-ls-v2');
+    expect(a.snapshot.players[0].length).toBe(5); // id, клас, score, kill, amp
   });
 });
 
 describe('penalty на впорядкованих статистиках', () => {
   const mk = (scores: number[]): BalancePlayer[] =>
-    scores.map((s, i) => ({ id: `x${i}`, nickname: `X${i}`, cls: CLASS_ORDER[i], score: s, createdAt: '' }));
+    scores.map((s, i) => ({ id: `x${i}`, nickname: `X${i}`, cls: CLASS_ORDER[i], score: s, createdAt: '', ...prof(CLASS_ORDER[i]) }));
 
   it('приклад §15 спеки: рівні суми, але стек топів → штраф 242.4 (лише сума дала б 0)', () => {
     const A = mk([250, 245, 230, 120, 115, 110]);
     const B = mk([180, 180, 180, 180, 180, 170]);
-    const unav = { dups: 0, roleSlack: { support: 1, tank: 1, ranged: 1, melee: 1, control: 1 } };
+    const unav = { dups: 0, roleSlack: { support: 1, tank: 1, ranged: 1, melee: 1, control: 1 }, killLack: 0, singleThreat: 0 };
     const stats = [teamStats(A, rules), teamStats(B, rules)];
     expect(stats[0].total).toBe(1070);
     expect(stats[1].total).toBe(1070);
@@ -150,16 +157,16 @@ describe('penalty на впорядкованих статистиках', () =>
 describe('suggestReplacement', () => {
   it('порядок: той самий клас → клас, якого нема в команді → решта; далі найближчий score', () => {
     const team: BalancePlayer[] = [
-      { id: 't1', nickname: 'T1', cls: 'cleric', score: 100, createdAt: '' },
-      { id: 't2', nickname: 'T2', cls: 'wizard', score: 90, createdAt: '' },
-      { id: 't3', nickname: 'T3', cls: 'archer', score: 80, createdAt: '' },
+      { id: 't1', nickname: 'T1', cls: 'cleric', score: 100, createdAt: '', ...prof('cleric') },
+      { id: 't2', nickname: 'T2', cls: 'wizard', score: 90, createdAt: '', ...prof('wizard') },
+      { id: 't3', nickname: 'T3', cls: 'archer', score: 80, createdAt: '', ...prof('archer') },
     ];
     const missing = team[1]; // wizard 90
     const reserve: BalancePlayer[] = [
-      { id: 'r1', nickname: 'R1', cls: 'archer', score: 90, createdAt: '' },   // клас уже є в команді
-      { id: 'r2', nickname: 'R2', cls: 'wizard', score: 60, createdAt: '' },   // той самий клас, далеко за score
-      { id: 'r3', nickname: 'R3', cls: 'assassin', score: 92, createdAt: '' }, // нового класу, близько
-      { id: 'r4', nickname: 'R4', cls: 'wizard', score: 95, createdAt: '' },   // той самий клас, близько
+      { id: 'r1', nickname: 'R1', cls: 'archer', score: 90, createdAt: '', ...prof('archer') },   // клас уже є в команді
+      { id: 'r2', nickname: 'R2', cls: 'wizard', score: 60, createdAt: '', ...prof('wizard') },   // той самий клас, далеко за score
+      { id: 'r3', nickname: 'R3', cls: 'assassin', score: 92, createdAt: '', ...prof('assassin') }, // нового класу, близько
+      { id: 'r4', nickname: 'R4', cls: 'wizard', score: 95, createdAt: '', ...prof('wizard') },   // той самий клас, близько
     ];
     expect(suggestReplacement(team, missing, reserve).map((p) => p.id)).toEqual(['r4', 'r2', 'r3', 'r1']);
   });
@@ -179,5 +186,92 @@ describe('утиліти', () => {
     expect(hashString('abc')).toBe(hashString('abc'));
     expect(hashString('abc')).not.toBe(hashString('abd'));
     expect(hashString('abc')).toMatch(/^[0-9a-f]{32}$/);
+  });
+});
+
+describe('шар «функціональність пачки» (teams-ls-v2)', () => {
+  const on: BalanceRules = { ...rules, composition: { ...BUILTIN_COMPOSITION, weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } } };
+  let seq = 0;
+  const bp = (cls: CharClass, score: number, build: Build = 'dd'): BalancePlayer =>
+    ({ id: `c${seq++}`, nickname: cls, cls, score, createdAt: '', ...prof(cls, build) });
+  /** Штраф одного розкладу лише від рольових членів (без гіру: усі суми рівні). */
+  const compPen = (teams: BalancePlayer[][]) => evaluateTeams(teams, on).penalty - evaluateTeams(teams, rules).penalty;
+  /** Лише член «є кілер» (без twoThreats/kpRange) — для точних очікувань. */
+  const onlyKiller: BalanceRules = { ...rules, composition: { ...BUILTIN_COMPOSITION, weights: { killer: 30, twoThreats: 0, kpRange: 0 } } };
+  const killerPen = (teams: BalancePlayer[][]) => evaluateTeams(teams, onlyKiller).penalty - evaluateTeams(teams, rules).penalty;
+
+  it('з нульовими вагами штраф і розклад — рівно як у v1', () => {
+    const players = population(30, 'comp-off');
+    const a = formTeams(players, baseOpts({ teamSize: 3 }));
+    const b = formTeams(players, baseOpts({ teamSize: 3, rules: { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0 } } } }));
+    expect(signature(a.teams)).toBe(signature(b.teams));
+    expect(a.penalty).toBe(b.penalty);
+  });
+
+  it('teamStats: найкращий кілер, загрози, kill pressure без самопідсилення', () => {
+    const st = teamStats([bp('psychic', 100), bp('barbarian', 100), bp('venomancer', 100)], on);
+    expect(st.maxKill).toBe(1);
+    expect(st.threats).toBe(2); // Шаман 1.0 і Танк 0.5 ≥ 0.5; Дру 0.2 — ні
+    expect(st.kp).toBeCloseTo(1 * (1 + Math.min(1, 0.5 + 1)), 5); // amp Танка + Дру, кеп 1
+    const only = teamStats([bp('venomancer', 100), bp('barbarian', 100), bp('seeker', 100)], on);
+    expect(only.maxKill).toBe(0.5);
+    expect(only.kp).toBeCloseTo(0.5 * (1 + Math.min(1, 1 + 0.1)), 5); // кілер — Танк, підсилюють Дру і Страж
+  });
+
+  it('контрольні пачки: Шаман+Танк+Дру — 0, Дру+Танк+Страж — половинка, Прист+Страж — без кілера', () => {
+    // Дві однакові за гіром команди + одна «проблемна»: суми рівні, різниця штрафу — лише роль.
+    const ok = [bp('wizard', 100), bp('cleric', 100), bp('seeker', 100)];
+    const good = [bp('psychic', 100), bp('barbarian', 100), bp('venomancer', 100)];
+    const half = [bp('venomancer', 100), bp('barbarian', 100), bp('seeker', 100)];
+    const dead = [bp('cleric', 100), bp('seeker', 100), bp('mystic', 100)];
+    // killLack неминуче = 0 (кілерів вистачає: Маг, Шаман + ...), тож штраф = 30·(1 − maxKill) + інші члени
+    const third = () => [bp('archer', 100), bp('assassin', 100), bp('blademaster', 100)];
+    expect(killerPen([ok, good, third()])).toBeCloseTo(0, 5);
+    expect(killerPen([ok, half, third()])).toBeCloseTo(30 * 0.5, 5); // кілер — Танк 0.5
+    expect(killerPen([ok, dead, third()])).toBeCloseTo(30 * 0.7, 5); // найкращий — Страж/Містик 0.3
+    // з усіма трьома членами порядок той самий
+    expect(compPen([ok, good, third()])).toBeLessThan(compPen([ok, half, third()]));
+    expect(compPen([ok, half, third()])).toBeLessThan(compPen([ok, dead, third()]));
+  });
+
+  it('неминуче не штрафується: 3 кілери на 4 пари → одна пара без кілера безкоштовна', () => {
+    const teams = [
+      [bp('archer', 100), bp('cleric', 100)],
+      [bp('wizard', 100), bp('mystic', 100)],
+      [bp('psychic', 100), bp('venomancer', 100)],
+      [bp('seeker', 100), bp('barbarian', 100)],
+    ];
+    const ev = evaluateTeams(teams, on);
+    expect(ev.unavoidable.killLack).toBeCloseTo(0.5, 5); // 4-й найкращий kill — Танк 0.5
+    const lack = ev.stats.reduce((s, x) => s + Math.max(0, 1 - x.maxKill), 0);
+    expect(lack).toBeCloseTo(0.5, 5); // лише Танк+Страж
+    // штраф за кілера = 30·max(0, 0.5 − 0.5) = 0; лишається тільки KP-розкид
+    const kps = ev.stats.map((x) => x.kp);
+    expect(compPen(teams)).toBeCloseTo(10 * (Math.max(...kps) - Math.min(...kps)), 5);
+  });
+
+  it('кон-збірка перетворює кілера на половинку', () => {
+    expect(prof('assassin', 'con').kill).toBeCloseTo(0.4, 5);
+    expect(prof('assassin', 'hybrid').kill).toBeCloseTo(0.7, 5);
+    const st = teamStats([bp('assassin', 100, 'con'), bp('seeker', 100)], on);
+    expect(st.maxKill).toBeCloseTo(0.4, 5);
+    expect(st.threats).toBe(0);
+  });
+
+  it('formTeams з увімкненим шаром: пачок без кілера не більше за неминуче, коли кілерів вистачає — 0', () => {
+    // 7 кілерів + 14 не-кілерів → 7 трійок, кожній по кілеру
+    const killers: CharClass[] = ['archer', 'assassin', 'psychic', 'wizard', 'archer', 'assassin', 'psychic'];
+    const others: CharClass[] = ['seeker', 'seeker', 'seeker', 'seeker', 'barbarian', 'barbarian', 'cleric', 'cleric', 'mystic', 'venomancer', 'blademaster', 'blademaster', 'seeker', 'mystic'];
+    const rng = createRng('comp-on');
+    const players: BalancePlayer[] = [...killers, ...others].map((cls, i) => ({
+      id: `q${String(i).padStart(2, '0')}`, nickname: cls, cls, score: 60 + Math.floor(rng() * 150),
+      createdAt: new Date(Date.UTC(2026, 8, 1, 12, 0, i)).toISOString(), ...prof(cls),
+    }));
+    const r = formTeams(players, baseOpts({ teamSize: 3, rules: on, restarts: 6, iterations: 6000 }));
+    const stats = r.teams.map((t) => teamStats(t, on));
+    expect(stats.filter((x) => x.maxKill < 0.8).length).toBe(0);
+    // і кожна трійка має ≥ 2 загрози, якщо їх вистачає (7 кілерів + 2 Танки + 2 Вари = 11 < 14 → неминуче 3)
+    const single = stats.filter((x) => x.threats < 2).length;
+    expect(single).toBeLessThanOrEqual(unavoidable(r.teams.flat(), 7, on).singleThreat);
   });
 });

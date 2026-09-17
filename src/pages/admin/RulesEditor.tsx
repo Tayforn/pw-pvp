@@ -13,9 +13,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../../app/errorMessage';
 import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../data/types';
 import {
-  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
+  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, BUILD_LABELS, BUILD_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
-  RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
+  RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, sameForAllSizes, tierForWith,
   type SizeBucket,
   type GearRules,
@@ -24,11 +24,11 @@ import { saveRulesVersion, useRules } from '../../data/rulesStore';
 
 /** Контрольні архетипи — щоб одразу бачити, куди зсунуться tier після правки. */
 const ARCHETYPES: { name: string; gear: PlayerGear }[] = [
-  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', charLevel: 'l90_100', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', charLevel: 'l90_100', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', charLevel: 'l90_100', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', charLevel: 'l90_100', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', charLevel: 'l90_100', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', charLevel: 'l90_100', build: 'dd', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', charLevel: 'l90_100', build: 'dd', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
 ];
 
 /** Грейди, для яких є сенс у перевизначенні за класом (R9-лінійка й ЦГД/РЦГД). */
@@ -125,6 +125,14 @@ export default function RulesEditor() {
   };
 
   const setTier = (i: number, min: number) => patch({ tiers: draft.tiers.map((t, idx) => (idx === i ? { ...t, min } : t)) });
+  const comp = draft.balance.composition;
+  const patchComp = (c: Partial<typeof comp>) => patch({ balance: { ...draft.balance, composition: { ...comp, ...c } } });
+  /** Штраф за одну таку пачку без урахування неминучого — для підказки в картці. */
+  const ex = (...classes: CharClass[]) => {
+    const maxKill = Math.max(...classes.map((c) => comp.profiles[c].kill));
+    const pen = comp.weights.killer * Math.max(0, 1 - maxKill);
+    return pen > 0 ? `штраф ${Math.round(pen)}` : 'ок';
+  };
   // Матриця «клас × розмір паті»
   const classMax = Math.max(...SIZE_BUCKETS.flatMap((s) => CLASS_ORDER.map((c) => draft.classPointsBySize[s][c])));
   const setClassPoints = (s: SizeBucket, c: CharClass, v: number) =>
@@ -380,6 +388,55 @@ export default function RulesEditor() {
           <NumInput label="Балів за 100 Ело" value={draft.ratingWeight} onChange={(v) => patch({ ratingWeight: v })} width={140} />
           <NumInput label="Стеля ±" value={draft.ratingCap} onChange={(v) => patch({ ratingCap: v })} />
         </div>
+      </div>
+
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <b>Функціональність пачки (ролі)</b>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => patchComp({ weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}>Рекомендовані ваги</button>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Сила пачки — це найкращий кілер, помножений на підсилювачів, а не сума урону. «Урон» класу: 100 = реальний кілер (без нього пачка не вбиває),
+          50 = половинка (Танк з Армагеддоном), 20–30 = не вбиває. «Підсилення» — наскільки клас множить урон союзників (Пурга/Amp/бафи).
+          Кон-збірка з анкети множить урон гравця. Ваги: 0 = правило вимкнене; штрафується лише те, чого можна уникнути (7 кілерів на 8 пар — одна пачка без кілера не карається).
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(2, 84px)', gap: '6px 10px', alignItems: 'center', maxWidth: 420 }}>
+          <span />
+          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Урон, %</span>
+          <span className="hint" style={{ margin: 0, textAlign: 'center' }}>Підсил., %</span>
+          {CLASS_ORDER.map((c) => (
+            <Fragment key={c}>
+              <span style={{ fontSize: 13 }}>{CLASS_LABELS[c]}</span>
+              {(['kill', 'amp'] as const).map((ax) => (
+                <input
+                  key={ax}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round(comp.profiles[c][ax] * 100)}
+                  style={{ padding: '6px 8px', fontSize: 13, textAlign: 'center' }}
+                  onChange={(e) => patchComp({ profiles: { ...comp.profiles, [c]: { ...comp.profiles[c], [ax]: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) / 100 } } })}
+                />
+              ))}
+            </Fragment>
+          ))}
+        </div>
+        <div className="field-row" style={{ gap: 10, marginTop: 12 }}>
+          {BUILD_ORDER.map((b) => (
+            <NumInput key={b} label={`Збірка «${BUILD_LABELS[b]}», % урону`} value={Math.round(comp.buildKill[b] * 100)} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [b]: Math.min(100, v) / 100 } })} width={170} />
+          ))}
+          <NumInput label="Загроза від, % урону" value={Math.round(comp.threatMinKill * 100)} onChange={(v) => patchComp({ threatMinKill: Math.min(100, v) / 100 })} width={160} />
+        </div>
+        <div className="field-row" style={{ gap: 10, marginTop: 8 }}>
+          <NumInput label="Пачка без кілера" value={comp.weights.killer} onChange={(v) => patchComp({ weights: { ...comp.weights, killer: v } })} width={150} />
+          <NumInput label="Одна загроза (3+ у пачці)" value={comp.weights.twoThreats} onChange={(v) => patchComp({ weights: { ...comp.weights, twoThreats: v } })} width={190} />
+          <NumInput label="Розкид kill pressure" value={comp.weights.kpRange} onChange={(v) => patchComp({ weights: { ...comp.weights, kpRange: v } })} width={160} />
+        </div>
+        <p className="hint" style={{ margin: '8px 0 0' }}>
+          Рекомендовано {RECOMMENDED_COMPOSITION_WEIGHTS.killer} / {RECOMMENDED_COMPOSITION_WEIGHTS.twoThreats} / {RECOMMENDED_COMPOSITION_WEIGHTS.kpRange}: виправлення складу приймається, якщо коштує до ~10–20 балів розкиду гіру.
+          Приклади за поточними числами: Шаман+Танк+Дру — {ex('psychic', 'barbarian', 'venomancer')}; Дру+Танк+Страж — {ex('venomancer', 'barbarian', 'seeker')}; Танк+Страж (пара) — {ex('barbarian', 'seeker')}; Прист+Страж — {ex('cleric', 'seeker')}.
+        </p>
       </div>
 
       <div className="card" style={{ padding: 14 }}>

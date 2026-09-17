@@ -11,7 +11,7 @@
 // =========================================================
 
 import type {
-  ArmorRefine, ArmorSet, CharClass, CharLevel, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
+  ArmorRefine, ArmorSet, Build, CharClass, CharLevel, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
 } from './types';
 
 export type Role = 'support' | 'tank' | 'ranged' | 'melee' | 'control';
@@ -28,9 +28,32 @@ export interface BalanceWeights {
   dup: number;
 }
 
+/** Профіль класу для рольового шару: kill — власний урон (1 = реальний кілер,
+ * без якого пачка не вбиває), amp — наскільки клас підсилює урон союзників
+ * (Пурга/Amp/бафи). Обидва 0–1. */
+export interface ClassProfile { kill: number; amp: number }
+
+/** «Функціональність пачки» — окремий м'який шар поверх балансу за гіром
+ * (розбір 17.09.2026). Сила пачки ≈ найкращий кілер × підсилювачі, а не
+ * сума урону, тому:
+ *  • killer — за пачку без реального кілера: (1 − max kill), понад неминуче;
+ *  • twoThreats — за пачку з однією «загрозою» (kill ≥ threatMinKill), лише
+ *    при S ≥ 3, понад неминуче: сфокусували єдиного ДД — пачка нічого не робить;
+ *  • kpRange — за різницю kill pressure (max kill × (1 + amp тімейтів)) між
+ *    командами: підсилювачі йдуть до середніх кілерів, топ отримує нейтральних.
+ * Усі ваги 0 = шар вимкнено (так рахуються версії шкали до його появи). */
+export interface CompositionRules {
+  profiles: Record<CharClass, ClassProfile>;
+  /** множник kill за збіркою гравця (анкета): кон у топ-шмоті не вбиває */
+  buildKill: Record<Build, number>;
+  threatMinKill: number;
+  weights: { killer: number; twoThreats: number; kpRange: number };
+}
+
 /** Параметри алгоритму формування команд (src/data/balance.ts). */
 export interface BalanceRules {
   roleOf: Record<CharClass, Role>;
+  composition: CompositionRules;
   weights: BalanceWeights;
   /** температура відпалу на старті / в кінці, у балах score */
   T0: number;
@@ -122,6 +145,31 @@ export interface GearRules extends ScoringRules {
 /** Вбудована версія — фолбек і шаблон для нових версій. */
 export const BUILTIN_RULES_VERSION = 'balance-v1.0';
 
+/** Профілі класів (узгоджено з власником і відгуками гравців 17.09.2026):
+ * кілери — Лук/Сін/Шаман/Маг; Танк — половинка (Армагеддон) і підсилювач
+ * фізиків (бафи); Дру — головний підсилювач (Пурга/Amp), урону мало;
+ * Страж — нейтральний наповнювач; Прист/Містик — сапорт. */
+export const BUILTIN_CLASS_PROFILES: Record<CharClass, ClassProfile> = {
+  archer: { kill: 1, amp: 0 }, assassin: { kill: 1, amp: 0 }, psychic: { kill: 1, amp: 0 }, wizard: { kill: 1, amp: 0 },
+  barbarian: { kill: 0.5, amp: 0.5 }, blademaster: { kill: 0.5, amp: 0.3 }, seeker: { kill: 0.3, amp: 0.1 },
+  cleric: { kill: 0.2, amp: 0.5 }, mystic: { kill: 0.3, amp: 0.3 }, venomancer: { kill: 0.2, amp: 1 },
+};
+/** Рекомендовані ваги шару (кнопка в редакторі); у вбудованій версії — нулі,
+ * щоб версії, збережені до появи шару, рахувались як раніше. */
+export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 10 };
+export const BUILTIN_COMPOSITION: CompositionRules = {
+  profiles: BUILTIN_CLASS_PROFILES,
+  buildKill: { dd: 1, hybrid: 0.7, con: 0.4 },
+  threatMinKill: 0.5,
+  weights: { killer: 0, twoThreats: 0, kpRange: 0 },
+};
+
+/** Профіль гравця для алгоритму: клас × збірка (без збірки — як ДД). */
+export function playerProfile(cls: CharClass, build: Build | null | undefined, comp: CompositionRules): ClassProfile {
+  const p = comp.profiles[cls];
+  return { kill: p.kill * comp.buildKill[build ?? 'dd'], amp: p.amp };
+}
+
 /** Фізичні класи: на їхніх R9 / R9R1 абілка важить більше, ніж +ПА РЦГД. */
 export const PHYSICAL_CLASSES: CharClass[] = ['archer', 'barbarian', 'assassin', 'blademaster', 'seeker'];
 const CASTER_CLASSES: CharClass[] = ['wizard', 'cleric', 'psychic', 'venomancer', 'mystic'];
@@ -202,6 +250,7 @@ const BUILTIN: GearRules = {
       venomancer: 'control',
     },
     weights: { total: 1, top: 1, role: 3, dup: 1000 },
+    composition: BUILTIN_COMPOSITION,
     T0: 6,
     T1: 0.05,
     epsilon: 5,
@@ -286,6 +335,28 @@ function classMatrix(r: Record<string, unknown>): Record<SizeBucket, Record<Char
   return out;
 }
 
+/** Шар «функціональність пачки»: відсутній у версії → вбудований (ваги 0 = вимкнено). */
+function normalizeComposition(raw: unknown): CompositionRules {
+  const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const rawProf = (c.profiles && typeof c.profiles === 'object' ? c.profiles : {}) as Record<string, unknown>;
+  const profiles = {} as Record<CharClass, ClassProfile>;
+  for (const cls of Object.keys(BUILTIN_CLASS_PROFILES) as CharClass[]) {
+    const p = (rawProf[cls] && typeof rawProf[cls] === 'object' ? rawProf[cls] : {}) as Record<string, unknown>;
+    profiles[cls] = { kill: isNum(p.kill) ? p.kill : BUILTIN_CLASS_PROFILES[cls].kill, amp: isNum(p.amp) ? p.amp : BUILTIN_CLASS_PROFILES[cls].amp };
+  }
+  const w = (c.weights && typeof c.weights === 'object' ? c.weights : {}) as Record<string, unknown>;
+  return {
+    profiles,
+    buildKill: numTable(c.buildKill, BUILTIN_COMPOSITION.buildKill),
+    threatMinKill: isNum(c.threatMinKill) ? c.threatMinKill : BUILTIN_COMPOSITION.threatMinKill,
+    weights: {
+      killer: isNum(w.killer) ? w.killer : 0,
+      twoThreats: isNum(w.twoThreats) ? w.twoThreats : 0,
+      kpRange: isNum(w.kpRange) ? w.kpRange : 0,
+    },
+  };
+}
+
 export function normalizeRules(raw: unknown): GearRules {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const b = (r.balance && typeof r.balance === 'object' ? r.balance : {}) as Record<string, unknown>;
@@ -340,6 +411,7 @@ export function normalizeRules(raw: unknown): GearRules {
     tiers: validTiers ? tiers : BUILTIN.tiers.map((t) => ({ ...t })),
     balance: {
       roleOf: { ...BUILTIN.balance.roleOf, ...((b.roleOf && typeof b.roleOf === 'object' ? b.roleOf : {}) as Partial<Record<CharClass, Role>>) },
+      composition: normalizeComposition(b.composition),
       weights: numTable(b.weights, BUILTIN.balance.weights),
       T0: isNum(b.T0) ? b.T0 : BUILTIN.balance.T0,
       T1: isNum(b.T1) ? b.T1 : BUILTIN.balance.T1,
@@ -495,6 +567,9 @@ export const TRACT_ORDER: Tract[] = ['t1_3', 't4_5', 't6', 't7', 't8', 'emperor'
 export const GENIE_LABELS: Record<Genie, string> = { g60: 'до 60', g61_70: '61–70', g71_80: '71–80', g81_90: '81–90', g91_99: '91–99', g100: '100/100' };
 export const GENIE_ORDER: Genie[] = ['g60', 'g61_70', 'g71_80', 'g81_90', 'g91_99', 'g100'];
 
+export const BUILD_LABELS: Record<Build, string> = { dd: 'ДД', hybrid: 'Гібрид', con: 'Кон (у захист)' };
+export const BUILD_ORDER: Build[] = ['dd', 'hybrid', 'con'];
+
 export const CHAR_LEVEL_LABELS: Record<CharLevel, string> = { l90_100: '90–100', l101: '101', l102: '102', l103: '103', l104: '104', l105: '105' };
 export const CHAR_LEVEL_ORDER: CharLevel[] = ['l90_100', 'l101', 'l102', 'l103', 'l104', 'l105'];
 
@@ -516,6 +591,7 @@ export function gearSummary(g: PlayerGear, version?: string | null): string {
   void version;
   const parts: string[] = [];
   if (g.charLevel) parts.push(`Рівень ${CHAR_LEVEL_LABELS[g.charLevel]}`);
+  if (g.build && g.build !== 'dd') parts.push(`Збірка: ${BUILD_LABELS[g.build]}`);
   parts.push(`${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}`);
   parts.push(`${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}`);
   parts.push(`Камні ${shortGems(g.gems)}`);

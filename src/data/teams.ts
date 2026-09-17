@@ -7,7 +7,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, computeGearScore, ratingBonus, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, computeGearScore, playerProfile, ratingBonus, rulesFor, tierFor } from './gearRules';
 import { evaluateTeams, type BalancePlayer, type FormTeamsResult } from './balance';
 import { ratingOf, type PlayerRating } from './ratings';
 
@@ -43,9 +43,13 @@ export function playerScore(r: Registration, version: string, ratings: Map<strin
  * з ручною корекцією і бонусом за рейтинг, якщо рейтинги передано). */
 export function playersForBalance(t: Tournament, regs: Registration[], ratings?: Map<string, PlayerRating>): BalancePlayer[] {
   const version = rulesVersionFor(t);
+  const comp = rulesFor(version).balance.composition;
   return regs
     .filter((r) => r.kind === 'player' && r.status === 'confirmed' && r.gear)
-    .map((r) => ({ id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: playerScore(r, version, ratings, t.teamSize)!, createdAt: r.createdAt }));
+    .map((r) => ({
+      id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: playerScore(r, version, ratings, t.teamSize)!, createdAt: r.createdAt,
+      ...playerProfile(r.gear!.charClass, r.gear!.build, comp),
+    }));
 }
 
 /** Скори на момент жеребки (зі знімка balance_stats) за id заявки. Після
