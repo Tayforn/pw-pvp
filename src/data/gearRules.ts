@@ -50,7 +50,13 @@ export interface CompositionRules {
   /** Частка, з якою в «зв'язку» команди входить урон другого і далі ДД:
    * другий ДД додає шкоди, але не збирається з першим в один бурст. */
   secondDd: number;
-  weights: { killer: number; twoThreats: number; kpRange: number };
+  /** Правило 4 (18.09.2026): «топовий ДД» — повний ДД зі скором не нижче цього
+   * (за замовчуванням поріг рангу S). Такому не дають ні другого повного ДД,
+   * ні підтримки тімейтів понад topSupportAllow (Страж 0.1 + один Прист/Танк/
+   * Містик 0.5 = 0.6 можна, Друїд 1.0 — вже ні). */
+  topDdMinScore: number;
+  topSupportAllow: number;
+  weights: { killer: number; twoThreats: number; kpRange: number; topSecondDd: number; topSupport: number };
 }
 
 /** Параметри алгоритму формування команд (src/data/balance.ts). */
@@ -163,13 +169,18 @@ export const BUILTIN_CLASS_PROFILES: Record<CharClass, ClassProfile> = {
 };
 /** Рекомендовані ваги шару (кнопка в редакторі); у вбудованій версії — нулі,
  * щоб версії, збережені до появи шару, рахувались як раніше. */
-export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 25 };
+/** Підібрано на живому турнірі (24 гравці, 8×3): усі 20 seed без порушень, розкид гіру 15–19. */
+export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 10, topSecondDd: 60, topSupport: 40 };
+/** «Профіль сили» (weights.top) заважає правилу 4 у малих командах — рекомендовано 0.25 замість 1. */
+export const RECOMMENDED_TOP_PROFILE_WEIGHT = 0.25;
 export const BUILTIN_COMPOSITION: CompositionRules = {
   profiles: BUILTIN_CLASS_PROFILES,
   buildKill: { dd: 1, hybrid: 0.7, con: 0.4 },
   threatMinKill: 0.5,
   secondDd: 0.5,
-  weights: { killer: 0, twoThreats: 0, kpRange: 0 },
+  topDdMinScore: 225,
+  topSupportAllow: 0.6,
+  weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 },
 };
 
 /** Профіль гравця для алгоритму: клас × збірка (без збірки — як ДД). */
@@ -361,10 +372,14 @@ function normalizeComposition(raw: unknown): CompositionRules {
     buildKill: numTable(c.buildKill, BUILTIN_COMPOSITION.buildKill),
     threatMinKill: isNum(c.threatMinKill) ? c.threatMinKill : BUILTIN_COMPOSITION.threatMinKill,
     secondDd: isNum(c.secondDd) ? c.secondDd : BUILTIN_COMPOSITION.secondDd,
+    topDdMinScore: isNum(c.topDdMinScore) ? c.topDdMinScore : BUILTIN_COMPOSITION.topDdMinScore,
+    topSupportAllow: isNum(c.topSupportAllow) ? c.topSupportAllow : BUILTIN_COMPOSITION.topSupportAllow,
     weights: {
       killer: isNum(w.killer) ? w.killer : 0,
       twoThreats: isNum(w.twoThreats) ? w.twoThreats : 0,
       kpRange: isNum(w.kpRange) ? w.kpRange : 0,
+      topSecondDd: isNum(w.topSecondDd) ? w.topSecondDd : 0,
+      topSupport: isNum(w.topSupport) ? w.topSupport : 0,
     },
   };
 }

@@ -68,7 +68,7 @@ function toBalancePlayer(r: Registration, version: string, teamSize: number | nu
 
 /** Бейджі рольового шару для картки команди (те саме, що штрафує алгоритм;
  * показуємо завжди, навіть якщо ваги в шкалі 0 — адміну корисно бачити). */
-function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: number; kp: number }; teamSize: number }) {
+function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: number; kp: number; topDd: number; topSupportOver: number }; teamSize: number }) {
   return (
     <>
       {st.maxKill < 0.5 ? (
@@ -78,6 +78,12 @@ function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: n
       ) : null}
       {teamSize >= 3 && st.maxKill >= 0.8 && st.threats < 2 && (
         <span className="badge warn" title="Небезпечний лише один: сфокусують його — решта безсила">один ДД</span>
+      )}
+      {st.topDd > 0 && (
+        <span className="badge bad" title="Топовому ДД дали ще одного повного ДД — таку команду майже не вбити">топ-ДД + ДД</span>
+      )}
+      {st.topSupportOver > 0 && (
+        <span className="badge warn" title="Топовий ДД отримав забагато підтримки (Друїд або два підсилювачі)">топ-ДД + підтримка</span>
       )}
       <span className="badge mute" title="Зв'язка: гір×урон головного ДД (+ половина від решти ДД) × (1 + підтримка тімейтів)">зв'язка {st.kp.toFixed(2)}</span>
     </>
@@ -348,14 +354,14 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const single = ev && S >= 3 ? ev.stats.filter((x) => x.threats < 2).length : 0;
   const kps = ev ? ev.stats.map((x) => x.kp) : [];
   const kpRange = kps.length ? Math.max(...kps) - Math.min(...kps) : 0;
-  const compOn = rules.composition.weights.killer > 0 || rules.composition.weights.twoThreats > 0 || rules.composition.weights.kpRange > 0;
+  const compOn = Object.values(rules.composition.weights).some((w) => w > 0);
   // Розшифровка штрафу: скільки в ньому «за гір», а скільки — за кожне правило складу.
   // Базовий штраф рахуємо тими самими функціями з нульовими вагами правил.
   const cw = rules.composition.weights;
   const parts = (() => {
     if (!draft || !ev) return null;
     const teams = draft.teams.map((tm) => tm.members);
-    const off = { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0 } } };
+    const off = { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 } } };
     const gear = penaltyOf(teams.map((t) => teamStats(t, off)), S, unavoidable(teams.flat(), teams.length, off), off);
     const lack = ev.stats.reduce((a, x) => a + Math.max(0, 1 - x.maxKill), 0);
     return {
@@ -363,6 +369,7 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
       killer: cw.killer * Math.max(0, lack - ev.unavoidable.killLack),
       twoThreats: S >= 3 ? cw.twoThreats * Math.max(0, single - ev.unavoidable.singleThreat) : 0,
       kpRange: cw.kpRange * kpRange,
+      top: ev.stats.reduce((a, x) => a + cw.topSecondDd * x.topDd + cw.topSupport * x.topSupportOver, 0),
     };
   })();
 
@@ -476,6 +483,7 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
                     {' · нема ДД '}{parts.killer.toFixed(1)}
                     {S >= 3 ? ` · один ДД ${parts.twoThreats.toFixed(1)}` : ''}
                     {' · зв\'язка '}{parts.kpRange.toFixed(1)}
+                    {' · топ-ДД '}{parts.top.toFixed(1)}
                   </span>
                 )}
                 {!compOn && <span className="hint" style={{ margin: 0 }} title="У версії шкали цього турніру ваги правил складу = 0: бейджі лише інформують, на жеребку не впливають">правила складу вимкнені в шкалі</span>}

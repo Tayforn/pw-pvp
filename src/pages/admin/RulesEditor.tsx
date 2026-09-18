@@ -15,7 +15,7 @@ import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../d
 import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, BUILD_LABELS, BUILD_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
-  BUILTIN_COMPOSITION, RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
+  BUILTIN_COMPOSITION, RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, RECOMMENDED_TOP_PROFILE_WEIGHT, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, sameForAllSizes, tierForWith,
   type SizeBucket,
   type GearRules,
@@ -462,8 +462,8 @@ export default function RulesEditor() {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            title="Заповнити весь блок узгодженими значеннями: профілі класів, збірки, другий ДД і ваги правил"
-            onClick={() => patchComp({ ...BUILTIN_COMPOSITION, weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } })}
+            title="Заповнити весь блок узгодженими значеннями: профілі класів, збірки, другий ДД, ваги правил і «профіль сили» 25 %"
+            onClick={() => patch({ balance: { ...draft.balance, weights: { ...draft.balance.weights, top: RECOMMENDED_TOP_PROFILE_WEIGHT }, composition: { ...BUILTIN_COMPOSITION, weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } } } })}
           >
             Рекомендовані значення
           </button>
@@ -546,7 +546,7 @@ export default function RulesEditor() {
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <b style={{ fontSize: 13 }}>Три правила</b>
+          <b style={{ fontSize: 13 }}>Правила</b>
           <p className="hint" style={{ margin: '2px 0 8px' }}>
             Алгоритм перебирає розклади й бере той, де найменше штрафу. Головний штраф — різниця сум гіру між командами (зазвичай 10–45 балів).
             Число біля правила — скільки балів додається за одне порушення, тобто наскільки гіршим гіром алгоритм готовий заплатити, щоб його уникнути:
@@ -569,7 +569,19 @@ export default function RulesEditor() {
               а два ДД разом Сін + Маг + Страж = {strengthExample([['assassin', 200], ['wizard', 150], ['seeker', 100]])}.
               Штраф = число × різниця між найбільшою і найменшою зв'язкою в жеребці. Через це підтримка дістається слабшим ДД, а два сильних ДД не збираються в одній команді.
             </RuleRow>
+            <RuleRow value={comp.weights.topSecondDd} onChange={(v) => patchComp({ weights: { ...comp.weights, topSecondDd: v } })} title="Топовому ДД — без другого ДД">
+              Топовий ДД — повний ДД зі скором від {comp.topDdMinScore} (див. поле нижче). Такий сам «ДД за трьох»: якщо поставити поруч ще одного повного ДД, команду не вбити.
+              Штраф = число за кожного іншого повного ДД у його команді. XenuS + Маг + Шаман — {comp.weights.topSecondDd ? comp.weights.topSecondDd * 2 : RECOMMENDED_COMPOSITION_WEIGHTS.topSecondDd * 2}.
+            </RuleRow>
+            <RuleRow value={comp.weights.topSupport} onChange={(v) => patchComp({ weights: { ...comp.weights, topSupport: v } })} title="Топовому ДД — не більше однієї підтримки">
+              Тімейтам топового ДД дозволено сумарну «Підтримку» до {Math.round(comp.topSupportAllow * 100)} %: Страж + один Прист, Танк або Містик — можна; Друїд чи два підсилювачі — уже ні.
+              Штраф = число × перевищення: Страж + Друїд = {((comp.profiles.seeker.amp + comp.profiles.venomancer.amp - comp.topSupportAllow) * (comp.weights.topSupport || RECOMMENDED_COMPOSITION_WEIGHTS.topSupport)).toFixed(0)}, Танк + Прист = {((comp.profiles.barbarian.amp + comp.profiles.cleric.amp - comp.topSupportAllow) * (comp.weights.topSupport || RECOMMENDED_COMPOSITION_WEIGHTS.topSupport)).toFixed(0)}.
+            </RuleRow>
           </div>
+        </div>
+        <div className="field-row" style={{ gap: 10, marginTop: 12 }}>
+          <NumInput label="Топовий ДД — від скору" value={comp.topDdMinScore} onChange={(v) => patchComp({ topDdMinScore: v })} width={170} />
+          <PctInput label="Дозволена підтримка топового ДД, %" value={comp.topSupportAllow} onChange={(v) => patchComp({ topSupportAllow: v })} />
         </div>
         <p className="hint" style={{ margin: '12px 0 0' }}>
           Приклади за першим правилом{comp.weights.killer > 0 ? '' : ` (воно зараз вимкнене — показано, як було б при ${RECOMMENDED_COMPOSITION_WEIGHTS.killer})`}:
@@ -581,12 +593,14 @@ export default function RulesEditor() {
         <b>Алгоритм (обережно)</b>
         <p className="hint" style={{ margin: '0 0 8px' }}>
           ε-коридор — на скільки балів штрафу гірший розклад ще вважається «таким самим» і може бути обраний випадково (більше = більше рандому, менше = точніший баланс);
-          вага ролей — штраф за нерівномірний розподіл ролі між командами.
+          вага ролей — штраф за нерівномірний розподіл ролі між командами;
+          профіль сили — щоб найсильніший гравець і двоє найсильніших були схожі в усіх командах (проти «стеку топів»). У командах по 2–3 він заважає правилу про топового ДД, тому рекомендовано 25 %.
         </p>
         <div className="field-row" style={{ gap: 10 }}>
           <NumInput label="ε-коридор" value={draft.balance.epsilon} onChange={(v) => patch({ balance: { ...draft.balance, epsilon: v } })} />
           <NumInput label="Кандидатів (top-N)" value={draft.balance.topN} onChange={(v) => patch({ balance: { ...draft.balance, topN: Math.max(1, v) } })} width={140} />
           <NumInput label="Вага ролей" value={draft.balance.weights.role} onChange={(v) => patch({ balance: { ...draft.balance, weights: { ...draft.balance.weights, role: v } } })} />
+          <PctInput label="Профіль сили, %" value={draft.balance.weights.top} onChange={(v) => patch({ balance: { ...draft.balance, weights: { ...draft.balance.weights, top: v } } })} />
         </div>
       </div>
 

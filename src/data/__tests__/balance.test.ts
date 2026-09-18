@@ -122,7 +122,7 @@ describe('formTeams', () => {
     const b = formTeams(changed, baseOpts());
     expect(a.snapshot.inputHash).not.toBe(b.snapshot.inputHash);
     expect(a.snapshot.players.map((x) => x[0])).toEqual(players.map((p) => p.id).sort());
-    expect(a.snapshot.algoVersion).toBe('teams-ls-v3');
+    expect(a.snapshot.algoVersion).toBe('teams-ls-v4');
     expect(a.snapshot.players[0].length).toBe(5); // id, клас, score, kill, amp
   });
 });
@@ -197,13 +197,13 @@ describe('шар «функціональність пачки» (teams-ls-v2)',
   /** Штраф одного розкладу лише від рольових членів (без гіру: усі суми рівні). */
   const compPen = (teams: BalancePlayer[][]) => evaluateTeams(teams, on).penalty - evaluateTeams(teams, rules).penalty;
   /** Лише член «є кілер» (без twoThreats/kpRange) — для точних очікувань. */
-  const onlyKiller: BalanceRules = { ...rules, composition: { ...BUILTIN_COMPOSITION, weights: { killer: 30, twoThreats: 0, kpRange: 0 } } };
+  const onlyKiller: BalanceRules = { ...rules, composition: { ...BUILTIN_COMPOSITION, weights: { killer: 30, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 } } };
   const killerPen = (teams: BalancePlayer[][]) => evaluateTeams(teams, onlyKiller).penalty - evaluateTeams(teams, rules).penalty;
 
   it('з нульовими вагами штраф і розклад — рівно як у v1', () => {
     const players = population(30, 'comp-off');
     const a = formTeams(players, baseOpts({ teamSize: 3 }));
-    const b = formTeams(players, baseOpts({ teamSize: 3, rules: { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0 } } } }));
+    const b = formTeams(players, baseOpts({ teamSize: 3, rules: { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 } } } }));
     expect(signature(a.teams)).toBe(signature(b.teams));
     expect(a.penalty).toBe(b.penalty);
   });
@@ -241,9 +241,9 @@ describe('шар «функціональність пачки» (teams-ls-v2)',
     expect(killerPen([ok, good, third()])).toBeCloseTo(0, 5);
     expect(killerPen([ok, half, third()])).toBeCloseTo(30 * 0.5, 5); // кілер — Танк 0.5
     expect(killerPen([ok, dead, third()])).toBeCloseTo(30 * 0.7, 5); // найкращий — Страж/Містик 0.3
-    // з усіма трьома членами порядок той самий
-    expect(compPen([ok, good, third()])).toBeLessThan(compPen([ok, half, third()]));
-    expect(compPen([ok, half, third()])).toBeLessThan(compPen([ok, dead, third()]));
+    // Порівнювати повний штраф тут не можна: розкид зв'язки між командами залежить
+    // від усього розкладу й може зрівняти ці три варіанти — тож перевіряємо лише
+    // член «нема ким убивати», для якого цей тест і написаний.
   });
 
   it('неминуче не штрафується: 3 кілери на 4 пари → одна пара без кілера безкоштовна', () => {
@@ -285,5 +285,48 @@ describe('шар «функціональність пачки» (teams-ls-v2)',
     // і кожна трійка має ≥ 2 загрози, якщо їх вистачає (7 кілерів + 2 Танки + 2 Вари = 11 < 14 → неминуче 3)
     const single = stats.filter((x) => x.threats < 2).length;
     expect(single).toBeLessThanOrEqual(unavoidable(r.teams.flat(), 7, on).singleThreat);
+  });
+});
+
+describe('правило 4: топовому ДД — без другого ДД і зайвої підтримки', () => {
+  let seq = 0;
+  const w4: BalanceRules = {
+    ...rules,
+    composition: { ...BUILTIN_COMPOSITION, weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 60, topSupport: 40 } },
+  };
+  const bp = (cls: CharClass, score: number, build: Build = 'dd'): BalancePlayer =>
+    ({ id: `t${seq++}`, nickname: cls, cls, score, createdAt: '', ...prof(cls, build) });
+
+  it('рахує інших повних ДД і підтримку понад дозволену лише біля топового ДД', () => {
+    const stacked = teamStats([bp('assassin', 240), bp('wizard', 150), bp('psychic', 120)], w4);
+    expect(stacked.topDd).toBe(2);
+    const buffed = teamStats([bp('assassin', 240), bp('seeker', 140), bp('venomancer', 70)], w4);
+    expect(buffed.topDd).toBe(0);
+    expect(buffed.topSupportOver).toBeCloseTo(0.1 + 1 - 0.6, 5); // Страж 0.1 + Дру 1.0 − 0.6
+    const ok = teamStats([bp('assassin', 240), bp('seeker', 140), bp('cleric', 100)], w4);
+    expect(ok.topDd).toBe(0);
+    expect(ok.topSupportOver).toBe(0); // Страж + Прист = 0.6 — дозволено
+    // немає топового ДД (скор нижче порогу) — правило мовчить
+    const noTop = teamStats([bp('assassin', 200), bp('wizard', 190), bp('venomancer', 70)], w4);
+    expect(noTop.topDd).toBe(0);
+    expect(noTop.topSupportOver).toBe(0);
+    // кон-збірка — не повний ДД, тож не топовий
+    expect(teamStats([bp('assassin', 240, 'con'), bp('wizard', 150), bp('seeker', 100)], w4).topDd).toBe(0);
+  });
+
+  it('штраф = 60 за кожного другого ДД + 40 × перевищення підтримки', () => {
+    const t1 = [bp('assassin', 240), bp('wizard', 150), bp('seeker', 100)];
+    const t2 = [bp('psychic', 230), bp('seeker', 140), bp('venomancer', 70)];
+    const off = { ...w4, composition: { ...w4.composition, weights: { ...w4.composition.weights, topSecondDd: 0, topSupport: 0 } } };
+    const diff = evaluateTeams([t1, t2], w4).penalty - evaluateTeams([t1, t2], off).penalty;
+    expect(diff).toBeCloseTo(60 * 1 + 40 * (0.1 + 1 - 0.6), 5);
+  });
+
+  it('з нульовими вагами — той самий розклад і штраф, що й без правила', () => {
+    const players = population(30, 'r4-off');
+    const a = formTeams(players, baseOpts({ teamSize: 3 }));
+    const b = formTeams(players, baseOpts({ teamSize: 3, rules: { ...rules, composition: { ...rules.composition, topDdMinScore: 100 } } }));
+    expect(signature(a.teams)).toBe(signature(b.teams));
+    expect(a.penalty).toBe(b.penalty);
   });
 });

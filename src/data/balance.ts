@@ -22,7 +22,10 @@
 import type { BalanceSnapshot, CharClass } from './types';
 import { ROLES, type BalanceRules, type Role } from './gearRules';
 
-export const ALGO_VERSION = 'teams-ls-v3';
+export const ALGO_VERSION = 'teams-ls-v4';
+
+/** Повний ДД — kill не нижче цього (Лук/Сін/Шаман/Маг у ДД-збірці). */
+export const FULL_DD_KILL = 0.8;
 
 export interface BalancePlayer {
   id: string;
@@ -64,6 +67,11 @@ export interface TeamStats {
   maxKill: number;
   /** гравців із kill ≥ threatMinKill */
   threats: number;
+  /** Правило 4: топовий ДД команди (повний ДД зі скором ≥ topDdMinScore; якщо
+   * таких кілька — найсильніший) — скільки поруч інших повних ДД і наскільки
+   * підтримка тімейтів перевищує дозволену. Без топового ДД — 0 і 0. */
+  topDd: number;
+  topSupportOver: number;
   /** «зв'язка» команди: (гір×урон головного ДД + secondDd × Σ гір×урон решти) / 100,
    * помножене на (1 + Σ підтримки решти, не більше 1). Гір важливий: R9R2-сін
    * і слабкий сін — не однакові ДД (відгук гравців 18.09.2026). */
@@ -208,7 +216,22 @@ export function teamStats(team: BalancePlayer[], rules: BalanceRules): TeamStats
     ampOthers += team[i].amp;
   }
   const kp = ((Math.max(0, bestDmg) + comp.secondDd * restDmg) / 100) * (1 + Math.min(1, ampOthers));
-  return { prefix, total: s, dup, roleCount, maxKill, threats, kp };
+  let top: BalancePlayer | null = null;
+  for (const p of team) {
+    if (p.kill < FULL_DD_KILL || p.score < comp.topDdMinScore) continue;
+    if (!top || p.score > top.score || (p.score === top.score && byId(p, top) < 0)) top = p;
+  }
+  let topDd = 0, topSupportOver = 0;
+  if (top) {
+    let support = 0;
+    for (const p of team) {
+      if (p === top) continue;
+      if (p.kill >= FULL_DD_KILL) topDd++;
+      support += p.amp;
+    }
+    topSupportOver = Math.max(0, support - comp.topSupportAllow);
+  }
+  return { prefix, total: s, dup, roleCount, maxKill, threats, kp, topDd, topSupportOver };
 }
 
 /** Balance penalty (усі члени — в балах score). Менше = краще. */
@@ -248,6 +271,11 @@ export function penalty(stats: TeamStats[], S: number, unav: Unavoidable, rules:
     let single = 0;
     for (const st of stats) if (st.threats < 2) single++;
     pen += cw.twoThreats * Math.max(0, single - unav.singleThreat);
+  }
+  // Правило 4: топовому ДД — ні другого повного ДД, ні підтримки понад дозволену
+  // (відгук гравців: «такому челу — стража і тімейтів, які його не підсилюють»).
+  if (cw.topSecondDd > 0 || cw.topSupport > 0) {
+    for (const st of stats) pen += cw.topSecondDd * st.topDd + cw.topSupport * st.topSupportOver;
   }
   if (cw.kpRange > 0) {
     let mx = -Infinity, mn = Infinity;
