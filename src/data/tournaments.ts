@@ -6,7 +6,7 @@
 import { supabase } from '../app/supabaseClient';
 import {
   isRegistrationOpen,
-  type ArmorRefine, type ArmorSet, type BalanceStats, type Build, type CharClass, type CharLevel, type Gems, type Genie, type PlayerGear, type Registration,
+  type ArmorRefine, type ArmorSet, type BalanceStats, type Build, type CharClass, type CharLevel, type Gems, type RingGrade, type Genie, type PlayerGear, type Registration,
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
@@ -36,6 +36,8 @@ interface RegistrationRow {
   char_level?: CharLevel | null;
   // 0025
   build?: Build | null;
+  // 0026
+  ring1?: RingGrade | null; ring1_refine?: number | null; ring2?: RingGrade | null; ring2_refine?: number | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -60,6 +62,9 @@ const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
     // до 0023 колонок не було — «немає шмотки»
     shg: !!r.shg, shgRefine: r.shg ? r.shg_refine ?? 0 : null,
     voznes: !!r.voznes, voznesRefine: r.voznes ? r.voznes_refine ?? 0 : null,
+    // до 0026 колонок не було — «кілець не вказано»
+    ring1: r.ring1 ?? null, ring1Refine: r.ring1 === 'r9r1' ? r.ring1_refine ?? 0 : null,
+    ring2: r.ring2 ?? null, ring2Refine: r.ring2 === 'r9r1' ? r.ring2_refine ?? 0 : null,
   };
 };
 const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
@@ -78,6 +83,8 @@ const gearToRow = (g: PlayerGear) => ({
   tract: g.tract, genie: g.genie,
   shg: g.shg, shg_refine: g.shg ? g.shgRefine ?? 0 : null,
   voznes: g.voznes, voznes_refine: g.voznes ? g.voznesRefine ?? 0 : null,
+  ring1: g.ring1, ring1_refine: g.ring1 === 'r9r1' ? g.ring1Refine ?? 0 : null,
+  ring2: g.ring2, ring2_refine: g.ring2 === 'r9r1' ? g.ring2Refine ?? 0 : null,
 });
 
 export async function fetchSeries(): Promise<TournamentSeries[]> {

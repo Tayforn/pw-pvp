@@ -15,7 +15,7 @@ import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../d
 import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, BUILD_LABELS, BUILD_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
-  BUILTIN_COMPOSITION, RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
+  BUILTIN_COMPOSITION, RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_COMPOSITION_WEIGHTS, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, cloneRules, computeGearScoreWith, maxGearScoreOf, nextRulesVersion, rulesFor, sameForAllSizes, tierForWith,
   type SizeBucket,
   type GearRules,
@@ -24,11 +24,11 @@ import { saveRulesVersion, useRules } from '../../data/rulesStore';
 
 /** Контрольні архетипи — щоб одразу бачити, куди зсунуться tier після правки. */
 const ARCHETYPES: { name: string; gear: PlayerGear }[] = [
-  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', charLevel: 'l90_100', build: 'dd', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
-  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', charLevel: 'l90_100', build: 'dd', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null } },
+  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
+  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
+  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', charLevel: 'l90_100', build: 'dd', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
+  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
+  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', charLevel: 'l90_100', build: 'dd', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
 ];
 
 /** Грейди, для яких є сенс у перевизначенні за класом (R9-лінійка й ЦГД/РЦГД). */
@@ -367,6 +367,18 @@ export default function RulesEditor() {
           <NumInput label="Рівень точки ШГ" value={draft.shgRefinePerLevel} onChange={(v) => patch({ shgRefinePerLevel: v })} width={140} />
           <NumInput label="Рівень точки Вознєса" value={draft.voznesRefinePerLevel} onChange={(v) => patch({ voznesRefinePerLevel: v })} width={160} />
         </div>
+      </div>
+
+      <NumTable
+        title="Кільця (за кожне з двох)"
+        hint={`Бали за грейд кожного кільця. Для R9R1 ще + бали за кожен рівень точки (0–12). Зараз максимум за обидва: ${2 * (Math.max(...RING_ORDER.map((k) => draft.rings[k])) + 12 * draft.ringRefinePerLevel)}.`}
+        order={RING_ORDER}
+        labels={RING_LABELS}
+        values={draft.rings}
+        onChange={(v) => patch({ rings: v })}
+      />
+      <div className="card" style={{ padding: 14 }}>
+        <div className="field-row"><NumInput label="Рівень точки R9R1 (за кільце)" value={draft.ringRefinePerLevel} onChange={(v) => patch({ ringRefinePerLevel: v })} width={220} /></div>
       </div>
 
       <NumTable title="Сет броні" order={ARMOR_SET_ORDER} labels={ARMOR_SET_LABELS} values={draft.armorSet} onChange={(v) => patch({ armorSet: v })} />

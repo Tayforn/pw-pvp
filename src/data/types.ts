@@ -43,6 +43,8 @@ export type CharLevel = 'l90_100' | 'l101' | 'l102' | 'l103' | 'l104' | 'l105';
 /** Збірка персонажа (0025): ДД / гібрид / кон. Гір той самий, а урон — ні:
  * кон-Сін не вбиває, тому в рольовому шарі його kill множиться на коефіцієнт збірки. */
 export type Build = 'dd' | 'hybrid' | 'con';
+/** Кільце (0026): грейди за зростанням; для R9R1 окремо вказується точка. */
+export type RingGrade = 'moon' | 'pks' | 'silver' | 'r9' | 'r9r1';
 export type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
 
 /** Усі поля завжди присутні (constraint registrations_gear_all_or_none):
@@ -72,6 +74,12 @@ export interface PlayerGear {
   /** Вознєс (0023): є шмотка — і її точка окремо (0–12; null, коли шмотки немає). */
   voznes: boolean;
   voznesRefine: number | null;
+  /** Два слоти кілець (0026); null — анкета до появи поля (рахується як «Луна і нижче»).
+   * Точка — лише для R9R1 (0–12), інакше null. */
+  ring1: RingGrade | null;
+  ring1Refine: number | null;
+  ring2: RingGrade | null;
+  ring2Refine: number | null;
 }
 
 /** Що саме подавалось на вхід алгоритму — достатньо, щоб відтворити

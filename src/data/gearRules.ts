@@ -11,7 +11,7 @@
 // =========================================================
 
 import type {
-  ArmorRefine, ArmorSet, Build, CharClass, CharLevel, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
+  ArmorRefine, ArmorSet, Build, CharClass, CharLevel, RingGrade, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
 } from './types';
 
 export type Role = 'support' | 'tank' | 'ranged' | 'melee' | 'control';
@@ -132,6 +132,10 @@ export interface ScoringRules {
   shgVoznesBonus: number;
   shgRefinePerLevel: number;
   voznesRefinePerLevel: number;
+  /** Кільця: бали за грейд кожного з двох кілець і за рівень точки R9R1.
+   * Версії до появи поля беруть вбудовані значення (старі анкети без кілець = 0). */
+  rings: Record<RingGrade, number>;
+  ringRefinePerLevel: number;
   /** Ело-рейтинг з результатів матчів (src/data/ratings.ts): бали за кожні 100
    * пунктів рейтингу понад/нижче 1000 … */
   ratingWeight: number;
@@ -234,6 +238,9 @@ const BUILTIN: GearRules = {
   shgVoznesBonus: 5,
   shgRefinePerLevel: 1,
   voznesRefinePerLevel: 1,
+  // кільця (за кожне з двох): Луна і нижче 0 · ПКС/Долоня 3 · Срібний місяць/Північна зірка 6 · R9 9 · R9R1 12 + 1 за рівень точки
+  rings: { moon: 0, pks: 3, silver: 6, r9: 9, r9r1: 12 },
+  ringRefinePerLevel: 1,
   // Ело: +5 балів за кожні 100 пунктів понад 1000, не більше ±20 (рейтинг росте повільно: K=32)
   ratingWeight: 5,
   ratingCap: 20,
@@ -411,6 +418,8 @@ export function normalizeRules(raw: unknown): GearRules {
     shgVoznesBonus: isNum(r.shgVoznesBonus) ? r.shgVoznesBonus : BUILTIN.shgVoznesBonus,
     shgRefinePerLevel: isNum(r.shgRefinePerLevel) ? r.shgRefinePerLevel : BUILTIN.shgRefinePerLevel,
     voznesRefinePerLevel: isNum(r.voznesRefinePerLevel) ? r.voznesRefinePerLevel : BUILTIN.voznesRefinePerLevel,
+    rings: numTable(r.rings, BUILTIN.rings),
+    ringRefinePerLevel: isNum(r.ringRefinePerLevel) ? r.ringRefinePerLevel : BUILTIN.ringRefinePerLevel,
     ratingWeight: isNum(r.ratingWeight) ? r.ratingWeight : BUILTIN.ratingWeight,
     ratingCap: isNum(r.ratingCap) ? r.ratingCap : BUILTIN.ratingCap,
     tiers: validTiers ? tiers : BUILTIN.tiers.map((t) => ({ ...t })),
@@ -469,6 +478,16 @@ export function shgVoznesScore(g: Pick<PlayerGear, 'shg' | 'shgRefine' | 'voznes
   );
 }
 
+/** Кільця: грейд кожного з двох + точка для R9R1. Без кілець (старі анкети) — 0. */
+export function ringsScore(g: Pick<PlayerGear, 'ring1' | 'ring1Refine' | 'ring2' | 'ring2Refine'>, r: ScoringRules): number {
+  const one = (grade: RingGrade | null, refine: number | null) => {
+    if (!grade) return 0;
+    const lvl = grade === 'r9r1' ? Math.max(0, Math.min(ITEM_REFINE_MAX, Math.round(refine ?? 0))) : 0;
+    return r.rings[grade] + r.ringRefinePerLevel * lvl;
+  };
+  return one(g.ring1, g.ring1Refine) + one(g.ring2, g.ring2Refine);
+}
+
 /** Бали за клас для команди такого розміру. */
 export function classPointsFor(r: ScoringRules, cls: CharClass, teamSize: number | null | undefined): number {
   return r.classPointsBySize[sizeBucket(teamSize)][cls];
@@ -489,7 +508,8 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
     r.tract[g.tract] +
     r.genie[g.genie] +
     r.level[g.charLevel ?? 'l90_100'] +
-    shgVoznesScore(g, r)
+    shgVoznesScore(g, r) +
+    ringsScore(g, r)
   );
 }
 
@@ -502,7 +522,8 @@ export function maxGearScoreOf(r: ScoringRules): number {
   const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
   const maxClass = Math.max(...SIZE_BUCKETS.map((s) => mx(r.classPointsBySize[s])));
   return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie) + mx(r.level)
-    + r.shg + r.voznes + r.shgVoznesBonus + ITEM_REFINE_MAX * (r.shgRefinePerLevel + r.voznesRefinePerLevel);
+    + r.shg + r.voznes + r.shgVoznesBonus + ITEM_REFINE_MAX * (r.shgRefinePerLevel + r.voznesRefinePerLevel)
+    + 2 * (mx(r.rings) + ITEM_REFINE_MAX * r.ringRefinePerLevel);
 }
 
 export function maxGearScore(version?: string | null): number {
@@ -580,6 +601,17 @@ export const CHAR_LEVEL_ORDER: CharLevel[] = ['l90_100', 'l101', 'l102', 'l103',
 
 export const ROLE_LABELS: Record<Role, string> = { support: 'Сапорт', tank: 'Танк', ranged: 'Дальній ДД', melee: 'Ближній ДД', control: 'Контроль' };
 
+export const RING_LABELS: Record<RingGrade, string> = {
+  moon: 'Луна і нижче', pks: 'ПКС / Долоня', silver: 'Срібний місяць / Північна зірка', r9: 'R9', r9r1: 'R9R1',
+};
+export const RING_ORDER: RingGrade[] = ['moon', 'pks', 'silver', 'r9', 'r9r1'];
+
+/** «R9R1 +5, R9» / '' — кільця для підсумку анкети. */
+export function ringsLabel(g: Pick<PlayerGear, 'ring1' | 'ring1Refine' | 'ring2' | 'ring2Refine'>): string {
+  const one = (grade: RingGrade | null, refine: number | null) => (grade ? `${RING_LABELS[grade].split(' / ')[0]}${grade === 'r9r1' ? ` +${refine ?? 0}` : ''}` : '');
+  return [one(g.ring1, g.ring1Refine), one(g.ring2, g.ring2Refine)].filter(Boolean).join(', ');
+}
+
 /** «ШГ +7, Вознєс +5» / «ШГ +7» / '' — для підсумку анкети. */
 export function shgVoznesLabel(g: Pick<PlayerGear, 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine'>): string {
   const parts: string[] = [];
@@ -607,5 +639,7 @@ export function gearSummary(g: PlayerGear, version?: string | null): string {
   parts.push(`Джин ${GENIE_LABELS[g.genie]}`);
   const items = shgVoznesLabel(g);
   if (items) parts.push(items);
+  const rings = ringsLabel(g);
+  if (rings) parts.push(`Кільця ${rings}`);
   return parts.join(' · ');
 }

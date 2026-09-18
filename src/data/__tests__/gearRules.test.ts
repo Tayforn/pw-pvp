@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_RULES_VERSION, CLASS_ORDER, SIZE_BUCKETS, computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, maxGearScore,
-  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
+  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { CharClass, PlayerGear } from '../types';
 
@@ -12,14 +12,15 @@ const base: PlayerGear = {
   charClass: 'cleric', charLevel: null, build: null, weaponGrade: 'nirvana', weaponRefine: 'w0_5', weaponPz: false,
   armorSet: 'nirvana', armorRefine: 'a5', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't1_3', genie: 'g60',
   shg: false, shgRefine: null, voznes: false, voznesRefine: null,
+  ring1: null, ring1Refine: null, ring2: null, ring2Refine: null,
 };
 const gear = (over: Partial<PlayerGear>): PlayerGear => ({ ...base, ...over });
 
 describe('balance-v1.0: шкала', () => {
-  it('максимум 349 (285 + ШГ/Вознєс 54 + рівень 10), реалістичний (без R9-броні) 336', () => {
-    expect(maxGearScore()).toBe(349);
+  it('максимум 397 (285 + ШГ/Вознєс 54 + рівень 10 + кільця 48), реалістичний (без R9-броні) 384', () => {
+    expect(maxGearScore()).toBe(397);
     const r = rulesFor();
-    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(336);
+    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(384);
   });
 
   it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі (з балами класу)', () => {
@@ -272,5 +273,33 @@ describe('рольовий шар у версіях шкали', () => {
   it('підсумок анкети показує збірку, крім ДД', () => {
     expect(gearSummary(gear({ build: 'con' }))).toContain('Збірка: Кон');
     expect(gearSummary(gear({ build: 'dd' }))).not.toContain('Збірка');
+  });
+});
+
+describe('кільця', () => {
+  it('грейд кожного з двох кілець; точка — лише для R9R1', () => {
+    const r = rulesFor();
+    expect(ringsScore(base, r)).toBe(0); // без кілець (стара анкета)
+    expect(ringsScore(gear({ ring1: 'moon', ring2: 'moon' }), r)).toBe(0);
+    expect(ringsScore(gear({ ring1: 'pks', ring2: 'silver' }), r)).toBe(3 + 6);
+    expect(ringsScore(gear({ ring1: 'r9', ring2: 'r9' }), r)).toBe(18);
+    expect(ringsScore(gear({ ring1: 'r9r1', ring1Refine: 5, ring2: 'r9' }), r)).toBe(12 + 5 + 9);
+    expect(ringsScore(gear({ ring1: 'r9', ring1Refine: 9, ring2: 'moon' }), r)).toBe(9); // точка без R9R1 ігнорується
+    expect(ringsScore(gear({ ring1: 'r9r1', ring1Refine: 12, ring2: 'r9r1', ring2Refine: 12 }), r)).toBe(48);
+  });
+
+  it('входять у гір-скор і в підсумок анкети', () => {
+    expect(score(gear({ ring1: 'r9r1', ring1Refine: 5, ring2: 'r9' })) - score(base)).toBe(26);
+    expect(gearSummary(gear({ ring1: 'r9r1', ring1Refine: 5, ring2: 'r9' }))).toContain('Кільця R9R1 +5, R9');
+    expect(gearSummary(base)).not.toContain('Кільця');
+  });
+
+  it('версія без полів кілець бере вбудовані значення', () => {
+    const legacy = serializeRules(rulesFor(BUILTIN_RULES_VERSION)) as Record<string, unknown>;
+    delete legacy.rings;
+    delete legacy.ringRefinePerLevel;
+    const old = normalizeRules(legacy);
+    expect(old.rings.r9r1).toBe(12);
+    expect(computeGearScoreWith(base, old, 3)).toBe(score(base));
   });
 });

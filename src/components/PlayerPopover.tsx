@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom';
 import type { PlayerGear, Tier } from '../data/types';
 import {
   ARMOR_REFINE_LABELS, ARMOR_SET_LABELS, BUILD_LABELS, CHAR_LEVEL_LABELS, CLASS_LABELS, GEMS_LABELS, GENIE_LABELS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
-  TRACT_LABELS, WEAPON_GRADE_LABELS, WEAPON_REFINE_LABELS, rulesFor, shgVoznesLabel,
+  TRACT_LABELS, WEAPON_GRADE_LABELS, WEAPON_REFINE_LABELS, ringsLabel, rulesFor, shgVoznesLabel,
 } from '../data/gearRules';
 
 export interface PlayerCardInfo {
@@ -52,6 +52,7 @@ export function gearRows(g: PlayerGear): { label: string; value: string }[] {
     { label: 'Трактат', value: TRACT_LABELS[g.tract] },
     { label: 'Джин', value: GENIE_LABELS[g.genie] },
     { label: 'ШГ / Вознєс', value: shgVoznesLabel(g) || '—' },
+    { label: 'Кільця', value: ringsLabel(g) || '—' },
   ];
 }
 

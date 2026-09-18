@@ -21,7 +21,7 @@ import {
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CLASS_LABELS, CLASS_ORDER,
   BUILD_LABELS, BUILD_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, GEMS_LABELS, GEMS_ORDER, GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_HINTS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
   TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER, WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER,
-  ITEM_REFINE_MAX, computeGearScore, rulesFor,
+  ITEM_REFINE_MAX, RING_LABELS, RING_ORDER, computeGearScore, rulesFor,
 } from '../data/gearRules';
 import { useRules } from '../data/rulesStore';
 
@@ -53,7 +53,8 @@ export function isGearComplete(v: Partial<PlayerGear>): v is PlayerGear {
     v.specialSetGems && v.specialSets.every((s) => !!v.specialSetGems![s]) && // для кожного відміченого сету обрано камені
     v.tract && v.genie &&
     typeof v.shg === 'boolean' && typeof v.voznes === 'boolean' &&
-    (!v.shg || v.shgRefine != null) && (!v.voznes || v.voznesRefine != null) // відмічена шмотка — обрано точку
+    (!v.shg || v.shgRefine != null) && (!v.voznes || v.voznesRefine != null) && // відмічена шмотка — обрано точку
+    v.ring1 && v.ring2 && (v.ring1 !== 'r9r1' || v.ring1Refine != null) && (v.ring2 !== 'r9r1' || v.ring2Refine != null) // обидва кільця; R9R1 — з точкою
   );
 }
 
@@ -117,6 +118,10 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
     next.shgRefine = next.shg ? next.shgRefine ?? null : null;
     next.voznes = next.voznes ?? false;
     next.voznesRefine = next.voznes ? next.voznesRefine ?? null : null;
+    next.ring1 = next.ring1 ?? null;
+    next.ring1Refine = next.ring1 === 'r9r1' ? next.ring1Refine ?? null : null;
+    next.ring2 = next.ring2 ?? null;
+    next.ring2Refine = next.ring2 === 'r9r1' ? next.ring2Refine ?? null : null;
     onChange(next);
   };
 
@@ -212,6 +217,18 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
         <div className="field-row">
           {value.shg && <RefineSelect label="Точка ШГ" value={value.shgRefine ?? null} onChange={(n) => patch({ shgRefine: n })} />}
           {value.voznes && <RefineSelect label="Точка Вознєса" value={value.voznesRefine ?? null} onChange={(n) => patch({ voznesRefine: n })} />}
+        </div>
+      )}
+
+      {/* Два кільця — кожне своїм грейдом; для R9R1 під ним точка (як у ШГ/Вознєса). */}
+      <div className="field-row">
+        <OptionSelect label="Кільце 1" value={value.ring1 ?? undefined} options={RING_ORDER} labels={RING_LABELS} onChange={(v) => patch({ ring1: v ?? null })} />
+        <OptionSelect label="Кільце 2" value={value.ring2 ?? undefined} options={RING_ORDER} labels={RING_LABELS} onChange={(v) => patch({ ring2: v ?? null })} />
+      </div>
+      {(value.ring1 === 'r9r1' || value.ring2 === 'r9r1') && (
+        <div className="field-row">
+          {value.ring1 === 'r9r1' ? <RefineSelect label="Точка кільця 1 (R9R1)" value={value.ring1Refine ?? null} onChange={(n) => patch({ ring1Refine: n })} /> : <span className="field" />}
+          {value.ring2 === 'r9r1' ? <RefineSelect label="Точка кільця 2 (R9R1)" value={value.ring2Refine ?? null} onChange={(n) => patch({ ring2Refine: n })} /> : <span className="field" />}
         </div>
       )}
 
