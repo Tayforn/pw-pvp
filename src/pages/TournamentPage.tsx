@@ -59,7 +59,7 @@ function PlayerRow({ reg, info }: { reg: Registration; info: PlayerCardInfo | nu
  * (у попапі за бейджем рангу) відповіді анкети + сума балів КОМАНДИ;
  * персональний скор числом не показуємо (число без контексту породжує
  * суперечки). */
-function BalancedTeams({ tournament, registrations }: { tournament: Tournament; registrations: Registration[] }) {
+export function BalancedTeams({ tournament, registrations }: { tournament: Tournament; registrations: Registration[] }) {
   const version = rulesVersionFor(tournament);
   const frozenTiers = new Map<string, Tier>();
   for (const team of tournament.balanceStats?.teams ?? []) for (const m of team.members) frozenTiers.set(m.registrationId, m.tier);
@@ -112,6 +112,41 @@ function BalancedTeams({ tournament, registrations }: { tournament: Tournament; 
   );
 }
 
+/** Правила й призи турніру. Після завершення вони вже не актуальні — ховаємо
+ * їх у згорнутий <details>-акордеон, щоб не займали місце під сіткою
+ * (кому треба — розгорне). Для активних турнірів картка як була;
+ * `collapsed` — завжди акордеоном (сторінка сітки за посиланням, де
+ * головне — сама сітка). */
+export function RulesPrizes({ tournament, collapsed }: { tournament: Tournament; collapsed?: boolean }) {
+  if (!tournament.rulesMd && !tournament.prizesMd) return null;
+  const grid = (
+    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: tournament.rulesMd && tournament.prizesMd ? '1fr 1fr' : '1fr' }}>
+      {tournament.rulesMd && (
+        <div>
+          <h4 style={{ marginTop: 0 }}>Правила</h4>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
+        </div>
+      )}
+      {tournament.prizesMd && (
+        <div>
+          <h4 style={{ marginTop: 0 }}>Призи</h4>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.prizesMd}</p>
+        </div>
+      )}
+    </div>
+  );
+  return collapsed || tournament.status === 'completed' ? (
+    <details className="card" style={{ marginBottom: 18 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+        {tournament.rulesMd && tournament.prizesMd ? 'Правила та призи' : tournament.rulesMd ? 'Правила' : 'Призи'}
+      </summary>
+      <div style={{ marginTop: 12 }}>{grid}</div>
+    </details>
+  ) : (
+    <div className="card" style={{ marginBottom: 18 }}>{grid}</div>
+  );
+}
+
 /** `guest` — не увійшов через Discord: минулий турнір бачить повністю, а
  * поточний — лише шапку, правила/призи й кнопку заявки (форма заявки веде
  * сюди по правила). Сітку поточного турніру гостям дають окремим
@@ -145,38 +180,6 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
     setTimeout(() => setCopied(false), 1500);
   };
 
-  /* Після завершення турніру правила/призи вже не актуальні — ховаємо
-     їх у згорнутий <details>-акордеон, щоб не займали місце під сіткою
-     (кому треба — розгорне). Для активних турнірів картка як була. */
-  const rulesBlock = (tournament.rulesMd || tournament.prizesMd) && (() => {
-    const grid = (
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: tournament.rulesMd && tournament.prizesMd ? '1fr 1fr' : '1fr' }}>
-        {tournament.rulesMd && (
-          <div>
-            <h4 style={{ marginTop: 0 }}>Правила</h4>
-            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
-          </div>
-        )}
-        {tournament.prizesMd && (
-          <div>
-            <h4 style={{ marginTop: 0 }}>Призи</h4>
-            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.prizesMd}</p>
-          </div>
-        )}
-      </div>
-    );
-    return tournament.status === 'completed' ? (
-      <details className="card" style={{ marginBottom: 18 }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-          {tournament.rulesMd && tournament.prizesMd ? 'Правила та призи' : tournament.rulesMd ? 'Правила' : 'Призи'}
-        </summary>
-        <div style={{ marginTop: 12 }}>{grid}</div>
-      </details>
-    ) : (
-      <div className="card" style={{ marginBottom: 18 }}>{grid}</div>
-    );
-  })();
-
   return (
     <div>
       <PageMeta title={`${tournament.name} — PW PvP`} description={tournament.rulesMd ?? undefined} />
@@ -205,7 +208,7 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
 
       {limited ? (
         <>
-          {rulesBlock}
+          <RulesPrizes tournament={tournament} />
           <MemberNotice compact onLogin={onLogin} />
         </>
       ) : (
@@ -236,7 +239,7 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
             </details>
           )}
 
-          {rulesBlock}
+          <RulesPrizes tournament={tournament} />
 
           {/* Фул-рандом до сітки: сформовані команди картками, а до формування —
               учасники з класами (щоб було видно, кого бракує). */}

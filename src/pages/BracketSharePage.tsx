@@ -1,16 +1,21 @@
 // =========================================================
-// Сітка турніру за посиланням «Поділитися» (/t/:id/bracket): лише назва,
-// дата, статус і сама сітка з живим оновленням — без шапки сайту, меню,
-// футера й посилань кудись далі. Відкривається будь-кому, і без входу:
+// Сітка турніру за посиланням «Поділитися» (/t/:id/bracket): назва, дата,
+// статус, сама сітка з живим оновленням і під нею згорнуті «Склади команд»
+// (фул-рандом) та «Правила та призи» — без шапки сайту, меню, футера й
+// посилань кудись далі. Відкривається будь-кому, і без входу:
 // посилання дають саме для того, щоб сітку бачили й не свої.
 // =========================================================
 
 import PageMeta from '../app/PageMeta';
 import { useTournamentLive } from '../app/useTournamentLive';
-import { STATUS_LABELS, effectiveStatus } from '../data/types';
+import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant } from '../data/types';
+import { useRules } from '../data/rulesStore';
 import BracketView from '../components/BracketView';
+import { BalancedTeams, RulesPrizes } from './TournamentPage';
 
 export default function BracketSharePage({ id }: { id: string }) {
+  // суми балів команд рахуються за версією шкали турніру — підписка на реєстр версій
+  useRules();
   const { tournament, registrations, bracket, updatedAt, refreshing, reload } = useTournamentLive(id);
 
   let body;
@@ -18,6 +23,8 @@ export default function BracketSharePage({ id }: { id: string }) {
   else if (tournament === null) body = <p className="hint">Турнір не знайдено.</p>;
   else {
     const status = effectiveStatus(tournament);
+    // Фул-рандом: у сітці лише назви команд — склад розгортається під нею.
+    const teamsFormed = isBalancedRandom(tournament) && registrations.some((r) => isBracketParticipant(tournament, r));
     body = (
       <>
         <PageMeta title={`Сітка: ${tournament.name} — PW PvP`} description={`Турнірна сітка «${tournament.name}» (${tournament.eventDate}).`} />
@@ -30,7 +37,18 @@ export default function BracketSharePage({ id }: { id: string }) {
             <button type="button" className="btn btn-ghost btn-sm" disabled={refreshing} title="Перечитати сітку" onClick={reload}>↻</button>
           </div>
         </div>
-        <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
+        <div style={{ marginBottom: 18 }}>
+          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
+        </div>
+        {teamsFormed && (
+          <details className="card" open={tournament.status !== 'completed'} style={{ marginBottom: 18 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Склади команд</summary>
+            <div style={{ marginTop: 12 }}>
+              <BalancedTeams tournament={tournament} registrations={registrations} />
+            </div>
+          </details>
+        )}
+        <RulesPrizes tournament={tournament} collapsed />
       </>
     );
   }
