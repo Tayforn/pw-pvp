@@ -207,9 +207,22 @@ export interface BracketMatch {
  * забути закрити реєстрацію після дати турніру. */
 export function isRegistrationOpen(t: Pick<Tournament, 'status' | 'eventDate'>): boolean {
   if (t.status !== 'registration_open') return false;
+  return t.eventDate >= localToday();
+}
+
+/** Сьогоднішня дата (YYYY-MM-DD) за місцевим часом — у форматі event_date. */
+function localToday(): string {
   const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return t.eventDate >= today;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/** Минулий турнір — завершений/скасований, або його дата вже минула, а
+ * статус так і не перевели (крім «Триває»: той ще йде, хоч би й за північ).
+ * Такі гість бачить повністю; поточні — лише учасник клану (app/access.ts). */
+export function isPastTournament(t: Pick<Tournament, 'status' | 'eventDate'>): boolean {
+  if (t.status === 'completed' || t.status === 'cancelled') return true;
+  if (t.status === 'in_progress') return false;
+  return t.eventDate < localToday();
 }
 
 /** Статус для відображення (беджі): якщо в БД ще 'registration_open', але
