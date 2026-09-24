@@ -11,6 +11,10 @@ import type { BracketType, TeamMode, Tournament, TournamentSeries, TournamentSta
 import { STATUS_LABELS } from '../../data/types';
 import { createTournament, fetchRegistrations, updateTournament, type TournamentInput } from '../../data/tournaments';
 import { standardRulesFor, standardRulesLabel } from '../../data/standardRules';
+import type { TournamentRuleFlags } from '../../data/ruleFlags';
+import { defaultFlagsFor, drawSummary, flagsFromLegacyText, formatOf, itemsForFormat, renderRulesMd } from '../../data/ruleCatalog';
+import { useRuleCatalog } from '../../data/catalogStore';
+import RulesPopup from './RulesPopup';
 
 const STATUSES: TournamentStatus[] = ['draft', 'registration_open', 'registration_closed', 'in_progress', 'completed', 'cancelled'];
 
@@ -34,6 +38,18 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   const [seriesId] = useState(initial?.seriesId ?? series.find((s) => s.isActive)?.id ?? '');
   const [status, setStatus] = useState<TournamentStatus>(initial?.status ?? 'draft');
   const [rulesMd, setRulesMd] = useState(initial?.rulesMd ?? '');
+  // Правила рядками (0027): знімок довідника. Новий турнір — конструктор
+  // (дефолти формату, поки адмін не зберіг попап); старий турнір без
+  // rule_flags — textarea як раніше, доки не збережуть попап після «Перейти на
+  // конструктор» (ГМ інакше не виправив би текст турніру, створеного кроном
+  // серії). Кандидат конверсії (pendingFlags) живе окремо, поки попап не
+  // збережено: «Скасувати» повертає textarea, а «Зберегти» редактора без
+  // збереженого попапу rule_flags не пише.
+  const { loaded: catalogLoaded, items: catalog } = useRuleCatalog();
+  const [ruleFlags, setRuleFlags] = useState<TournamentRuleFlags | null>(initial?.ruleFlags ?? null);
+  const [legacyText, setLegacyText] = useState(!!initial && initial.ruleFlags === null);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [pendingFlags, setPendingFlags] = useState<TournamentRuleFlags | null>(null);
   const [prizesMd, setPrizesMd] = useState(initial?.prizesMd ?? '');
   const [bracketType, setBracketType] = useState<BracketType>(initial?.bracketType ?? 'single_elim');
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(initial?.thirdPlaceMatch ?? false);
@@ -93,8 +109,25 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   const sizeLocked = regInfo === null || (balancedSel ? regInfo.teams > 0 : regInfo.confirmed > 0);
   const sizeLockedStyle = sizeLocked ? { opacity: 0.5, cursor: 'not-allowed' as const } : undefined;
 
+  const effectiveTeamSize = teamMode ? teamSize : null;
+  // Знімок, який піде в турнір у режимі конструктора: свій (після попапу) або
+  // дефолти довідника для поточного формату — але лише коли довідник
+  // довантажився, інакше у знімок пішов би вбудований текст.
+  const constructorFlags: TournamentRuleFlags | null = legacyText ? null : ruleFlags ?? (catalogLoaded ? defaultFlagsFor(catalog, effectiveTeamSize, mode) : null);
+  const rulesReady = legacyText || constructorFlags !== null;
+  const rulesPreview = constructorFlags ? renderRulesMd(constructorFlags, effectiveTeamSize, mode) : '';
+  // Після зміни формату (чи довідника) у знімку можуть бути рядки не для цього
+  // формату або бракувати нових — попап покаже це чіпами, тут лише підказка.
+  const rulesMismatch = !!ruleFlags && !legacyText && (() => {
+    const want = itemsForFormat(catalog, formatOf(effectiveTeamSize, mode)).map((i) => i.key);
+    const have = ruleFlags.items.map((i) => i.key);
+    return want.some((k) => !have.includes(k)) || have.some((k) => !want.includes(k));
+  })();
+  // Рядки, що впливають на жеребку, після формування команд не змінюються (як sizeLocked).
+  const drawLocked = balancedSel && (regInfo === null || regInfo.teams > 0);
+
   const save = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !rulesReady) return;
     setBusy(true);
     setErr(null);
     const input: TournamentInput = {
@@ -102,13 +135,16 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
       name: name.trim(),
       eventDate,
       status,
-      rulesMd,
+      // Конструктор: rules_md генерується зі знімка (сторінка турніру й реєстрація
+      // читають лише текст); старий textarea — текст як є, rule_flags не чіпаємо.
+      rulesMd: constructorFlags ? rulesPreview : rulesMd,
       prizesMd,
       bracketType,
-      teamSize: teamMode ? teamSize : null,
+      teamSize: effectiveTeamSize,
       teamMode: mode,
       thirdPlaceMatch,
       bracketNewLook,
+      ...(constructorFlags ? { ruleFlags: constructorFlags } : {}),
     };
     try {
       if (initial) await updateTournament(initial.id, input);
@@ -247,29 +283,74 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
               ) : null}
             </>
           )}
-          <label className="field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Правила</span>
-              {(() => {
-                const effectiveTeamSize = teamMode ? teamSize : null;
-                const preset = standardRulesFor(effectiveTeamSize, mode);
-                if (!preset) return null;
-                return (
+          {legacyText ? (
+            <label className="field">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>Правила</span>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={() => {
                       if (rulesMd.trim() && !confirm('Замінити поточний текст правил стандартними?')) return;
-                      setRulesMd(preset);
+                      setRulesMd(standardRulesFor(effectiveTeamSize, mode, catalog));
                     }}
                   >
                     Вставити стандартні правила ({standardRulesLabel(effectiveTeamSize, mode)})
                   </button>
-                );
-              })()}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={!catalogLoaded}
+                    title={catalogLoaded ? 'Рядки довідника для формату + цей текст у «Додатково»' : 'Зачекай, довідник довантажується'}
+                    onClick={() => {
+                      setPendingFlags(flagsFromLegacyText(rulesMd, catalog, effectiveTeamSize, mode));
+                      setRulesOpen(true);
+                    }}
+                  >
+                    Перейти на конструктор
+                  </button>
+                </div>
+              </div>
+              <textarea rows={4} value={rulesMd} onChange={(e) => setRulesMd(e.target.value)} />
+              <small className="hint">
+                Цей турнір зберігає правила вільним текстом. «Перейти на конструктор» підставить рядки довідника для формату, а цей текст
+                покладе в «Додатково» по рядках — дублі прибереш у попапі.
+              </small>
+            </label>
+          ) : (
+            <div className="field">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>Правила</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={!catalogLoaded && !ruleFlags}
+                  title={catalogLoaded || ruleFlags ? 'Галочки й параметри з довідника; текст збирається сам' : 'Зачекай, довідник довантажується'}
+                  onClick={() => setRulesOpen(true)}
+                >
+                  Правила…
+                </button>
+              </div>
+              <pre
+                style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.5, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 12, maxHeight: 160, overflowY: 'auto', color: 'var(--text-dim)' }}
+              >
+                {rulesPreview || 'довантажую довідник…'}
+              </pre>
+              {constructorFlags && drawSummary(constructorFlags, catalog).length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {drawSummary(constructorFlags, catalog).map((c) => <span key={c} className="badge mute">{c}</span>)}
+                </div>
+              )}
+              <small className="hint">
+                {rulesMismatch
+                  ? 'Формат або довідник змінились — відкрий «Правила…» і перевір рядки (кнопка «Стандартні для формату»).'
+                  : ruleFlags
+                    ? 'Текст зафіксовано на момент збереження — правки довідника цей турнір не змінюють.'
+                    : 'Стандартні рядки довідника для формату — зміниш у «Правила…».'}
+              </small>
             </div>
-            <textarea rows={4} value={rulesMd} onChange={(e) => setRulesMd(e.target.value)} />
-          </label>
+          )}
           <label className="field">
             <span>Призи</span>
             <textarea rows={3} value={prizesMd} onChange={(e) => setPrizesMd(e.target.value)} />
@@ -278,9 +359,27 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
         </div>
         <div className="modal-foot">
           <button type="button" className="btn btn-ghost" onClick={onClose}>Скасувати</button>
-          <button type="button" className="btn btn-primary" disabled={busy || !name.trim()} onClick={save}>Зберегти</button>
+          {!rulesReady && <span className="hint" style={{ margin: 0 }}>довантажую довідник правил…</span>}
+          <button type="button" className="btn btn-primary" disabled={busy || !name.trim() || !rulesReady} onClick={save}>Зберегти</button>
         </div>
       </div>
+      {rulesOpen && (
+        <RulesPopup
+          teamSize={effectiveTeamSize}
+          teamMode={mode}
+          initial={pendingFlags ?? ruleFlags}
+          drawLocked={drawLocked}
+          confirmedCount={regInfo?.confirmed ?? 0}
+          onClose={() => { setPendingFlags(null); setRulesOpen(false); }}
+          onSave={(flags) => {
+            // Перший збережений попап старого турніру — і є перехід на конструктор.
+            setRuleFlags(flags);
+            setLegacyText(false);
+            setPendingFlags(null);
+            setRulesOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

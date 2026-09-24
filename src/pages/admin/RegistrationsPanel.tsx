@@ -149,6 +149,9 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
   const locked = balanced && teamRows(tournament, regs).length > 0;
   const lockTitle = locked ? 'Спершу переформуй команди' : undefined;
   const substitutedOut = new Set((tournament.balanceStats?.substitutions ?? []).map((s) => s.out));
+  // Час останньої зміни тексту правил (0027, проставляє БД): заявка, подана
+  // раніше, підтверджувала інший текст — адмін бачить бейдж.
+  const rulesChangedAt = tournament.ruleFlagsUpdatedAt ? Date.parse(tournament.ruleFlagsUpdatedAt) : NaN;
 
   if (loading) return <p className="hint">Завантаження заявок…</p>;
   if (rows.length === 0) return <p className="hint">Заявок ще немає.</p>;
@@ -192,6 +195,9 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                 <span className="badge mute" title={`${elo.wins} перемог`}>Ело {Math.round(elo.rating)} · {elo.games} ігор</span>
               )}
               <span className="hint" style={{ margin: 0 }}>{r.rulesAck ? 'з правилами ознайомлений' : 'правила НЕ підтверджено'}</span>
+              {Number.isFinite(rulesChangedAt) && Date.parse(r.createdAt) < rulesChangedAt && (
+                <span className="badge warn" title="Текст правил змінено після подання цієї заявки — гравець підтверджував інший текст">правила змінено після заявки</span>
+              )}
               <span className={'badge ' + STATUS_CLASS[r.status]} style={{ marginLeft: 'auto' }}>{statusLabel}</span>
               {balanced && (
                 <button type="button" className="btn btn-ghost btn-sm" title="Редагувати анкету спорядження" onClick={() => setEditing(r)}>✎</button>

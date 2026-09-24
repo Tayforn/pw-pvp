@@ -57,12 +57,72 @@ export interface CompositionRules {
   topDdMinScore: number;
   topSupportAllow: number;
   weights: { killer: number; twoThreats: number; kpRange: number; topSecondDd: number; topSupport: number };
+  /** Правило 4 для пар (2×2) — окремий перемикач словами, бо у парі ваги
+   * вище мертві: «дозвіл підтримки» там означає лише «Друїда не можна», а
+   * вага 40 чи 100 дає побітово той самий розклад, що вимкнене правило.
+   *  • 'legacy' — як для 3+: м'які ваги topSecondDd/topSupport (так рахуються
+   *    версії шкали, збережені до появи поля — старі турніри біт-у-біт);
+   *  • 'noSecondDd' — топовому ДД будь-кого, крім другого повного ДД; жорстко
+   *    (+10 000 за пару з порушенням понад неминуче);
+   *  • 'noSecondDdNoDruid' — те саме, плюс не Друїда (тімейт з amp ≥ 1);
+   *  • 'off' — у парах правило 4 не діє, силу вирівнює лише сума.
+   * Для команд 3+ поле не діє — там лишаються ваги. */
+  pairsRule: PairsRule;
+}
+
+export type PairsRule = 'legacy' | 'noSecondDd' | 'noSecondDdNoDruid' | 'off';
+export const PAIRS_RULES: PairsRule[] = ['noSecondDd', 'noSecondDdNoDruid', 'off', 'legacy'];
+export const PAIRS_RULE_LABELS: Record<PairsRule, string> = {
+  noSecondDd: 'Топовому ДД — будь-кого, крім другого повного ДД',
+  noSecondDdNoDruid: 'Топовому ДД — будь-кого, крім другого ДД і Друїда',
+  off: 'Вимкнено — у парах силу вирівнює лише сума',
+  legacy: 'Як для 3+ (ваги; старі версії шкали)',
+};
+
+// ── Бафи тімейтів → «сила команди» ──────────────────────────────
+//
+// Сила команди = гір + бафи. Бафи — класові бафи на стати (Рев Танка, Аура
+// сталі Воїна, бафи Приста …), виражені у відсотках сили ОТРИМУВАЧА: скільки
+// урону/живучості клас-дарувальник додає союзнику. Це не те саме, що amp у
+// профілях класів вище: amp — «наскільки клас тримає ДД живим і контролює
+// ворога» (хіл, дебафи, зв'язка kp і правило 4), таблиця бафів — «наскільки
+// клас підсилює стати союзника». Тому Танк і Прист є в обох: бафають (тут) і
+// лікують/тримають (там) — це дві різні речі, а не подвійний облік.
+// Власні самобафи в скор не входять: гравець бафає лише тімейтів.
+
+/** Колонка таблиці: без КХ (за замовчуванням; відповідь власника) чи під КХ. */
+export type KxMode = 'kx' | 'noKx';
+/** Сторона шляху дарувальника: мудрець (rs) / демон (je). */
+export type BuffSide = 'rs' | 'je';
+/** Скільки % сили отримує фізичний / магічний союзник. */
+export interface BuffCell { phys: number; mag: number }
+
+export interface BuffRules {
+  /** галочка «Враховувати бафи в силі команди» — єдиний вимикач у шкалі */
+  enabled: boolean;
+  /** яку колонку брати, коли правила турніру КХ не задають */
+  defaultKx: KxMode;
+  /** стеля сумарного бафу одному отримувачу, % (Танк 22 + Прист 15 + Воїн 10 = 47 → 40) */
+  cap: number;
+  /** сторона має значення: true → клітинка за стороною дарувальника (без сторони — max);
+   * false → одна колонка = сильніша сторона (max(rs, je)) */
+  bySide: boolean;
+  /** частка бафів у силі за розміром команди, % ('5' = 5 і більше) — запобіжник
+   * для масових форматів, де рівна сила сильно розводить гір */
+  sizeWeight: Record<'2' | '3' | '4' | '5', number>;
+  /** множити бафи на урон (kill) отримувача: Стражу, який не б'є, атакуючі бафи майже нічого не дають */
+  killScaled: boolean;
+  /** таблиця: дарувальник → колонка КХ → сторона → {фізикам, магам} */
+  pct: Record<CharClass, Record<KxMode, Record<BuffSide, BuffCell>>>;
 }
 
 /** Параметри алгоритму формування команд (src/data/balance.ts). */
 export interface BalanceRules {
   roleOf: Record<CharClass, Role>;
   composition: CompositionRules;
+  /** бафи тімейтів — СУСІД composition, а не всередині: кнопка «Рекомендовані»
+   * у редакторі замінює весь composition атомарно й не має мовчки вимикати бафи */
+  buffs: BuffRules;
   weights: BalanceWeights;
   /** температура відпалу на старті / в кінці, у балах score */
   T0: number;
@@ -169,10 +229,15 @@ export const BUILTIN_CLASS_PROFILES: Record<CharClass, ClassProfile> = {
 };
 /** Рекомендовані ваги шару (кнопка в редакторі); у вбудованій версії — нулі,
  * щоб версії, збережені до появи шару, рахувались як раніше. */
-/** Підібрано на живому турнірі (24 гравці, 8×3): усі 20 seed без порушень, розкид гіру 15–19. */
-export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 10, topSecondDd: 60, topSupport: 40 };
+/** Підібрано на живому турнірі (24 гравці, 8×3): усі 20 seed без порушень, розкид гіру 15–19.
+ * topSupport 100 (було 40): у 3×3 дає ті самі 20/20, але не «продає» Друїда
+ * топу за 16 балів гіру (синтез 24.09.2026). */
+export const RECOMMENDED_COMPOSITION_WEIGHTS = { killer: 30, twoThreats: 10, kpRange: 10, topSecondDd: 60, topSupport: 100 };
 /** «Профіль сили» (weights.top) заважає правилу 4 у малих командах — рекомендовано 0.25 замість 1. */
 export const RECOMMENDED_TOP_PROFILE_WEIGHT = 0.25;
+/** Рекомендоване положення правила 4 для пар — окремою константою, щоб кнопка
+ * «Рекомендовані» могла взяти його разом із вагами. */
+export const RECOMMENDED_PAIRS_RULE: PairsRule = 'noSecondDd';
 export const BUILTIN_COMPOSITION: CompositionRules = {
   profiles: BUILTIN_CLASS_PROFILES,
   buildKill: { dd: 1, hybrid: 0.7, con: 0.4 },
@@ -181,6 +246,8 @@ export const BUILTIN_COMPOSITION: CompositionRules = {
   topDdMinScore: 225,
   topSupportAllow: 0.6,
   weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 },
+  // 'legacy' у вбудованій: версії до появи поля рахують пари як 3+ (біт-у-біт)
+  pairsRule: 'legacy',
 };
 
 /** Профіль гравця для алгоритму: клас × збірка (без збірки — як ДД). */
@@ -189,9 +256,104 @@ export function playerProfile(cls: CharClass, build: Build | null | undefined, c
   return { kill: p.kill * comp.buildKill[build ?? 'dd'], amp: p.amp };
 }
 
-/** Фізичні класи: на їхніх R9 / R9R1 абілка важить більше, ніж +ПА РЦГД. */
-export const PHYSICAL_CLASSES: CharClass[] = ['archer', 'barbarian', 'assassin', 'blademaster', 'seeker'];
+/** Фізичні класи (Лучник, Сін, Воїн, Танк, Страж): на їхніх R9 / R9R1 абілка
+ * важить більше, ніж +ПА РЦГД, і бафи вони отримують за колонкою «фізикам».
+ * Решта — маги (Маг, Прист, Шаман, Друїд, Містик). */
+export const PHYS_CLASSES: CharClass[] = ['archer', 'assassin', 'blademaster', 'barbarian', 'seeker'];
+/** @deprecated стара назва — те саме, що PHYS_CLASSES */
+export const PHYSICAL_CLASSES: CharClass[] = PHYS_CLASSES;
 const CASTER_CLASSES: CharClass[] = ['wizard', 'cleric', 'psychic', 'venomancer', 'mystic'];
+const PHYS_SET = new Set<CharClass>(PHYS_CLASSES);
+export function isPhysClass(cls: CharClass): boolean {
+  return PHYS_SET.has(cls);
+}
+
+const cell = (phys: number, mag: number): BuffCell => ({ phys, mag });
+/** Рядок таблиці: [без КХ мудрець, без КХ демон, під КХ мудрець, під КХ демон].
+ * Клітинки копіюються, щоб жодні дві клітинки не були одним об'єктом — інакше
+ * правка чернетки в редакторі зіпсувала б вбудовану й рекомендовану таблиці. */
+const buffRow = (nRs: BuffCell, nJe: BuffCell, kRs: BuffCell, kJe: BuffCell): Record<KxMode, Record<BuffSide, BuffCell>> =>
+  ({ noKx: { rs: { ...nRs }, je: { ...nJe } }, kx: { rs: { ...kRs }, je: { ...kJe } } });
+/** Однакова клітинка в усіх чотирьох колонках (клас без залежності від сторони/КХ). */
+const buffFlat = (c: BuffCell) => buffRow(c, c, c, c);
+const ZERO_CELL = cell(0, 0);
+
+/** Рекомендована таблиця бафів (шлях 11-го рівня, найсильніша сторона; за
+ * відповіддю власника шлях на 100+ є у всіх). Одиниця — % сили отримувача.
+ * Числа Танка/Приста/Воїна — з рушія ляльки (pathscan), під КХ для Танка/Воїна
+ * — ПРИПУЩЕННЯ; Страж 2/2 підтверджено власником.
+ * Друїд 20/20 — ПРИПУЩЕННЯ (питання власнику): Пурга / Amp / дебафи як
+ * підсилення урону союзника, КХ на них не впливає. Без цього рядка жеребка у
+ * 2×2 завжди садить найслабшого Друїда до найсильнішого ДД (розкид сили 44), а
+ * правило 4 при цьому мусить його забороняти — рядок 20 % знімає конфлікт.
+ * Містик 0: його хіли вже в «Підтримці» (amp 0.5), бафів на стати він не дає. */
+export const RECOMMENDED_BUFFS_PCT: Record<CharClass, Record<KxMode, Record<BuffSide, BuffCell>>> = {
+  barbarian: buffRow(cell(22, 16), cell(21, 16), cell(15, 10), cell(14, 10)),
+  cleric: buffRow(cell(15, 19), cell(15, 19), cell(11, 16), cell(11, 16)),
+  blademaster: buffRow(cell(10, 8), cell(8, 7), cell(8, 6), cell(7, 6)),
+  seeker: buffFlat(cell(2, 2)),
+  mystic: buffFlat(ZERO_CELL),
+  wizard: buffFlat(cell(1, 0)),
+  archer: buffFlat(cell(1, 1)),
+  assassin: buffFlat(ZERO_CELL),
+  psychic: buffFlat(ZERO_CELL),
+  venomancer: buffFlat(cell(20, 20)),
+};
+
+const zeroBuffsPct = (): BuffRules['pct'] => {
+  const out = {} as BuffRules['pct'];
+  for (const c of Object.keys(BUILTIN_CLASS_PROFILES) as CharClass[]) out[c] = buffFlat(ZERO_CELL);
+  return out;
+};
+
+/** Вбудований блок бафів — вимкнено й нулі: версії шкали, збережені до появи
+ * блоку, рахують силу = гір, тобто рівно як раніше. */
+export const BUILTIN_BUFFS: BuffRules = {
+  enabled: false,
+  defaultKx: 'noKx',
+  cap: 40,
+  bySide: false,
+  sizeWeight: { '2': 100, '3': 100, '4': 100, '5': 100 },
+  killScaled: false,
+  pct: zeroBuffsPct(),
+};
+
+const isKx = (x: unknown): x is KxMode => x === 'kx' || x === 'noKx';
+
+/** Блок бафів із JSON версії: відсутній/зламаний → BUILTIN_BUFFS (вимкнено);
+ * кожна клітинка окремо — число або 0, щоб напівзаповнена таблиця не ламала підрахунок. */
+export function normalizeBuffs(raw: unknown): BuffRules {
+  if (!raw || typeof raw !== 'object') return { ...BUILTIN_BUFFS, sizeWeight: { ...BUILTIN_BUFFS.sizeWeight }, pct: zeroBuffsPct() };
+  const b = raw as Record<string, unknown>;
+  const rawPct = (b.pct && typeof b.pct === 'object' ? b.pct : {}) as Record<string, unknown>;
+  const pct = {} as BuffRules['pct'];
+  for (const c of Object.keys(BUILTIN_CLASS_PROFILES) as CharClass[]) {
+    const byKx = (rawPct[c] && typeof rawPct[c] === 'object' ? rawPct[c] : {}) as Record<string, unknown>;
+    const row = {} as Record<KxMode, Record<BuffSide, BuffCell>>;
+    for (const kx of ['noKx', 'kx'] as KxMode[]) {
+      const bySide = (byKx[kx] && typeof byKx[kx] === 'object' ? byKx[kx] : {}) as Record<string, unknown>;
+      const sides = {} as Record<BuffSide, BuffCell>;
+      for (const side of ['rs', 'je'] as BuffSide[]) {
+        const v = (bySide[side] && typeof bySide[side] === 'object' ? bySide[side] : {}) as Record<string, unknown>;
+        sides[side] = { phys: isNum(v.phys) ? v.phys : 0, mag: isNum(v.mag) ? v.mag : 0 };
+      }
+      row[kx] = sides;
+    }
+    pct[c] = row;
+  }
+  const sw = (b.sizeWeight && typeof b.sizeWeight === 'object' ? b.sizeWeight : {}) as Record<string, unknown>;
+  const sizeWeight = {} as BuffRules['sizeWeight'];
+  for (const k of ['2', '3', '4', '5'] as const) sizeWeight[k] = isNum(sw[k]) ? sw[k] : BUILTIN_BUFFS.sizeWeight[k];
+  return {
+    enabled: b.enabled === true,
+    defaultKx: isKx(b.defaultKx) ? b.defaultKx : BUILTIN_BUFFS.defaultKx,
+    cap: isNum(b.cap) ? b.cap : BUILTIN_BUFFS.cap,
+    bySide: b.bySide === true,
+    sizeWeight,
+    killScaled: b.killScaled === true,
+    pct,
+  };
+}
 
 const byClass = (physical: Partial<Record<WeaponGrade, number>>, caster: Partial<Record<WeaponGrade, number>>): Record<CharClass, Partial<Record<WeaponGrade, number>>> => {
   const out = {} as Record<CharClass, Partial<Record<WeaponGrade, number>>>;
@@ -273,6 +435,7 @@ const BUILTIN: GearRules = {
     },
     weights: { total: 1, top: 1, role: 3, dup: 1000 },
     composition: BUILTIN_COMPOSITION,
+    buffs: BUILTIN_BUFFS,
     T0: 6,
     T1: 0.05,
     epsilon: 5,
@@ -357,8 +520,11 @@ function classMatrix(r: Record<string, unknown>): Record<SizeBucket, Record<Char
   return out;
 }
 
-/** Шар «функціональність пачки»: відсутній у версії → вбудований (ваги 0 = вимкнено). */
-function normalizeComposition(raw: unknown): CompositionRules {
+const isPairsRule = (x: unknown): x is PairsRule => typeof x === 'string' && (PAIRS_RULES as string[]).includes(x);
+
+/** Шар «функціональність пачки»: відсутній у версії → вбудований (ваги 0 = вимкнено).
+ * pairsRule відсутній/зламаний → 'legacy', щоб старі версії рахували пари як досі. */
+export function normalizeComposition(raw: unknown): CompositionRules {
   const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const rawProf = (c.profiles && typeof c.profiles === 'object' ? c.profiles : {}) as Record<string, unknown>;
   const profiles = {} as Record<CharClass, ClassProfile>;
@@ -381,6 +547,7 @@ function normalizeComposition(raw: unknown): CompositionRules {
       topSecondDd: isNum(w.topSecondDd) ? w.topSecondDd : 0,
       topSupport: isNum(w.topSupport) ? w.topSupport : 0,
     },
+    pairsRule: isPairsRule(c.pairsRule) ? c.pairsRule : 'legacy',
   };
 }
 
@@ -441,6 +608,7 @@ export function normalizeRules(raw: unknown): GearRules {
     balance: {
       roleOf: { ...BUILTIN.balance.roleOf, ...((b.roleOf && typeof b.roleOf === 'object' ? b.roleOf : {}) as Partial<Record<CharClass, Role>>) },
       composition: normalizeComposition(b.composition),
+      buffs: normalizeBuffs(b.buffs),
       weights: numTable(b.weights, BUILTIN.balance.weights),
       T0: isNum(b.T0) ? b.T0 : BUILTIN.balance.T0,
       T1: isNum(b.T1) ? b.T1 : BUILTIN.balance.T1,

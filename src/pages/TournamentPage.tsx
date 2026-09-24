@@ -5,9 +5,11 @@ import { useTournamentLive } from '../app/useTournamentLive';
 import type { CharClass, Registration, Tier, Tournament } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isPastTournament, isRegistrationOpen } from '../data/types';
 import { CLASS_LABELS, computeGearScore, tierFor } from '../data/gearRules';
+import { describeSnapshotBuffs } from '../data/ruleFlags';
 import { useRules } from '../data/rulesStore';
-import { rulesVersionFor, teamMembers, teamRows } from '../data/teams';
+import { rulesVersionFor, teamMembers, teamRows, teamStrengthFor } from '../data/teams';
 import BracketView from '../components/BracketView';
+import RulesList from '../components/RulesList';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
 import MemberNotice from '../components/MemberNotice';
 
@@ -55,41 +57,66 @@ function PlayerRow({ reg, info }: { reg: Registration; info: PlayerCardInfo | nu
 }
 
 /** Склади команд балансного фул-рандому: картки команд + резерв + рядок
- * довіри (розкид сум, seed, версія правил). Публічно — нік, клас, ранг і
- * (у попапі за бейджем рангу) відповіді анкети + сума балів КОМАНДИ;
- * персональний скор числом не показуємо (число без контексту породжує
- * суперечки). */
+ * довіри (розкид, seed, версія правил). Публічно — нік, клас, ранг і
+ * (у попапі за бейджем рангу) відповіді анкети + сила / сума балів КОМАНДИ
+ * з розшифровкою «гір · бафи · сила»; персональний скор числом і пари
+ * «хто кого бафає» не показуємо (число без контексту породжує суперечки). */
 export function BalancedTeams({ tournament, registrations }: { tournament: Tournament; registrations: Registration[] }) {
   const version = rulesVersionFor(tournament);
+  const stats = tournament.balanceStats;
   const frozenTiers = new Map<string, Tier>();
-  for (const team of tournament.balanceStats?.teams ?? []) for (const m of team.members) frozenTiers.set(m.registrationId, m.tier);
-  // Сума команди — зі знімка формування (balance_stats): там уже враховані
+  for (const team of stats?.teams ?? []) for (const m of team.members) frozenTiers.set(m.registrationId, m.tier);
+  // Сила (гір + бафи тімейтів) рахувалась у жеребці — тоді головна цифра
+  // «сила команди», а гір довідково: алгоритм вирівнював силу, і гір між
+  // командами розходиться сильніше. Старі турніри (знімок без бафів) — як
+  // раніше, лише сума балів.
+  const buffsOn = !!stats?.buffs?.enabled;
+  // Склад і скори — зі знімка формування (balance_stats): там уже враховані
   // корекції адміна й рейтинг на момент жеребки, а заміни оновлюють знімок
-  // (RPC substitute_team_member, 0022). Перерахунок з анкет — лише якщо
-  // знімка немає (старі турніри): корекцій і рейтингу анонім не бачить.
-  const statTotals = new Map((tournament.balanceStats?.teams ?? []).map((x) => [x.name, x.total] as const));
+  // (RPC substitute_team_member, 0022). Сила у знімку не зберігається —
+  // рахується з його складу при читанні (teamStrengthFor), тому після заміни
+  // не бреше. Перерахунок з анкет — лише якщо знімка немає (старі турніри):
+  // корекцій і рейтингу анонім не бачить.
+  const statTeams = new Map((stats?.teams ?? []).map((x) => [x.name, x] as const));
   const teams = teamRows(tournament, registrations).map((team) => {
     const members = teamMembers(team, registrations);
-    const total = statTotals.get(team.nickname) ?? members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version, tournament.teamSize) : 0), 0);
-    return { team, members, total };
+    const snap = statTeams.get(team.nickname);
+    if (snap) return { team, members, ...teamStrengthFor(tournament, snap.members) };
+    const total = members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version, tournament.teamSize) : 0), 0);
+    return { team, members, total, buff: 0, strength: total };
   });
   // Резерв — підтверджені з анкетою, кого не взяли в жодну команду.
   const reserve = gearedPlayers(registrations).filter((r) => !r.teamRegistrationId);
-  const totals = teams.map((t) => t.total);
-  const spread = totals.length ? Math.max(...totals) - Math.min(...totals) : 0;
-  const trust = [`Розкид сум балів між командами: ${spread}`];
+  const r0 = (n: number) => Math.round(n);
+  const range = (xs: number[]) => (xs.length ? { min: Math.min(...xs), max: Math.max(...xs) } : { min: 0, max: 0 });
+  const totalR = range(teams.map((t) => t.total));
+  const strengthR = range(teams.map((t) => t.strength));
+  const trust = buffsOn
+    ? [`Розкид сили команд: ${r0(strengthR.max - strengthR.min)}`, `гір ${totalR.min}–${totalR.max} · розкид гіру ${totalR.max - totalR.min}`]
+    : [`Розкид сум балів між командами: ${totalR.max - totalR.min}`];
   if (tournament.balanceSeed) trust.push(`seed ${tournament.balanceSeed}`);
   if (tournament.balanceRulesVersion) trust.push(tournament.balanceRulesVersion);
+  if (buffsOn && stats) trust.push(describeSnapshotBuffs(stats.buffs, tournament.balanceRulesVersion ?? stats.rulesVersion));
+  // Правило 4 для пар — одними словами, лише коли воно справді діяло (2×2, не стара версія шкали).
+  if (stats?.teamSize === 2 && stats.pairsRule && stats.pairsRule !== 'legacy') {
+    trust.push(`у парах: ${stats.pairsRule === 'noSecondDd' ? 'без другого ДД' : stats.pairsRule === 'noSecondDdNoDruid' ? 'без другого ДД і Друїда' : 'правило 4 вимкнено'}`);
+  }
 
   return (
     <div>
+      {buffsOn && (
+        <p className="hint" style={{ margin: '0 0 10px' }}>
+          Сила команди = гір + бафи тімейтів (Танк, Прист, Воїн… підсилюють союзників). Команди вирівняно за силою, тому сирий гір між ними різниться сильніше.
+        </p>
+      )}
       <div className="teams-grid">
-        {teams.map(({ team, members, total }) => (
+        {teams.map(({ team, members, total, buff, strength }) => (
           <div key={team.id} className="card team-card">
             <div className="team-card-head">
               <b>{team.nickname}</b>
-              <span className="hint" style={{ margin: 0 }}>сума балів {total}</span>
+              <span className="hint" style={{ margin: 0 }}>{buffsOn ? `сила команди ${r0(strength)}` : `сума балів ${total}`}</span>
             </div>
+            {buffsOn && <span className="hint" style={{ margin: 0 }}>гір {total} · бафи +{r0(buff)} · сила {r0(strength)}</span>}
             <div className="team-rows">
               {members.map((m) => <PlayerRow key={m.id} reg={m} info={publicInfo(m, tournament, frozenTiers)} />)}
             </div>
@@ -124,7 +151,10 @@ export function RulesPrizes({ tournament, collapsed }: { tournament: Tournament;
       {tournament.rulesMd && (
         <div>
           <h4 style={{ marginTop: 0 }}>Правила</h4>
-          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
+          {/* той самий список пунктів, що й над галочкою на реєстрації —
+              текст із конструктора («формат • пункт • пункт») і старий
+              вільний текст читаються однаково */}
+          <RulesList rulesMd={tournament.rulesMd} />
         </div>
       )}
       {tournament.prizesMd && (

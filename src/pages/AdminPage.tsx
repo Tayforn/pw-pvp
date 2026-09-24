@@ -1,13 +1,17 @@
 // =========================================================
-// Адмінка: логін (Supabase Auth, спільний з pw-events) + керування
-// турнірами, верифікацією заявок, сіткою, учасниками, звітом балансу
-// фул-рандому і ГМ-акаунтами.
+// Адмінка: логін (Supabase Auth, спільний з pw-events) + вкладки з адресою
+// в URL (/admin/<tab>, див. app/useRoute.ts): турніри (заявки, команди,
+// сітка), учасники, звіт балансу, версія шкали на двох вкладках зі спільною
+// чернеткою («Шкала балів» / «Бафи й склад»), довідник рядків правил і
+// ГМ-акаунти.
 // Керування серіями прибрано з UI (див. коментар у TournamentEditor.tsx) —
 // SeriesManager.tsx лишається в коді, просто не рендериться тут.
 //
-// Ролі: 'superadmin' бачить/керує ВСІМА турнірами; 'gm' — лише своїми
-// (created_by), і його турніри не показуються на публічних сторінках
-// (видно лише за прямим посиланням — див. data/tournaments.ts).
+// Ролі: 'superadmin' бачить/керує ВСІМА турнірами й усі вкладки; 'gm' — лише
+// своїми турнірами (created_by) і три перші вкладки; його турніри не
+// показуються на публічних сторінках (видно лише за прямим посиланням —
+// див. data/tournaments.ts). Перевірка ролі тут — лише для UI, справжній
+// захист — RLS/RPC у базі.
 // =========================================================
 
 import { useEffect, useState } from 'react';
@@ -15,6 +19,7 @@ import { supabase } from '../app/supabaseClient';
 import { useAuth } from '../app/useAuth';
 import { reportError } from '../app/errorMessage';
 import PageMeta from '../app/PageMeta';
+import { ADMIN_TABS, routeUrl, type AdminTab } from '../app/useRoute';
 import type { Tournament, TournamentSeries } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isRegistrationOpen } from '../data/types';
 import { deleteTournament, fetchAdminTournaments, subscribeToTournamentChanges } from '../data/tournaments';
@@ -24,8 +29,16 @@ import TeamsPanel from './admin/TeamsPanel';
 import BracketPanel from './admin/BracketPanel';
 import AdminsManager from './admin/AdminsManager';
 import ParticipantsManager from './admin/ParticipantsManager';
-import RulesEditor from './admin/RulesEditor';
 import BalanceReport from './admin/BalanceReport';
+import AdminTabs, { ADMIN_TAB_TITLES } from './admin/AdminTabs';
+import ScaleTab from './admin/ScaleTab';
+import TeamTab from './admin/TeamTab';
+import RulesFooter from './admin/RulesFooter';
+import { RuleCatalogTab } from './admin/RuleCatalogTab';
+
+/** ГМ бачить лише свої турніри, учасників і звіт; решта (версія шкали,
+ * довідник правил, ГМ-акаунти) — глобальні для всіх турнірів, тому суперадмін. */
+const GM_TABS: readonly AdminTab[] = ['tournaments', 'participants', 'report'];
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -240,9 +253,16 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
   );
 }
 
-export default function AdminPage({ series }: { series: TournamentSeries[] }) {
+export default function AdminPage({ series, tab, onTab }: { series: TournamentSeries[]; tab?: AdminTab; onTab: (tab: AdminTab) => void }) {
   const { session, isAdmin, role, loading } = useAuth();
-  const [tab, setTab] = useState<'tournaments' | 'participants' | 'report' | 'rules'>('tournaments');
+  const isSuperadmin = role === 'superadmin';
+  const tabs = isSuperadmin ? ADMIN_TABS : GM_TABS;
+  // Недозволена для ролі вкладка (ГМ відкрив /admin/scale) → «Турніри»; URL
+  // підправляємо без нового запису в історії, щоб «Назад» не повертав на неї.
+  const active: AdminTab = tab && tabs.includes(tab) ? tab : 'tournaments';
+  useEffect(() => {
+    if (role && tab && tab !== active) history.replaceState(null, '', routeUrl({ name: 'admin' }));
+  }, [role, tab, active]);
 
   if (loading) return <p className="hint">Перевірка сесії…</p>;
   if (!session) return <LoginForm />;
@@ -255,51 +275,33 @@ export default function AdminPage({ series }: { series: TournamentSeries[] }) {
     );
   }
 
-  const isSuperadmin = role === 'superadmin';
+  let body;
+  switch (active) {
+    case 'participants': body = <ParticipantsManager />; break;
+    case 'report': body = <BalanceReport />; break;
+    // «Шкала балів» і «Бафи й склад» редагують ОДНУ чернетку версії
+    // (data/rulesDraftStore), тому футер зі збереженням спільний.
+    case 'scale': body = <><ScaleTab /><RulesFooter /></>; break;
+    case 'buffs': body = <><TeamTab /><RulesFooter /></>; break;
+    case 'rules': body = <RuleCatalogTab />; break;
+    case 'admins': body = <AdminsManager currentUserId={session.user.id} />; break;
+    default: body = <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />;
+  }
 
   return (
     <div>
-      <PageMeta title="Адмінка — PW PvP" />
+      <PageMeta title={`${ADMIN_TAB_TITLES[active]} — Адмінка PW PvP`} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="section-head">
         <div>
           <span className="eyebrow">Адмінка · {isSuperadmin ? 'Суперадмін' : 'ГМ'}</span>
-          <h2>Керування турнірами</h2>
+          <h2>{ADMIN_TAB_TITLES[active]}</h2>
         </div>
         <button type="button" className="btn btn-ghost" onClick={() => supabase.auth.signOut()}>Вийти</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <button type="button" className={'btn btn-sm ' + (tab === 'tournaments' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('tournaments')}>
-          Турніри
-        </button>
-        <button type="button" className={'btn btn-sm ' + (tab === 'participants' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('participants')}>
-          Учасники
-        </button>
-        <button type="button" className={'btn btn-sm ' + (tab === 'report' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('report')}>
-          Звіт балансу
-        </button>
-        {isSuperadmin && (
-          // Шкала балів фул-рандому — глобальна для всіх турнірів, тому лише суперадмін.
-          <button type="button" className={'btn btn-sm ' + (tab === 'rules' ? 'btn-primary' : 'btn-ghost')} onClick={() => setTab('rules')}>
-            Шкала балів
-          </button>
-        )}
-      </div>
+      <AdminTabs tabs={tabs} active={active} onSelect={onTab} />
 
-      {tab === 'tournaments' ? (
-        <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />
-      ) : tab === 'report' ? (
-        <BalanceReport />
-      ) : tab === 'rules' && isSuperadmin ? (
-        <RulesEditor />
-      ) : (
-        <ParticipantsManager />
-      )}
-      {isSuperadmin && (
-        <div style={{ marginTop: 32 }}>
-          <AdminsManager currentUserId={session.user.id} />
-        </div>
-      )}
+      {body}
     </div>
   );
 }

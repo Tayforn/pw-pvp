@@ -13,12 +13,18 @@ export const APP_BASE: string = (() => {
   return b.endsWith('/') ? b : b + '/';
 })();
 
+/** Вкладки адмінки — другий сегмент /admin/<tab>, щоб F5 і посилання
+ * «відкрий вкладку Бафи» працювали. 'tournaments' — це просто /admin. */
+export const ADMIN_TABS = ['tournaments', 'participants', 'report', 'scale', 'buffs', 'rules', 'admins'] as const;
+export type AdminTab = (typeof ADMIN_TABS)[number];
+export const isAdminTab = (x: unknown): x is AdminTab => typeof x === 'string' && (ADMIN_TABS as readonly string[]).includes(x);
+
 export type Route =
   | { name: 'home' }
   | { name: 'tournaments' }
   | { name: 'register' }
   | { name: 'rules' }
-  | { name: 'admin' }
+  | { name: 'admin'; tab?: AdminTab }
   | { name: 'series'; slug: string }
   | { name: 'tournament'; id: string }
   /** /t/:id/bracket — лише сітка, без шапки й меню: посилання «Поділитися» */
@@ -35,7 +41,8 @@ function parsePath(): Route {
   if (a === 'tournaments') return { name: 'tournaments' };
   if (a === 'register') return { name: 'register' };
   if (a === 'rules') return { name: 'rules' };
-  if (a === 'admin') return { name: 'admin' };
+  // невідома вкладка (/admin/foo) — просто адмінка, як і без сегмента
+  if (a === 'admin') return isAdminTab(b) ? { name: 'admin', tab: b } : { name: 'admin' };
   if (a === 'series' && b) return { name: 'series', slug: b };
   if (a === 't' && b && c === 'bracket') return { name: 'tournament-bracket', id: b };
   if (a === 't' && b) return { name: 'tournament', id: b };
@@ -49,6 +56,8 @@ export function routeUrl(route: Route): string {
     case 'series': return APP_BASE + 'series/' + route.slug;
     case 'tournament': return APP_BASE + 't/' + route.id;
     case 'tournament-bracket': return APP_BASE + 't/' + route.id + '/bracket';
+    // перша вкладка без сегмента — щоб /admin і /admin/tournaments були одним шляхом
+    case 'admin': return APP_BASE + 'admin' + (route.tab && route.tab !== 'tournaments' ? '/' + route.tab : '');
     case 'dev-bracket': return APP_BASE + 'dev/bracket';
     default: return APP_BASE + route.name;
   }

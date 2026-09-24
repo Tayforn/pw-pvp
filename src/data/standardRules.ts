@@ -1,81 +1,42 @@
 // =========================================================
-// Стандартні правила турнірів за розміром команди (teamSize) — той самий
-// показник, що вже є в tournaments.team_size (null/1 = 1х1, 2 = 2х2, тощо) —
-// і за способом формування команд (teamMode): для балансного фул-рандому
-// попереду йде окрема секція про реєстрацію, анкету, склади й резерв.
-// Використовується і публічною сторінкою "Правила", і кнопкою швидкої
-// вставки в редакторі турніру.
+// Стандартні правила турнірів — тонка обгортка над довідником рядків
+// (ruleCatalog.ts, 0027): секції публічної сторінки «Правила» і текст для
+// вставки в textarea старого турніру будуються з дефолтів довідника за
+// форматом, тим самим рендерером, що й попап «Правила…» — тому сторінка і
+// попап ніколи не розходяться. Без довідника з БД працюють вбудовані рядки.
+//
+// Формат — той самий показник, що в tournaments.team_size (null/1 = 1х1,
+// 2+ = командний) і team_mode (готові команди / балансний фул-рандом).
+// Раніше для фул-рандому 3х3+ бойові пункти не вставлялись (дефект старого
+// шаблону) — тепер рядки «Бій» є для всіх форматів.
 // =========================================================
 
 import type { TeamMode } from './types';
+import { BUILTIN_RULE_ITEMS, defaultFlagsFor, renderRulesMd, renderRulesPoints, type RuleItem } from './ruleCatalog';
 
 export interface RuleSection {
   title: string;
   points: string[];
 }
 
-// Правила однакові для всіх форматів (1х1, 2х2, 3х3 і т.д.).
-const COMMON_POINTS: string[] = [
-  'Без 3 ци.',
-  'Тільки селфи.',
-  'Вся аптека — дозволена.',
-  'Дозволено до 15 секунд кайта / інвіза.',
-];
-
-const SOLO: RuleSection = {
-  title: '1х1',
-  points: COMMON_POINTS,
-};
-
-const TEAM_2: RuleSection = {
-  title: '2х2',
-  points: COMMON_POINTS,
-};
-
-const TEAM_BIG: RuleSection = {
-  title: '3х3, 5х5, 6х6, 10х10',
-  points: COMMON_POINTS,
-};
-
-/** Командний турнір з індивідуальною реєстрацією — команди формує система (docs/balanced-random-analysis.md §3.3). */
-const BALANCED_RANDOM: RuleSection = {
-  title: 'Балансний фул-рандом (командний)',
-  points: [
-    'Ти не обираєш собі команду — команди формує система випадково після закриття реєстрації, вирівнюючи спорядження і класи.',
-    'Реєстрація індивідуальна: один персонаж — одна заявка. Заявки на кількох персонажів або від одного гравця під різними ніками відхиляються.',
-    'Анкета спорядження заповнюється чесно — адмін перевіряє спорядження в грі. Неправдиві дані — дискваліфікація, місце займає гравець із резерву.',
-    'ПЗ-сет / ПА-сет / Спів-Аспід рахуються від порогів: сумарний ПЗ ≥ 30, ПА ≥ 30, швидкість атаки ≥ 3.33 уд/с або −30 % часу активації — усе без бафів.',
-    'Трактат: в анкеті вказується найкращий, який береш на турнір; свап униз дозволений, угору — ні.',
-    'Склади команд публікуються на сторінці турніру і не змінюються на прохання гравців. Заміни робить лише адмін — у разі неявки або дискваліфікації.',
-    "Гравці, які не потрапили в команди через кількість (останні за часом реєстрації), утворюють резерв і заміняють тих, хто не з'явився на старт.",
-    'Бойові обмеження — як для формату відповідного розміру команди.',
-  ],
-};
-
-export const RULE_SECTIONS: RuleSection[] = [SOLO, TEAM_2, TEAM_BIG, BALANCED_RANDOM];
-
-/** Секція за розміром команди (null/1 = одноосібний 1х1); null — для розміру без стандартних правил. */
-function sizeSectionFor(teamSize: number | null): RuleSection | null {
-  if (!teamSize || teamSize === 1) return SOLO;
-  if (teamSize === 2) return TEAM_2;
-  return [3, 5, 6, 10].includes(teamSize) ? TEAM_BIG : null;
+/** Три секції публічної сторінки: 1х1 · готові команди (2х2 і більше) ·
+ * балансний фул-рандом — з дефолтів довідника за трьома форматами. */
+export function ruleSectionsFor(items: RuleItem[] = BUILTIN_RULE_ITEMS): RuleSection[] {
+  return [
+    { title: '1х1', points: renderRulesPoints(defaultFlagsFor(items, null, 'fixed')) },
+    { title: 'Командні турніри — готові команди (2х2 і більше)', points: renderRulesPoints(defaultFlagsFor(items, 2, 'fixed')) },
+    { title: 'Балансний фул-рандом (командний)', points: renderRulesPoints(defaultFlagsFor(items, 3, 'balanced_random')) },
+  ];
 }
 
-/** Правила для конкретного формату турніру — текст для вставки у вільне
- * поле "Правила". Для фул-рандому: спершу пункти про реєстрацію/анкету/резерв,
- * далі бойові обмеження формату відповідного розміру (якщо є). «Без правил.»
- * великих форматів не дописуємо — після пункту «бойові обмеження — як для
- * формату…» він лише плутає. */
-export function standardRulesFor(teamSize: number | null, teamMode: TeamMode = 'fixed'): string | null {
-  const size = sizeSectionFor(teamSize);
-  let points: string[];
-  if (teamMode === 'balanced_random') {
-    points = [...BALANCED_RANDOM.points, ...(size && size !== TEAM_BIG ? size.points : [])];
-  } else {
-    if (!size) return null;
-    points = size.points;
-  }
-  return points.map((p) => `• ${p}`).join('\n');
+/** Секції з вбудованого довідника — для сумісності; сторінка «Правила» бере
+ * ruleSectionsFor(items) із завантаженим довідником. */
+export const RULE_SECTIONS: RuleSection[] = ruleSectionsFor();
+
+/** Текст правил для формату турніру (перший рядок — формат, далі «• пункт») —
+ * для вставки у вільне поле «Правила» старого турніру. */
+export function standardRulesFor(teamSize: number | null, teamMode: TeamMode = 'fixed', items: RuleItem[] = BUILTIN_RULE_ITEMS): string {
+  return renderRulesMd(defaultFlagsFor(items, teamSize, teamMode), teamSize, teamMode);
 }
 
 export function standardRulesLabel(teamSize: number | null, teamMode: TeamMode = 'fixed'): string {

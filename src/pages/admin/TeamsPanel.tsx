@@ -14,6 +14,12 @@
 // Стан модалок живе ТУТ (не в AdminPage), а після першого завантаження
 // рендер не гейтиться на loading — живий рефетч заявок (realtime) не
 // повинен перемонтувати блок і стерти чернетку розкладу.
+//
+// Головна цифра — «сила команди» (гір + бафи тімейтів, teams-ls-v5), коли
+// бафи увімкнені у шкалі й дозволені правилами турніру; гір тоді довідково,
+// бо при рівній силі він розходиться сильніше. Бафи вимкнені — усе як до
+// появи сили: лише гір. Після затвердження сила рахується зі знімка
+// (teamStrengthFor) — у знімку її немає, а заміни міняють склад.
 // =========================================================
 
 import { useEffect, useRef, useState } from 'react';
@@ -22,8 +28,12 @@ import type { CharClass, Registration, Tier, Tournament } from '../../data/types
 import { isRegistrationOpen } from '../../data/types';
 import { fetchRegistrations, setTournamentStatus, subscribeToTournamentChanges } from '../../data/tournaments';
 import { bracketHasResults, fetchBracket, isPowerOfTwo } from '../../data/bracket';
-import { estimateSpread, evaluateTeams, formTeams, newSeed, penalty as penaltyOf, spreadOf, suggestReplacement, teamStats, unavoidable, type BalancePlayer, type ReservePolicy } from '../../data/balance';
-import { CLASS_LABELS, CLASS_ORDER, playerProfile, rulesFor, tierFor } from '../../data/gearRules';
+import {
+  DRUID_AMP, PAIR_HARD_PENALTY, buffCtxFor, buffPctTo, estimateSpread, evaluateTeams, formTeams, newSeed, pairViolates, penalty as penaltyOf, spreadOf, strengthSpreadOf,
+  suggestReplacement, teamStats, unavoidable, type BalancePlayer, type ReservePolicy,
+} from '../../data/balance';
+import { CLASS_LABELS, CLASS_ORDER, playerProfile, rulesFor, tierFor, type BalanceRules, type KxMode, type PairsRule } from '../../data/gearRules';
+import { describeSnapshotBuffs, reservePolicyFromFlags, resolveBuffOptions } from '../../data/ruleFlags';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import TierBadge, { type PlayerCardInfo } from '../../components/PlayerPopover';
@@ -38,13 +48,67 @@ import {
   substituteTeamMember,
   teamMembers,
   teamRows,
+  teamStrengthFor,
   type TeamsDraft,
 } from '../../data/teams';
 
 type SubstReason = 'no_show' | 'disqualified';
 const REASON_LABELS: Record<SubstReason, string> = { no_show: 'Неявка', disqualified: 'Дискваліфікація' };
+const RESERVE_LABELS: Record<'latest' | 'random', string> = { latest: 'останні за часом реєстрації', random: 'випадково' };
 
-/** S/A — помітні (warn), решта — mute: межі tier попередні, не треба їх кричати. */
+/** Сила і бафи — дробові (відсотки від скору), показуємо цілими: адміну важливий порядок цифр, а не десяті. */
+const r0 = (n: number) => Math.round(n);
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+/** Правило 4 для пар у рядку довіри — одними словами, без назв полів шкали
+ * (гравцям обіцяно «без другого ДД», а не «pairsRule = noSecondDd»). */
+const PAIRS_SHORT: Record<string, string> = {
+  noSecondDd: 'без другого ДД',
+  noSecondDdNoDruid: 'без другого ДД і Друїда',
+  off: 'правило 4 вимкнено',
+  legacy: 'як для 3+ (ваги)',
+};
+function pairsLine(pairsRule: string | undefined, S: number): string | null {
+  if (S !== 2 || !pairsRule) return null;
+  return `у парах: ${PAIRS_SHORT[pairsRule] ?? pairsRule}`;
+}
+
+/** Розшифровка бафів команди по парах «дарувальник → отримувач +бали» для
+ * тултіпа. Рахується поза відпалом: внесок кожного класу-дарувальника окремо
+ * (buffPctTo з одним дарувальником), а коли сума впирається в стелю — внески
+ * стискаються пропорційно, щоб разом дати рівно те, що рахує алгоритм.
+ * Отримувач — клас; коли клас у команді повторюється, ще й нік. */
+function buffPairsText(team: BalancePlayer[], rules: BalanceRules, kx: KxMode, S: number): string {
+  const count = new Map<CharClass, number>();
+  for (const p of team) count.set(p.cls, (count.get(p.cls) ?? 0) + 1);
+  const parts: string[] = [];
+  for (const rec of team) {
+    const totalPct = buffPctTo(rec, team, rules, kx, S);
+    if (totalPct <= 0) continue;
+    const seen = new Set<CharClass>([rec.cls]);
+    const singles: { donor: CharClass; pct: number }[] = [];
+    for (const d of team) {
+      if (seen.has(d.cls)) continue;
+      seen.add(d.cls);
+      const pct = buffPctTo(rec, [rec, d], rules, kx, S);
+      if (pct > 0) singles.push({ donor: d.cls, pct });
+    }
+    const sum = singles.reduce((a, x) => a + x.pct, 0);
+    const scale = sum > 0 ? totalPct / sum : 0;
+    const who = CLASS_LABELS[rec.cls] + ((count.get(rec.cls) ?? 0) > 1 ? ` ${rec.nickname}` : '');
+    for (const s of singles) parts.push(`${CLASS_LABELS[s.donor]} → ${who} +${r0((rec.score * s.pct * scale) / 100)}`);
+  }
+  return parts.length ? parts.join(' · ') : 'бафів немає: у команді нікого, хто бафає інших';
+}
+
+/** Склад команди у форматі знімка (клас, скор жеребки) — для teamStrengthFor
+ * після затвердження; гравці без анкети в силу не входять, як і в гір. */
+function snapshotMembers(members: Registration[], version: string, teamSize: number | null | undefined, ratings: Map<string, PlayerRating> | undefined, frozen: Map<string, number>) {
+  return members.flatMap((m) => {
+    const bp = toBalancePlayer(m, version, teamSize, ratings, frozen);
+    return bp ? [{ registrationId: m.id, nickname: m.nickname, charClass: bp.cls, score: bp.score, tier: tierFor(bp.score, version) as Tier }] : [];
+  });
+}
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
@@ -67,8 +131,14 @@ function toBalancePlayer(r: Registration, version: string, teamSize: number | nu
 }
 
 /** Бейджі рольового шару для картки команди (те саме, що штрафує алгоритм;
- * показуємо завжди, навіть якщо ваги в шкалі 0 — адміну корисно бачити). */
-function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: number; kp: number; topDd: number; topSupportOver: number }; teamSize: number }) {
+ * показуємо завжди, навіть якщо ваги в шкалі 0 — адміну корисно бачити).
+ * У парах (S = 2) при положенні шкали, відмінному від «як для 3+», правило 4
+ * жорстке й словами (pairViolates): ваги «підтримки» там не діють, тож бейдж
+ * «топ-ДД + підтримка» брехав би поруч із «порушень 0» — замість нього кажемо,
+ * що саме це положення дозволяє чи забороняє в цій парі. */
+function CompositionBadges({ st, teamSize, pairsRule }: { st: { maxKill: number; threats: number; kp: number; topDd: number; topSupportOver: number; topMateAmpMax: number }; teamSize: number; pairsRule: PairsRule }) {
+  const pairsHard = teamSize === 2 && pairsRule !== 'legacy';
+  const topDruid = st.topMateAmpMax >= DRUID_AMP - 1e-9;
   return (
     <>
       {st.maxKill < 0.5 ? (
@@ -79,11 +149,21 @@ function CompositionBadges({ st, teamSize }: { st: { maxKill: number; threats: n
       {teamSize >= 3 && st.maxKill >= 0.8 && st.threats < 2 && (
         <span className="badge warn" title="Небезпечний лише один: сфокусують його — решта безсила">один ДД</span>
       )}
-      {st.topDd > 0 && (
+      {st.topDd > 0 && (pairsHard && pairsRule === 'off' ? (
+        <span className="badge mute" title="У парі з топовим ДД другий повний ДД; правило 4 для пар у цій версії шкали вимкнено — силу вирівнює лише сума">топ + ДД (у парах дозволено)</span>
+      ) : (
         <span className="badge bad" title="Топовому ДД дали ще одного повного ДД — таку команду майже не вбити">топ-ДД + ДД</span>
-      )}
-      {st.topSupportOver > 0 && (
-        <span className="badge warn" title="Топовий ДД отримав забагато підтримки (Друїд або два підсилювачі)">топ-ДД + підтримка</span>
+      ))}
+      {pairsHard ? (
+        st.topDd === 0 && topDruid && (pairsRule === 'noSecondDdNoDruid' ? (
+          <span className="badge bad" title="У парі з топовим ДД Друїд — положення шкали «крім другого ДД і Друїда» це забороняє">топ-ДД + Друїд</span>
+        ) : (
+          <span className="badge mute" title="У парі з топовим ДД Друїд — положення шкали для пар це дозволяє (заборонений лише другий повний ДД)">топ + Друїд (у парах дозволено)</span>
+        ))
+      ) : (
+        st.topSupportOver > 0 && (
+          <span className="badge warn" title="Топовий ДД отримав забагато підтримки (Друїд або два підсилювачі)">топ-ДД + підтримка</span>
+        )
       )}
       <span className="badge mute" title="Зв'язка: гір×урон головного ДД (+ половина від решти ДД) × (1 + підтримка тімейтів)">зв'язка {st.kp.toFixed(2)}</span>
     </>
@@ -196,7 +276,16 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const parsedK = parseInt(teamCountText, 10);
   const teamCount = Number.isFinite(parsedK) ? Math.min(maxK, Math.max(2, parsedK)) : defaultK;
   const [seed, setSeed] = useState(() => newSeed());
-  const [reservePolicy, setReservePolicy] = useState<ReservePolicy>('latest');
+  // Резерв і бафи — з правил турніру, зафіксовані при відкритті (як пул):
+  // рефетч турніру не має перезапускати жеребку і стирати ручні свопи.
+  // Резерв адмін може змінити — тоді лише підказка, бо гравцям обіцяно інше.
+  const [flagReserve] = useState(() => reservePolicyFromFlags(t.ruleFlags));
+  const [reservePolicy, setReservePolicy] = useState<ReservePolicy>(() => flagReserve ?? 'latest');
+  const [buffs] = useState(() => resolveBuffOptions(rules, t.ruleFlags));
+  const { enabled: buffsOn, kx } = buffCtxFor(rules, buffs, S);
+  const pr = rules.composition.pairsRule;
+  // Жорстке правило 4 для пар діє лише при S = 2 і не-'legacy' версії шкали.
+  const pairsHard = S === 2 && pr !== 'legacy';
   // Перейменування зберігаються окремо від чернетки — переживають перегенерацію.
   const [names, setNames] = useState<Record<number, string>>({});
   const [draft, setDraft] = useState<TeamsDraft | null>(null);
@@ -222,7 +311,7 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
     setSelectedId(null);
     const timer = setTimeout(() => {
       try {
-        const result = formTeams(pool, { teamSize: S, seed, rules, rulesVersion: version, teamCount, reservePolicy });
+        const result = formTeams(pool, { teamSize: S, seed, rules, rulesVersion: version, teamCount, reservePolicy, buffs });
         setDraft({ teams: result.teams.map((members, i) => ({ name: `Команда ${i + 1}`, members })), reserve: result.reserve, result });
         setSwapped(false);
       } catch (e) {
@@ -233,7 +322,7 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [pool, S, seed, rules, version, teamCount, reservePolicy]);
+  }, [pool, S, seed, rules, version, teamCount, reservePolicy, buffs]);
 
   // Esc — скасувати вибір гравця для свопу.
   useEffect(() => {
@@ -263,7 +352,8 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const startEstimate = () => {
     cancelEstimate();
     const token = ++estRun.current;
-    const opts = { teamSize: S, rules, rulesVersion: version, teamCount, reservePolicy };
+    // ті самі бафи, що й у жеребці — інакше межа рахувалась би за іншою міркою, ніж поточний розклад
+    const opts = { teamSize: S, rules, rulesVersion: version, teamCount, reservePolicy, buffs };
     const spreads: number[] = [];
     setEst({ spreads: [], running: true });
     const step = () => {
@@ -341,12 +431,18 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
     }
   };
 
-  // Смужка балансу — по поточній чернетці (з урахуванням ручних свопів).
-  const ev = draft ? evaluateTeams(draft.teams.map((tm) => tm.members), rules) : null;
+  // Смужка балансу — по поточній чернетці (з урахуванням ручних свопів), тими
+  // самими бафами й розміром команди, що й жеребка (і знімок у buildBalanceStats).
+  const ev = draft ? evaluateTeams(draft.teams.map((tm) => tm.members), rules, { buffs, teamSize: S }) : null;
   const totals = ev ? ev.stats.map((s) => s.total) : [];
   const minT = totals.length ? Math.min(...totals) : 0;
   const maxT = totals.length ? Math.max(...totals) : 0;
   const spread = maxT - minT;
+  // Сила = гір + бафи; коли бафи вимкнені, strength = total і смужка показує лише гір.
+  const strengths = ev ? ev.stats.map((s) => s.strength) : [];
+  const minS = strengths.length ? Math.min(...strengths) : 0;
+  const maxS = strengths.length ? Math.max(...strengths) : 0;
+  const strengthSpread = maxS - minS;
   const dups = ev ? ev.stats.reduce((s, x) => s + x.dup, 0) : 0;
   // Рольовий шар: пачки без кілера (maxKill < 0.5) і з однією загрозою, понад неминуче.
   const noKiller = ev ? ev.stats.filter((x) => x.maxKill < 0.5).length : 0;
@@ -355,28 +451,39 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const kps = ev ? ev.stats.map((x) => x.kp) : [];
   const kpRange = kps.length ? Math.max(...kps) - Math.min(...kps) : 0;
   const compOn = Object.values(rules.composition.weights).some((w) => w > 0);
-  // Розшифровка штрафу: скільки в ньому «за гір», а скільки — за кожне правило складу.
-  // Базовий штраф рахуємо тими самими функціями з нульовими вагами правил.
+  // Пари з порушенням жорсткого правила 4 (S = 2): топовому ДД дістався
+  // другий повний ДД (або Друїд — за положенням шкали); понад неминуче — штраф.
+  const pairViol = ev && pairsHard ? ev.stats.filter((x) => pairViolates(x, pr)).length : 0;
+  const unavoidPair = ev ? ev.unavoidable.pairViol : 0;
+  // Розшифровка штрафу: скільки в ньому «за силу» (гір, коли бафи вимкнені),
+  // а скільки — за кожне правило складу. Базовий штраф рахуємо тими самими
+  // функціями з нульовими вагами правил і вимкненим правилом пар — інакше при
+  // S = 2 після ручного свопу «топ + ДД» +10 000 потрапило б у цифру «сила».
   const cw = rules.composition.weights;
   const parts = (() => {
     if (!draft || !ev) return null;
     const teams = draft.teams.map((tm) => tm.members);
-    const off = { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 } } };
-    const gear = penaltyOf(teams.map((t) => teamStats(t, off)), S, unavoidable(teams.flat(), teams.length, off), off);
+    const off: BalanceRules = { ...rules, composition: { ...rules.composition, weights: { killer: 0, twoThreats: 0, kpRange: 0, topSecondDd: 0, topSupport: 0 }, pairsRule: 'off' } };
+    const gear = penaltyOf(teams.map((t) => teamStats(t, off, ev.buffs)), S, unavoidable(teams.flat(), teams.length, off, S), off);
     const lack = ev.stats.reduce((a, x) => a + Math.max(0, 1 - x.maxKill), 0);
     return {
       gear,
       killer: cw.killer * Math.max(0, lack - ev.unavoidable.killLack),
       twoThreats: S >= 3 ? cw.twoThreats * Math.max(0, single - ev.unavoidable.singleThreat) : 0,
       kpRange: cw.kpRange * kpRange,
-      top: ev.stats.reduce((a, x) => a + cw.topSecondDd * x.topDd + cw.topSupport * x.topSupportOver, 0),
+      top: pairsHard
+        ? (pr === 'off' ? 0 : PAIR_HARD_PENALTY * Math.max(0, pairViol - unavoidPair))
+        : ev.stats.reduce((a, x) => a + cw.topSecondDd * x.topDd + cw.topSupport * x.topSupportOver, 0),
     };
   })();
 
   // Підсумок оцінки межі — проти розкиду поточної чернетки (зі свопами):
   // яка частка прогонів дала розкид НЕ МЕНШИЙ за наш (рівні теж рахуються —
   // розкиди цілі й малі, нічиї звичні; тому в UI «не гірше за», не «краще за»).
-  const curSpread = draft ? spreadOf(draft.teams.map((tm) => tm.members)) : null;
+  // Мірка та сама, що в estimateSpread: сила, коли бафи увімкнено, інакше гір.
+  const curSpread = draft
+    ? (buffsOn ? strengthSpreadOf(draft.teams.map((tm) => tm.members), rules, kx, S) : spreadOf(draft.teams.map((tm) => tm.members)))
+    : null;
   const estDone = est && !est.running && est.spreads.length ? est.spreads : null;
   const estSummary = estDone
     ? {
@@ -387,6 +494,9 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
         betterPct: curSpread === null ? null : Math.round((100 * estDone.filter((s) => s >= curSpread).length) / estDone.length),
       }
     : null;
+  // Що саме рахується в силі — тими ж словами, що й у рядку довіри після затвердження.
+  const buffsLine = describeSnapshotBuffs({ enabled: buffsOn, source: buffs.source, kx, bySide: rules.buffs.bySide }, version);
+  const pairsInfo = pairsLine(pr, S);
 
   const poolChanged = players.length !== pool.length || players.some((p) => !pool.some((q) => q.id === p.id));
   const selected = draft && selectedId ? [...draft.teams.flatMap((tm) => tm.members), ...draft.reserve].find((p) => p.id === selectedId) ?? null : null;
@@ -435,17 +545,24 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
             </div>
           </div>
           <p className="hint" style={{ margin: 0 }}>
-            Гравців з анкетою: {pool.length} · по {S} у команді · максимум {maxK} команд.
+            Гравців з анкетою: {pool.length} · по {S} у команді · максимум {maxK} команд · {buffsLine}{pairsInfo ? ` · ${pairsInfo}` : ''}.
             {isDouble && ' Подвійна елімінація: кількість команд має бути степенем двійки (4, 8, 16…), зайві гравці підуть у резерв.'}
             {' '}Той самий seed + той самий пул дають той самий розклад; зміна пулу — інша жеребка.
+            {buffsOn && ' Алгоритм вирівнює силу команд (гір + бафи тімейтів), тому сирий гір між командами розходиться сильніше — це очікувано.'}
           </p>
+          {flagReserve && (
+            reservePolicy === flagReserve
+              ? <span className="hint" style={{ margin: 0 }}>Резерв — за правилами турніру: «{RESERVE_LABELS[flagReserve]}».</span>
+              : <span className="badge warn" style={{ alignSelf: 'flex-start' }}>У правилах турніру резерв — «{RESERVE_LABELS[flagReserve]}», а обрано «{reservePolicy === 'random' ? RESERVE_LABELS.random : RESERVE_LABELS.latest}»: гравцям обіцяно інше</span>
+          )}
           {estSummary && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span>
-                Межа для цього пулу: розкид мін {estSummary.min} · медіана {estSummary.med} · макс {estSummary.max} ({estSummary.n} seed).
-                {curSpread !== null && estSummary.betterPct !== null && ` Поточний розклад — ${curSpread}, не гірше за ${estSummary.betterPct} % прогонів.`}
+                Межа для цього пулу: розкид {buffsOn ? 'сили' : 'гіру'} мін {r0(estSummary.min)} · медіана {r0(estSummary.med)} · макс {r0(estSummary.max)} ({estSummary.n} seed).
+                {curSpread !== null && estSummary.betterPct !== null && ` Поточний розклад — ${r0(curSpread)}, не гірше за ${estSummary.betterPct} % прогонів.`}
               </span>
               <span className="hint" style={{ margin: 0 }}>
+                {buffsOn ? 'Розкид тут — за силою (гір + бафи), як і в жеребці. ' : ''}
                 Оцінка — зменшеним бюджетом пошуку (поточний розклад шукано повним, тому він зазвичай на рівні найкращих прогонів); реальна межа може бути трохи нижчою. Якщо поточний розкид близький до мінімуму — крутити «Перегенерувати» далі немає сенсу.
               </span>
             </div>
@@ -465,8 +582,29 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
             // притлумлений і неклікабельний — без «блимання» сітки карток.
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, ...(computing ? { opacity: 0.45, pointerEvents: 'none' } : {}) }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className={'badge ' + (spread <= 10 ? 'good' : 'warn')}>Сума гіру {minT}–{maxT} · розкид {spread}</span>
+                {buffsOn ? (
+                  <>
+                    <span className={'badge ' + (strengthSpread <= 10 ? 'good' : 'warn')} title="Сила команди = гір + бафи тімейтів; саме її вирівнює алгоритм">
+                      Сила {r0(minS)}–{r0(maxS)} · розкид сили {r0(strengthSpread)}
+                    </span>
+                    <span className="badge mute" title="Сирий гір без бафів — довідково: при рівній силі гір між командами розходиться сильніше">
+                      гір {minT}–{maxT} · розкид гіру {spread}
+                    </span>
+                  </>
+                ) : (
+                  <span className={'badge ' + (spread <= 10 ? 'good' : 'warn')}>Сума гіру {minT}–{maxT} · розкид {spread}</span>
+                )}
                 <span className={'badge ' + (dups === ev.unavoidableDups ? 'good' : 'warn')}>Дублікати класів: {dups}{ev.unavoidableDups > 0 ? ` (неминучих ${ev.unavoidableDups})` : ''}</span>
+                {pairsHard && (pr === 'off' ? (
+                  <span className="badge mute" title="У версії шкали правило 4 для пар вимкнено — силу вирівнює лише сума">правило пар вимкнено</span>
+                ) : (
+                  <span
+                    className={'badge ' + (pairViol > unavoidPair ? 'bad' : pairViol > 0 ? 'warn' : 'good')}
+                    title={`Пари, де топовому ДД дістався другий повний ДД${pr === 'noSecondDdNoDruid' ? ' або Друїд' : ''}; неминучі — коли дозволених партнерів на всіх топів не вистачає (тоді ДД-партнери дістаються слабшим топам, без штрафу)`}
+                  >
+                    Топ-ДД у парах: порушень {pairViol}{unavoidPair > 0 ? ` (неминучих ${unavoidPair})` : ''}
+                  </span>
+                ))}
                 <span className={'badge ' + (noKiller > unavoidNoKiller ? 'bad' : noKiller > 0 ? 'warn' : 'good')} title="Команди, де нікому вбивати (лише Страж/сапорти)">
                   Команд без ДД: {noKiller}{unavoidNoKiller > 0 ? ` (неминучих ${unavoidNoKiller})` : ''}
                 </span>
@@ -479,7 +617,7 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
                 <span className="badge mute" title="Алгоритм обирає розклад із найменшим штрафом. Це не бали гіру команд — лише оцінка, наскільки розклад поганий.">Штраф: {ev.penalty.toFixed(1)}</span>
                 {parts && (
                   <span className="hint" style={{ margin: 0 }}>
-                    = гір {parts.gear.toFixed(1)}
+                    = <span title={buffsOn ? 'доданок штрафу за нерівні сили команд — це не сила команди (та у бейджі вище, ≈ сотні балів)' : 'доданок штрафу за нерівний гір команд'}>{buffsOn ? 'за розкид сили' : 'за розкид гіру'} {parts.gear.toFixed(1)}</span>
                     {' · нема ДД '}{parts.killer.toFixed(1)}
                     {S >= 3 ? ` · один ДД ${parts.twoThreats.toFixed(1)}` : ''}
                     {' · зв\'язка '}{parts.kpRange.toFixed(1)}
@@ -506,10 +644,15 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
                         <label className="field" style={{ flex: 1, minWidth: 0 }}>
                           <input type="text" value={nameFor(ti)} maxLength={80} style={{ padding: '8px 10px', fontSize: 14, fontWeight: 600 }} onChange={(e) => setNames({ ...names, [ti]: e.target.value })} />
                         </label>
-                        <span className={'badge ' + (st.dup > 0 ? 'warn' : 'mute')} style={{ whiteSpace: 'nowrap' }}>гір {st.total}{st.dup > 0 ? ` · дублі ${st.dup}` : ''}</span>
+                        <span className={'badge ' + (st.dup > 0 ? 'warn' : 'mute')} style={{ whiteSpace: 'nowrap' }} title={buffsOn ? 'сила команди = гір + бафи тімейтів' : undefined}>
+                          {buffsOn ? `гір ${st.total} · бафи +${r0(st.buff)} = сила ${r0(st.strength)}` : `гір ${st.total}`}{st.dup > 0 ? ` · дублі ${st.dup}` : ''}
+                        </span>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <CompositionBadges st={st} teamSize={S} />
+                        {buffsOn && (
+                          <span className="badge mute" title={buffPairsText(tm.members, rules, kx, S)}>бафи +{r0(st.buff)}</span>
+                        )}
+                        <CompositionBadges st={st} teamSize={S} pairsRule={pr} />
                       </div>
                       <div className="team-rows">
                         {tm.members.map((p) => (
@@ -589,9 +732,21 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
   const reserveBP = reserve.map((r) => toBalancePlayer(r, version, t.teamSize, ratings)).filter((p): p is BalancePlayer => !!p);
   const infos = playerInfos(reserve, version, t.teamSize, ratings);
   const reserveNoGear = reserve.filter((r) => !r.gear);
-  const candidates = outBP ? suggestReplacement(teamBP, outBP, reserveBP) : reserveBP;
-  const total = teamBP.reduce((s, p) => s + p.score, 0);
-  const outScore = outBP?.score ?? 0;
+  // Бафи — як у знімку жеребки (не з поточної шкали): сила після заміни має
+  // збігатися з тим, що покаже картка команди (teamStrengthFor). Кандидати —
+  // за найменшою зміною сили, коли бафи рахувались, інакше за найближчим скором.
+  const stats = t.balanceStats;
+  const rules = rulesFor(version).balance;
+  const buffsOn = !!stats?.buffs?.enabled;
+  const ctx = buffsOn && stats ? { rules, kx: stats.buffs!.kx, S: stats.teamSize } : undefined;
+  const candidates = outBP ? suggestReplacement(teamBP, outBP, reserveBP, ctx) : reserveBP;
+  const toSnap = (p: BalancePlayer) => ({ registrationId: p.id, nickname: p.nickname, charClass: p.cls, score: p.score, tier: tierFor(p.score, version) as Tier });
+  // «Сила зараз / стане» — зі складу знімка (за назвою команди, як у картці
+  // команди й на публічній сторінці): клас у живій анкеті можна відредагувати
+  // після формування, і сила з живих заявок розійшлася б. Без знімка — з живих.
+  const snapMembers = stats?.teams.find((x) => x.name === team.nickname)?.members ?? teamBP.map(toSnap);
+  const now = teamStrengthFor(t, snapMembers);
+  const after = (p: BalancePlayer) => teamStrengthFor(t, [...snapMembers.filter((m) => m.registrationId !== out.id), toSnap(p)]);
 
   const run = async (inId: string | null) => {
     setBusy(true);
@@ -616,7 +771,8 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p className="hint" style={{ margin: 0 }}>
-            Команда «{team.nickname}» · сума гіру зараз {total}. Вибулий отримає статус «вибув» і не потрапить у наступне переформування; сітка не змінюється.
+            Команда «{team.nickname}» · {buffsOn ? `гір ${now.total} · бафи +${r0(now.buff)} · сила зараз ${r0(now.strength)}` : `сума гіру зараз ${now.total}`}. Вибулий отримає статус «вибув» і не потрапить у наступне переформування; сітка не змінюється.
+            {buffsOn && ' Кандидати — за найменшою зміною сили команди (гір + бафи тімейтів): Прист замість Приста майже нічого не міняє, Маг замість Приста — забирає бафи у ДД.'}
           </p>
           <label className="field" style={{ maxWidth: 240 }}>
             <span>Причина</span>
@@ -629,12 +785,14 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
             {candidates.length === 0 && <p className="hint">Резерв порожній — можна лише прибрати гравця без заміни.</p>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
               {candidates.map((p) => {
-                const next = total - outScore + p.score;
-                const delta = next - total;
+                const next = after(p);
+                const line = buffsOn
+                  ? `сила стане ${r0(next.strength)} (${signed(r0(next.strength - now.strength))})`
+                  : `сума стане ${next.total} (${signed(next.total - now.total)})`;
                 return (
                   <div key={p.id} className="player-row static">
                     <PlayerLine p={p} version={version} info={infos.get(p.id)} />
-                    <span className="hint" style={{ margin: 0, whiteSpace: 'nowrap' }}>сума стане {next} ({delta >= 0 ? '+' : ''}{delta})</span>
+                    <span className="hint" style={{ margin: 0, whiteSpace: 'nowrap' }} title={buffsOn ? `гір ${next.total} · бафи +${r0(next.buff)}` : undefined}>{line}</span>
                     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(p.id)}>Поставити</button>
                   </div>
                 );
@@ -728,6 +886,21 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const reserveSorted = reserve.slice().sort((a, b) => (reserveOrder.get(a.id) ?? Infinity) - (reserveOrder.get(b.id) ?? Infinity) || a.createdAt.localeCompare(b.createdAt));
   const late = reserve.filter((r) => !reserveOrder.has(r.id));
   const incomplete = teams.filter((team) => teamMembers(team, regs).length < S);
+  // Гір · бафи · сила кожної затвердженої команди — зі знімка (сила рахується
+  // при читанні, бо після заміни RPC 0022 оновлює лише склад і гір).
+  const buffsOn = !!stats?.buffs?.enabled;
+  // Склад — зі знімка за назвою команди (RPC 0022 оновлює його при заміні), як
+  // на публічній сторінці: клас у живій анкеті можна відредагувати й після
+  // формування (✎ у заявках не блокується — резерву анкету дозаповнюють саме
+  // так), і сила з живих заявок розійшлася б із публічною. Без знімка — з живих.
+  const snapTeams = new Map((stats?.teams ?? []).map((x) => [x.name, x] as const));
+  const cardStrength = new Map(teams.map((team) => [team.id, teamStrengthFor(t, snapTeams.get(team.nickname)?.members ?? snapshotMembers(teamMembers(team, regs), version, t.teamSize, ratings, frozen))] as const));
+  const cardTotals = Array.from(cardStrength.values(), (x) => x.total);
+  const cardStrengths = Array.from(cardStrength.values(), (x) => x.strength);
+  const cardRange = (xs: number[]) => (xs.length ? { min: Math.min(...xs), max: Math.max(...xs) } : { min: 0, max: 0 });
+  const totalR = cardRange(cardTotals);
+  const strengthR = cardRange(cardStrengths);
+  const pairsInfo = stats ? pairsLine(stats.pairsRule, stats.teamSize) : null;
 
   const closeRegistration = () => {
     if (!confirm('Закрити реєстрацію? Нові заявки більше не прийматимуться.')) return;
@@ -795,7 +968,16 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
           {stats && (
             <p className="hint" style={{ margin: 0 }}>
               seed <code>{t.balanceSeed ?? stats.seed}</code> · {t.balanceRulesVersion ?? stats.rulesVersion} · сформовано {fmtDateTime(stats.formedAt)} · замін: {stats.substitutions?.length ?? 0}
+              {' · '}{describeSnapshotBuffs(stats.buffs, t.balanceRulesVersion ?? stats.rulesVersion)}{pairsInfo ? ` · ${pairsInfo}` : ''}
             </p>
+          )}
+          {buffsOn && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className={'badge ' + (strengthR.max - strengthR.min <= 10 ? 'good' : 'warn')} title="Сила команди = гір + бафи тімейтів, з поточного складу (заміни враховано)">
+                Сила {r0(strengthR.min)}–{r0(strengthR.max)} · розкид сили {r0(strengthR.max - strengthR.min)}
+              </span>
+              <span className="badge mute" title="Сирий гір без бафів — довідково">гір {totalR.min}–{totalR.max} · розкид гіру {totalR.max - totalR.min}</span>
+            </div>
           )}
           {incomplete.length > 0 && <span className="badge bad" style={{ alignSelf: 'flex-start' }}>Неповних команд: {incomplete.length}</span>}
           {late.length > 0 && (
@@ -809,12 +991,14 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
           <div className="teams-grid">
             {teams.map((team) => {
               const members = teamMembers(team, regs);
-              const total = members.reduce((s, m) => s + (toBalancePlayer(m, version, t.teamSize, ratings, frozen)?.score ?? 0), 0);
+              const s = cardStrength.get(team.id) ?? { total: 0, buff: 0, strength: 0 };
               return (
                 <div key={team.id} className="card team-card">
                   <div className="team-card-head">
                     <b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 15 }}>{team.nickname}</b>
-                    <span className="badge mute" style={{ whiteSpace: 'nowrap' }}>гір {total}</span>
+                    <span className="badge mute" style={{ whiteSpace: 'nowrap' }} title={buffsOn ? 'сила команди = гір + бафи тімейтів (зі знімка жеребки)' : undefined}>
+                      {buffsOn ? `гір ${s.total} · бафи +${r0(s.buff)} = сила ${r0(s.strength)}` : `гір ${s.total}`}
+                    </span>
                   </div>
                   {members.length < S && <span className="badge bad" style={{ alignSelf: 'flex-start' }}>Неповна: {members.length}/{S}</span>}
                   <div className="team-rows">

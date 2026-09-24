@@ -5,12 +5,22 @@
 //
 // Запуск:  npm run simulate            (дефолт: N=24,36,60,120 × 4 профілі × 50 seed)
 //          npm run simulate -- --seeds=200 --n=60 --profile=top
+//          npm run simulate -- --s=3 --buffs=on --kx=noKx --pairs=noSecondDd
+// Сила команди (teams-ls-v5): --buffs=on вмикає бафи тімейтів з рекомендованою
+// таблицею (RECOMMENDED_BUFFS_PCT), --buffs=off вимикає, без опції — як у
+// версії шкали (у вбудованій вимкнено); --kx=kx|noKx — колонка таблиці;
+// --pairs=noSecondDd|noSecondDdNoDruid|off|legacy — правило 4 для пар (діє
+// лише при --s=2). Друкуються ОБИДВА розкиди — гіру і сили: при увімкнених
+// бафах алгоритм вирівнює силу, і гір між командами розходиться сильніше.
 // Прогін одного seed при дефолтному бюджеті (8×20 000) ≈ 0,5–1 с; для
 // масових прогонів використовується зменшений бюджет 1×20 000 (~70 мс).
 // =========================================================
 
-import { formTeams, teamStats, unavoidable, createRng, type BalancePlayer } from '../src/data/balance';
-import { BUILTIN_RULES_VERSION as CURRENT_RULES_VERSION, CLASS_ORDER, computeGearScore, rulesFor } from '../src/data/gearRules';
+import { buffCtxFor, formTeams, pairViolates, strengthSpreadOf, teamStats, unavoidable, createRng, type BalancePlayer } from '../src/data/balance';
+import {
+  BUILTIN_RULES_VERSION as CURRENT_RULES_VERSION, CLASS_ORDER, PAIRS_RULES, RECOMMENDED_BUFFS_PCT, computeGearScore, playerProfile, rulesFor,
+  type BalanceRules, type PairsRule,
+} from '../src/data/gearRules';
 import type { ArmorRefine, ArmorSet, CharClass, Gems, Genie, PlayerGear, SpecialSet, Tract, WeaponGrade, WeaponRefine } from '../src/data/types';
 
 type Weighted<T> = Array<[T, number]>;
@@ -100,7 +110,11 @@ function synthPlayer(rng: () => number, i: number, p: Profile): BalancePlayer {
     tract: pick(rng, p.tract),
     genie: pick(rng, p.genie),
   };
-  return { id: `p${String(i).padStart(3, '0')}`, nickname: `N${i}`, cls: gear.charClass, score: computeGearScore(gear, undefined, S), createdAt: String(i).padStart(4, '0') };
+  // kill/amp — профіль класу у ДД-збірці (як playersForBalance без анкети збірки): потрібні рольовому шару, правилу 4 і killScaled
+  return {
+    id: `p${String(i).padStart(3, '0')}`, nickname: `N${i}`, cls: gear.charClass, score: computeGearScore(gear, undefined, S), createdAt: String(i).padStart(4, '0'),
+    ...playerProfile(gear.charClass, 'dd', rules.composition),
+  };
 }
 
 function arg(name: string, def: string): string {
@@ -114,13 +128,38 @@ const profileFilter = arg('profile', '');
 const S = Number(arg('s', '6'));
 const restarts = Number(arg('restarts', '1'));
 const iterations = Number(arg('iterations', '20000'));
-const rules = rulesFor(CURRENT_RULES_VERSION).balance;
+const buffsArg = arg('buffs', '');
+const kxArg = arg('kx', '');
+const pairsArg = arg('pairs', '');
+
+/** Версія шкали з опціями поверх: у Node реєстр знає лише вбудовану версію
+ * (бафи вимкнені, таблиця нулі), тому --buffs=on підставляє рекомендовану таблицю. */
+function rulesWithOptions(): BalanceRules {
+  let r = rulesFor(CURRENT_RULES_VERSION).balance;
+  if (buffsArg === 'on') r = { ...r, buffs: { ...r.buffs, enabled: true, pct: RECOMMENDED_BUFFS_PCT } };
+  else if (buffsArg === 'off') r = { ...r, buffs: { ...r.buffs, enabled: false } };
+  else if (buffsArg) throw new Error(`--buffs: очікую on або off, отримав «${buffsArg}»`);
+  if (kxArg === 'kx' || kxArg === 'noKx') r = { ...r, buffs: { ...r.buffs, defaultKx: kxArg } };
+  else if (kxArg) throw new Error(`--kx: очікую kx або noKx, отримав «${kxArg}»`);
+  if (pairsArg) {
+    if (!PAIRS_RULES.includes(pairsArg as PairsRule)) throw new Error(`--pairs: очікую ${PAIRS_RULES.join(' | ')}, отримав «${pairsArg}»`);
+    r = { ...r, composition: { ...r.composition, pairsRule: pairsArg as PairsRule } };
+  }
+  return r;
+}
+const rules = rulesWithOptions();
+// бафи «від своєї пачки» з колонкою КХ за замовчуванням — як турнір без рядків правил
+const buffCtx = buffCtxFor(rules, undefined, S);
+const pairsHard = S === 2 && rules.composition.pairsRule !== 'legacy' && rules.composition.pairsRule !== 'off';
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const pct = (xs: number[], p: number) => xs.slice().sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))];
 
-console.log(`balance-v1.0 · S=${S} · ${restarts}×${iterations} · seeds=${seeds}`);
-console.log('profile   N   K | totalRange mean/p95/max (% of team) | top1 mean (bound) | top3conc | excessDup | roleExcess | ms/run');
+console.log(
+  `${CURRENT_RULES_VERSION} · S=${S} · ${restarts}×${iterations} · seeds=${seeds} · бафи: ${buffCtx.enabled ? `увімкнено (${buffCtx.kx === 'kx' ? 'під КХ' : 'без КХ'})` : 'вимкнено'}` +
+  ` · пари: ${rules.composition.pairsRule}${S !== 2 ? ' (діє лише при S=2)' : ''}`,
+);
+console.log('profile   N   K | gearRange mean/p95/max (% of team) | strengthRange mean/p95/max | top1 mean (bound) | top3conc | excessDup | roleExcess | pairViol | ms/run');
 
 for (const p of PROFILES) {
   if (profileFilter && p.name !== profileFilter) continue;
@@ -133,7 +172,7 @@ for (const p of PROFILES) {
     const top1Bound = sortedScores[0] - sortedScores[K - 1];
     const top3 = new Set(players.slice().sort((a, b) => b.score - a.score).slice(0, 3).map((x) => x.id));
 
-    const ranges: number[] = [], top1: number[] = [], ms: number[] = [];
+    const ranges: number[] = [], strengthRanges: number[] = [], top1: number[] = [], ms: number[] = [], pairViols: number[] = [];
     let top3conc = 0, excessDup = 0, roleExcess: number[] = [];
     let teamMean = 0;
     for (let s = 0; s < seeds; s++) {
@@ -143,29 +182,35 @@ for (const p of PROFILES) {
       const totals = r.teams.map((t) => t.reduce((a, x) => a + x.score, 0));
       teamMean = mean(totals);
       ranges.push(Math.max(...totals) - Math.min(...totals));
+      // розкид сили — та сама мірка, що вирівнює алгоритм; без бафів дорівнює розкиду гіру
+      strengthRanges.push(buffCtx.enabled ? strengthSpreadOf(r.teams, rules, buffCtx.kx, S) : ranges[ranges.length - 1]);
       const tops = r.teams.map((t) => Math.max(...t.map((x) => x.score)));
       top1.push(Math.max(...tops) - Math.min(...tops));
       if (r.teams.some((t) => t.filter((x) => top3.has(x.id)).length >= 2)) top3conc++;
       const active = r.teams.flat();
-      const unav = unavoidable(active, K, rules);
-      const dups = r.teams.reduce((a, t) => a + teamStats(t, rules).dup, 0);
+      const unav = unavoidable(active, K, rules, S);
+      const stats = r.teams.map((t) => teamStats(t, rules, buffCtx));
+      const dups = stats.reduce((a, st) => a + st.dup, 0);
       if (dups > unav.dups) excessDup++;
-      const stats = r.teams.map((t) => teamStats(t, rules));
       let re = 0;
       for (const role of Object.keys(unav.roleSlack) as Array<keyof typeof unav.roleSlack>) {
         const counts = stats.map((st) => st.roleCount[role]);
         re += Math.max(0, Math.max(...counts) - Math.min(...counts) - unav.roleSlack[role]);
       }
       roleExcess.push(re);
+      // порушення правила 4 у парах понад неминуче (лише при S = 2 і жорсткому положенні)
+      pairViols.push(pairsHard ? Math.max(0, stats.filter((st) => pairViolates(st, rules.composition.pairsRule)).length - unav.pairViol) : 0);
     }
     console.log(
       `${p.name.padEnd(9)} ${String(N).padStart(3)} ${String(K).padStart(3)} | ` +
       `${mean(ranges).toFixed(1).padStart(5)} / ${String(pct(ranges, 0.95)).padStart(3)} / ${String(Math.max(...ranges)).padStart(3)} ` +
       `(${((100 * mean(ranges)) / teamMean).toFixed(1)}%)`.padEnd(8) + ' | ' +
+      `${mean(strengthRanges).toFixed(1).padStart(5)} / ${pct(strengthRanges, 0.95).toFixed(0).padStart(3)} / ${Math.max(...strengthRanges).toFixed(0).padStart(3)}`.padEnd(26) + ' | ' +
       `${mean(top1).toFixed(1).padStart(5)} (${top1Bound})`.padEnd(12) + ' | ' +
       `${((100 * top3conc) / seeds).toFixed(0).padStart(3)}%`.padEnd(8) + ' | ' +
       `${excessDup}`.padStart(9) + ' | ' +
       `${mean(roleExcess).toFixed(2)}`.padStart(10) + ' | ' +
+      `${pairsHard ? mean(pairViols).toFixed(2) : '—'}`.padStart(8) + ' | ' +
       `${mean(ms).toFixed(0)}`.padStart(5),
     );
   }

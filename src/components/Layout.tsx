@@ -99,7 +99,7 @@ export default function Layout() {
   else if (route.name === 'rules') page = <RulesPage />;
   else if (route.name === 'series') page = <SeriesPage slug={route.slug} onNavigate={go} />;
   else if (route.name === 'tournament') page = <TournamentPage id={route.id} guest={!insider} onLogin={login} />;
-  else if (route.name === 'admin') page = <AdminPage series={series} />;
+  else if (route.name === 'admin') page = <AdminPage series={series} tab={route.tab} onTab={(tab) => go({ name: 'admin', tab })} />;
   else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
 
   // Вид гостя й свого різний — до з'ясування сесії сторінку не рендеримо

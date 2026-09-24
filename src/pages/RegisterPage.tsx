@@ -6,8 +6,17 @@ import { hasRegistered, markRegistered } from '../app/registeredTournaments';
 import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
 import { fetchLastGearByNickname, fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 import GearFields, { isGearComplete } from '../components/GearFields';
+import RulesList from '../components/RulesList';
+import { parseRulesMd } from '../data/ruleCatalog';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 import { useMe } from '../app/useMe';
+
+/** «1 пункт · 2 пункти · 5 пунктів». */
+function pointsLabel(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  const word = m10 === 1 && m100 !== 11 ? 'пункт' : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? 'пункти' : 'пунктів';
+  return `${n} ${word}`;
+}
 
 /** Суфікс до назви турніру у виборі/підписі — формат командного турніру. */
 function teamSuffix(t: Tournament): string {
@@ -167,7 +176,11 @@ export default function RegisterPage() {
       setErr(
         msg.includes('duplicate key') || msg.includes('registrations_tournament_nickname')
           ? `Ц${isTeam ? 'я назва команди' : 'ей нікнейм'} уже зареєстрован${isTeam ? 'а' : 'ий'} на цей турнір.`
-          : msg,
+          // RLS (0027) не пропускає заявку без rules_ack; та сама відмова — коли
+          // реєстрацію закрили, поки форма була відкрита.
+          : msg.includes('row-level security')
+            ? 'Заявку не прийнято: підтвердь ознайомлення з правилами (галочка нижче) і перевір, чи реєстрація ще відкрита.'
+            : msg,
       );
     } finally {
       setBusy(false);
@@ -304,6 +317,19 @@ export default function RegisterPage() {
               hideSpecialSets
             />
           )}
+          {/* Пункти правил над галочкою — з rules_md турніру, щоб гравець читав те,
+              що підтверджує, не переходячи на сторінку турніру. */}
+          {tournament?.rulesMd && (() => {
+            const n = parseRulesMd(tournament.rulesMd).points.length;
+            return (
+              <details open style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 14px' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 14 }}>Правила турніру{n > 0 ? ` (${pointsLabel(n)})` : ''}</summary>
+                <div style={{ marginTop: 8 }}>
+                  <RulesList rulesMd={tournament.rulesMd} compact />
+                </div>
+              </details>
+            );
+          })()}
           <label className="checkbox-row">
             <input type="checkbox" checked={rulesAck} onChange={(e) => setRulesAck(e.target.checked)} />
             {isBalanced ? 'З правилами ознайомлений(а), дані про спорядження правдиві' : 'З правилами турніру ознайомлений(а)'}

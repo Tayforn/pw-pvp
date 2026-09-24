@@ -10,6 +10,7 @@ import {
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
+import { normalizeRuleFlags, type TournamentRuleFlags } from './ruleFlags';
 
 interface SeriesRow { id: string; slug: string; name: string; is_active: boolean; auto_weekday: number | null }
 interface TournamentRow {
@@ -20,6 +21,8 @@ interface TournamentRow {
   // 0017 — до застосування міграції цих колонок немає, тому всі читання з fallback
   team_mode?: TeamMode | null; balance_seed?: string | null; bracket_seed?: string | null;
   balance_rules_version?: string | null; balance_stats?: BalanceStats | null;
+  // 0027 — правила рядками; до міграції колонок немає
+  rule_flags?: unknown; rule_flags_updated_at?: string | null;
 }
 interface RegistrationRow {
   id: string; tournament_id: string; nickname: string; rules_ack: boolean; status: RegistrationStatus; created_at: string;
@@ -51,6 +54,7 @@ const tournamentFromRow = (r: TournamentRow): Tournament => ({
   createdBy: r.created_by, visibility: r.visibility, thirdPlaceMatch: r.third_place_match, bracketNewLook: r.bracket_new_look,
   teamMode: r.team_mode ?? 'fixed', balanceSeed: r.balance_seed ?? null, bracketSeed: r.bracket_seed ?? null,
   balanceRulesVersion: r.balance_rules_version ?? null, balanceStats: r.balance_stats ?? null,
+  ruleFlags: normalizeRuleFlags(r.rule_flags), ruleFlagsUpdatedAt: r.rule_flags_updated_at ?? null,
 });
 /** Анкета зібрана лише коли є всі 9 полів (constraint registrations_gear_all_or_none гарантує «або все, або нічого»). */
 const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
@@ -257,7 +261,13 @@ export interface TournamentInput {
   thirdPlaceMatch: boolean;
   /** Дзеркальний вигляд сітки замість колонок — застосовується лише коли bracketType === 'single_elim'. */
   bracketNewLook: boolean;
+  /** Правила рядками (0027). undefined — колонку не чіпати (до міграції збереження
+   * без правил не має падати на «column rule_flags does not exist»); null — очистити. */
+  ruleFlags?: TournamentRuleFlags | null;
 }
+
+const ruleFlagsPatch = (input: TournamentInput): { rule_flags?: TournamentRuleFlags | null } =>
+  input.ruleFlags !== undefined ? { rule_flags: input.ruleFlags } : {};
 
 /** createdBy/visibility задаються один раз при створенні (не редагуються
  * пізніше) — ГМ завжди створює 'unlisted' турнір під власним user_id,
@@ -280,6 +290,7 @@ export async function createTournament(input: TournamentInput, owner: { createdB
       bracket_new_look: input.bracketType !== 'single_elim' || input.bracketNewLook,
       created_by: owner.createdBy,
       visibility: owner.visibility,
+      ...ruleFlagsPatch(input),
     })
     .select('id')
     .single();
@@ -302,6 +313,7 @@ export async function updateTournament(id: string, input: TournamentInput): Prom
       team_mode: input.teamSize && input.teamSize >= 2 ? input.teamMode : 'fixed',
       third_place_match: input.bracketType === 'single_elim' && input.thirdPlaceMatch,
       bracket_new_look: input.bracketType !== 'single_elim' || input.bracketNewLook,
+      ...ruleFlagsPatch(input),
     })
     .eq('id', id);
   if (error) throw error;

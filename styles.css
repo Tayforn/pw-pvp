@@ -671,3 +671,33 @@ html[data-theme="light"] { --trn-accent: var(--accent); --trn-accent-rgb: 176, 1
 .player-row.selected { border-color: var(--accent); background: rgba(var(--accent-3-rgb), 0.12); }
 .player-row.static { cursor: default; border-radius: 0; }
 .player-row.static:hover { background: transparent; border-color: transparent; }
+
+/* ── Адмінка: смужка вкладок, таблиця бафів, футер версії шкали ──────────── */
+/* Сім вкладок на телефоні не влізуть: смужка не переноситься, а скролиться
+   пальцем; кнопки не стискаються і не ламають підпис (AdminTabs.tsx). */
+.admin-tabs {
+  display: flex; gap: 8px; margin-bottom: 20px; padding-bottom: 4px;
+  overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+}
+.admin-tabs > .btn { flex: 0 0 auto; white-space: nowrap; text-decoration: none; }
+/* Таблиця «дарувальник → % сили»: 10 × 4 (× 2 при стороні) полів — перша
+   колонка з класом липка, щоб на вузькому екрані під час скролу було видно,
+   чий це рядок (TeamTab.tsx). */
+.buff-table { border-collapse: separate; border-spacing: 0; min-width: 100%; }
+.buff-table th, .buff-table td { padding: 4px 4px; text-align: center; font-size: 12.5px; white-space: nowrap; }
+.buff-table thead th { color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--line); }
+.buff-table th:first-child, .buff-table td:first-child {
+  position: sticky; left: 0; z-index: 1; text-align: left; padding-right: 10px;
+  background: var(--bg-1);
+}
+.buff-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.025); }
+.buff-table tbody tr:nth-child(even) td:first-child { background: var(--bg-1); }
+/* Футер версії шкали липне до низу на обох вкладках чернетки (RulesFooter.tsx):
+   суцільний фон, бо .card напівпрозорий градієнт і крізь нього просвічували б поля. */
+.rules-footer {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 16px; margin-top: 4px;
+  background: var(--bg-1); border-color: var(--line-2);
+  box-shadow: 0 -12px 28px -16px rgba(0, 0, 0, 0.7);
+}

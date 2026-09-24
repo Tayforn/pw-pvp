@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BUILTIN_RULES_VERSION, CLASS_ORDER, SIZE_BUCKETS, computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, maxGearScore,
-  nextRulesVersion, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
+  BUILTIN_BUFFS, BUILTIN_RULES_VERSION, CLASS_ORDER, PHYS_CLASSES, RECOMMENDED_BUFFS_PCT, RECOMMENDED_COMPOSITION_WEIGHTS, RECOMMENDED_PAIRS_RULE, SIZE_BUCKETS,
+  computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, isPhysClass, maxGearScore,
+  nextRulesVersion, normalizeBuffs, normalizeComposition, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { CharClass, PlayerGear } from '../types';
 
@@ -303,5 +304,92 @@ describe('кільця', () => {
     const old = normalizeRules(legacy);
     expect(old.rings.r9r1).toBe(12);
     expect(computeGearScoreWith(base, old, 3)).toBe(score(base));
+  });
+});
+
+describe('бафи тімейтів і правило 4 для пар у версіях шкали', () => {
+  const legacyJson = () => JSON.parse(JSON.stringify(serializeRules(rulesFor(BUILTIN_RULES_VERSION)))) as { balance: { composition: Record<string, unknown>; buffs?: unknown } };
+
+  it('версія без блоку buffs → вбудований: вимкнено, без КХ, стеля 40, нулі; без pairsRule → legacy', () => {
+    const json = legacyJson();
+    delete json.balance.buffs;
+    delete json.balance.composition.pairsRule;
+    const old = normalizeRules(json);
+    expect(old.balance.buffs).toEqual(BUILTIN_BUFFS);
+    expect(old.balance.buffs.enabled).toBe(false);
+    expect(old.balance.buffs.defaultKx).toBe('noKx');
+    expect(old.balance.buffs.cap).toBe(40);
+    expect(old.balance.buffs.sizeWeight).toEqual({ '2': 100, '3': 100, '4': 100, '5': 100 });
+    for (const c of CLASS_ORDER) expect(old.balance.buffs.pct[c].noKx.rs).toEqual({ phys: 0, mag: 0 });
+    expect(old.balance.composition.pairsRule).toBe('legacy');
+    expect(normalizeComposition(undefined).pairsRule).toBe('legacy');
+    expect(normalizeComposition({ pairsRule: 'bogus' }).pairsRule).toBe('legacy');
+    expect(normalizeComposition({ pairsRule: 'noSecondDdNoDruid' }).pairsRule).toBe('noSecondDdNoDruid');
+    expect(normalizeComposition({ pairsRule: 'off' }).pairsRule).toBe('off');
+  });
+
+  it('normalizeBuffs: зламаний JSON → дефолти; напівзаповнена таблиця → нулі в решті клітинок', () => {
+    expect(normalizeBuffs(null)).toEqual(BUILTIN_BUFFS);
+    expect(normalizeBuffs('oops')).toEqual(BUILTIN_BUFFS);
+    expect(normalizeBuffs({ enabled: 'yes', defaultKx: 'maybe', cap: 'x', bySide: 1, killScaled: 'true', sizeWeight: { '3': 'a' }, pct: 5 })).toEqual(BUILTIN_BUFFS);
+    const half = normalizeBuffs({ enabled: true, defaultKx: 'kx', cap: 50, bySide: true, killScaled: true, sizeWeight: { '5': 60, '9': 1 }, pct: { barbarian: { noKx: { rs: { phys: 22 } } }, nope: {} } });
+    expect(half.enabled).toBe(true);
+    expect(half.defaultKx).toBe('kx');
+    expect(half.cap).toBe(50);
+    expect(half.bySide).toBe(true);
+    expect(half.killScaled).toBe(true);
+    expect(half.sizeWeight).toEqual({ '2': 100, '3': 100, '4': 100, '5': 60 });
+    expect(half.pct.barbarian.noKx.rs).toEqual({ phys: 22, mag: 0 });
+    expect(half.pct.barbarian.noKx.je).toEqual({ phys: 0, mag: 0 });
+    expect(half.pct.barbarian.kx.rs).toEqual({ phys: 0, mag: 0 });
+    expect(half.pct.cleric.noKx.rs).toEqual({ phys: 0, mag: 0 });
+    // нормалізація не ділить об'єкти з вбудованою — чернетка редактора не зіпсує BUILTIN_BUFFS
+    const fresh = normalizeBuffs(undefined);
+    fresh.pct.archer.noKx.rs.phys = 99;
+    fresh.sizeWeight['2'] = 1;
+    expect(BUILTIN_BUFFS.pct.archer.noKx.rs.phys).toBe(0);
+    expect(BUILTIN_BUFFS.sizeWeight['2']).toBe(100);
+  });
+
+  it('serialize → normalize без втрат із рекомендованою таблицею, увімкненими бафами і pairsRule', () => {
+    const r = rulesFor(BUILTIN_RULES_VERSION);
+    const custom = {
+      ...r,
+      balance: {
+        ...r.balance,
+        buffs: { ...BUILTIN_BUFFS, enabled: true, bySide: true, killScaled: true, sizeWeight: { '2': 100, '3': 100, '4': 80, '5': 50 }, pct: RECOMMENDED_BUFFS_PCT },
+        composition: { ...r.balance.composition, pairsRule: RECOMMENDED_PAIRS_RULE, weights: { ...RECOMMENDED_COMPOSITION_WEIGHTS } },
+      },
+    };
+    const json = JSON.parse(JSON.stringify(serializeRules(custom)));
+    expect(json.balance.buffs.enabled).toBe(true);
+    expect(json.balance.buffs.pct.barbarian.noKx.rs).toEqual({ phys: 22, mag: 16 });
+    expect(json.balance.composition.pairsRule).toBe('noSecondDd');
+    expect(normalizeRules(json)).toEqual(custom);
+  });
+
+  it('рекомендовані значення: топ-підтримка 100, пари «крім другого ДД», таблиця L11 (Друїд 20 — припущення)', () => {
+    expect(RECOMMENDED_COMPOSITION_WEIGHTS.topSupport).toBe(100);
+    expect(RECOMMENDED_PAIRS_RULE).toBe('noSecondDd');
+    const t = RECOMMENDED_BUFFS_PCT;
+    expect(t.barbarian.noKx).toEqual({ rs: { phys: 22, mag: 16 }, je: { phys: 21, mag: 16 } });
+    expect(t.barbarian.kx).toEqual({ rs: { phys: 15, mag: 10 }, je: { phys: 14, mag: 10 } });
+    expect(t.cleric.noKx.rs).toEqual({ phys: 15, mag: 19 });
+    expect(t.cleric.kx.je).toEqual({ phys: 11, mag: 16 });
+    expect(t.blademaster.noKx).toEqual({ rs: { phys: 10, mag: 8 }, je: { phys: 8, mag: 7 } });
+    expect(t.blademaster.kx).toEqual({ rs: { phys: 8, mag: 6 }, je: { phys: 7, mag: 6 } });
+    expect(t.seeker.kx.je).toEqual({ phys: 2, mag: 2 });
+    expect(t.venomancer.noKx.rs).toEqual({ phys: 20, mag: 20 });
+    expect(t.wizard.noKx.rs).toEqual({ phys: 1, mag: 0 });
+    expect(t.archer.kx.rs).toEqual({ phys: 1, mag: 1 });
+    for (const c of ['mystic', 'assassin', 'psychic'] as const) expect(t[c].noKx.rs).toEqual({ phys: 0, mag: 0 });
+    // вбудована версія бафів не рахує — старі турніри на v1.0 не змінюються
+    expect(rulesFor(BUILTIN_RULES_VERSION).balance.buffs.enabled).toBe(false);
+    expect(rulesFor(BUILTIN_RULES_VERSION).balance.composition.pairsRule).toBe('legacy');
+  });
+
+  it('фізичні класи: Лучник, Сін, Воїн, Танк, Страж; решта — маги', () => {
+    expect(PHYS_CLASSES.slice().sort()).toEqual(['archer', 'assassin', 'barbarian', 'blademaster', 'seeker']);
+    expect(CLASS_ORDER.filter((c) => !isPhysClass(c)).sort()).toEqual(['cleric', 'mystic', 'psychic', 'venomancer', 'wizard']);
   });
 });

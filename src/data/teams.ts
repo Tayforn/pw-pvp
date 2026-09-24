@@ -8,13 +8,32 @@ import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
 import { currentRulesVersion, computeGearScore, playerProfile, ratingBonus, rulesFor, tierFor } from './gearRules';
-import { evaluateTeams, type BalancePlayer, type FormTeamsResult } from './balance';
+import { evaluateTeams, teamStrengthFromSnapshot, type BalancePlayer, type FormTeamsResult } from './balance';
+import { resolveBuffOptions, type BuffOptions } from './ruleFlags';
 import { ratingOf, type PlayerRating } from './ratings';
 
 /** Версія правил, якою рахується цей турнір: зафіксована при формуванні,
  * до формування — поточна. */
 export function rulesVersionFor(t: Pick<Tournament, 'balanceRulesVersion'>): string {
   return t.balanceRulesVersion ?? currentRulesVersion();
+}
+
+/** Бафи для жеребки цього турніру: правила турніру (рядки «бафи від пачки»,
+ * «КХ») поверх КХ за замовчуванням із його версії шкали. */
+export function buffOptionsFor(t: Pick<Tournament, 'balanceRulesVersion' | 'ruleFlags'>): BuffOptions {
+  return resolveBuffOptions(rulesFor(rulesVersionFor(t)).balance, t.ruleFlags);
+}
+
+/** Сила команди зі знімка турніру (гір · бафи · сила) — одна функція для
+ * публічної сторінки, бейджа модалки, звіту балансу й підбору заміни; без
+ * знімка (команди ще не сформовані) — сила = гір. */
+export function teamStrengthFor(
+  t: Pick<Tournament, 'balanceRulesVersion' | 'balanceStats'>, members: BalanceStats['teams'][number]['members'],
+): { total: number; buff: number; strength: number } {
+  const rules = rulesFor(rulesVersionFor(t)).balance;
+  const stats = t.balanceStats;
+  if (!stats) { const total = members.reduce((s, m) => s + m.score, 0); return { total, buff: 0, strength: total }; }
+  return teamStrengthFromSnapshot(members, stats, rules);
 }
 
 /** Складові скору гравця: гір (анкета) + ручна корекція адміна + бонус за Ело. */
@@ -87,9 +106,14 @@ export interface TeamsDraft {
 export function buildBalanceStats(t: Tournament, draft: TeamsDraft): BalanceStats {
   const version = rulesVersionFor(t);
   const rules = rulesFor(version).balance;
-  const ev = evaluateTeams(draft.teams.map((x) => x.members), rules);
+  const snap = draft.result.snapshot;
+  // ті самі бафи й розмір команди, що при формуванні — інакше penalty у знімку не збігся б із чернеткою
+  const ev = evaluateTeams(draft.teams.map((x) => x.members), rules, {
+    buffs: snap.buffs ? { source: snap.buffs.source, kx: snap.buffs.kx } : undefined,
+    teamSize: snap.teamSize,
+  });
   return {
-    ...draft.result.snapshot,
+    ...snap,
     formedAt: new Date().toISOString(),
     penalty: ev.penalty,
     bestPenalty: draft.result.bestPenalty,

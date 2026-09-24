@@ -4,12 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 // лише чисті функції, тому клієнт підміняємо заглушкою.
 vi.mock('../../app/supabaseClient', () => ({ supabase: {} }));
 
-import { RATING_BASE, computeBalanceReport, computeRatings, ratingOf, sortHistory, type MatchRecord } from '../ratings';
-import { ratingBonus, rulesFor } from '../gearRules';
+import { RATING_BASE, computeBalanceReport, computeRatings, ratingOf, sortHistory, spreadsOf, teamStrengthsOf, type MatchRecord, type TournamentSpreads } from '../ratings';
+import { BUILTIN_BUFFS, RECOMMENDED_BUFFS_PCT, ratingBonus, rulesFor, type BalanceRules } from '../gearRules';
+import type { BalanceStats, CharClass } from '../types';
 
 const match = (over: Partial<MatchRecord>): MatchRecord => ({
   tournamentId: 't1', tournamentName: 'Тест', eventDate: '2026-09-16', bracketSide: 'winners', round: 1, slot: 0,
-  teamA: 'Команда 1', teamB: 'Команда 2', membersA: ['A1', 'A2'], membersB: ['B1', 'B2'], totalA: 400, totalB: 390, winner: 'A', ...over,
+  teamA: 'Команда 1', teamB: 'Команда 2', membersA: ['A1', 'A2'], membersB: ['B1', 'B2'], totalA: 400, totalB: 390,
+  strengthA: null, strengthB: null, winner: 'A', ...over,
 });
 
 describe('computeRatings (командне Ело)', () => {
@@ -70,7 +72,7 @@ describe('ratingBonus', () => {
 
 describe('computeBalanceReport', () => {
   const names = new Map([['t1', { name: 'Тест', eventDate: '2026-09-16' }]]);
-  const spreads = new Map([['t1', 9]]);
+  const spreads = new Map<string, TournamentSpreads>([['t1', { gear: 9, strength: null }]]);
 
   it('рахує перемоги сильнішої за сумою команди, нічиї за сумою і великі різниці', () => {
     const h = [
@@ -87,10 +89,64 @@ describe('computeBalanceReport', () => {
     expect(rep.bigDiffDecided).toBe(1);
     expect(rep.bigDiffStrongerWon).toBe(0);
     expect(rep.tournaments).toHaveLength(1);
-    expect(rep.tournaments[0]).toMatchObject({ tournamentName: 'Тест', decided: 2, strongerWon: 1, ties: 1, avgDiff: 25, spread: 9 });
+    expect(rep.tournaments[0]).toMatchObject({ tournamentName: 'Тест', decided: 2, strongerWon: 1, ties: 1, avgDiff: 25, spread: 9, strengthSpread: null, byStrength: false });
+  });
+
+  it('коли у знімку є сила — «сильніша» за силою, а не за гіром; обидва розкиди в звіті окремо', () => {
+    // за гіром сильніша A (400 > 390), за силою — B (410 < 430): бафи Танка й Приста в B
+    const h = [match({ totalA: 400, totalB: 390, strengthA: 410, strengthB: 430, winner: 'B' })];
+    const sp = new Map<string, TournamentSpreads>([['t1', { gear: 10, strength: 20 }]]);
+    const rep = computeBalanceReport(h, sp, names);
+    expect(rep.strongerWon).toBe(1);
+    expect(rep.tournaments[0]).toMatchObject({ byStrength: true, spread: 10, strengthSpread: 20, avgDiff: 20 });
+    // без сили той самий матч — перемога слабшої
+    expect(computeBalanceReport([match({ totalA: 400, totalB: 390, winner: 'B' })], sp, names).strongerWon).toBe(0);
   });
 
   it('без матчів — winRate null', () => {
     expect(computeBalanceReport([], spreads, names).strongerWinRate).toBeNull();
+  });
+});
+
+describe('сила зі знімка: teamStrengthsOf / spreadsOf', () => {
+  // рулс із увімкненими бафами (реєстр у тестах знає лише вбудовану версію, де бафи вимкнені)
+  const on: BalanceRules = { ...rulesFor().balance, buffs: { ...BUILTIN_BUFFS, enabled: true, pct: RECOMMENDED_BUFFS_PCT } };
+  const m = (registrationId: string, charClass: CharClass, score: number) => ({ registrationId, nickname: registrationId, charClass, score, tier: 'B' as const });
+  const stats: BalanceStats = {
+    algoVersion: 'teams-ls-v5', rulesVersion: 'balance-v1.14', seed: 's', teamSize: 3, teamCount: 2, reservePolicy: 'latest', inputHash: 'h',
+    players: [['a', 'archer', 250, 1, 0], ['c', 'cleric', 100, 0.2, 0.5], ['s', 'seeker', 150, 0.3, 0.1], ['w', 'wizard', 240, 1, 0], ['p', 'psychic', 160, 1, 0], ['m', 'mystic', 100, 0.2, 0.5], ['x', 'wizard', 100, 1, 0]],
+    buffs: { enabled: true, source: 'party', kx: 'noKx', bySide: false },
+    pairsRule: 'noSecondDd',
+    formedAt: '2026-09-24T00:00:00Z', penalty: 0, bestPenalty: 0, candidates: 1,
+    teams: [
+      { name: 'Команда 1', total: 500, members: [m('a', 'archer', 250), m('c', 'cleric', 100), m('s', 'seeker', 150)] },
+      { name: 'Команда 2', total: 500, members: [m('w', 'wizard', 240), m('p', 'psychic', 160), m('m', 'mystic', 100)] },
+    ],
+    reserve: [{ registrationId: 'x', nickname: 'x' }],
+    substitutions: [],
+  };
+
+  it('рівний гір, різна сила: розкид гіру 0, розкид сили — з бафів (Лучник + Прист + Страж проти магів без бафера)', () => {
+    const st = teamStrengthsOf(stats, on);
+    expect(st.get('Команда 1')).toEqual({ total: 500, buff: 69.5, strength: 569.5 }); // те саме, що в balance.test.ts
+    expect(st.get('Команда 2')!.buff).toBeCloseTo(0, 9); // Маг 1 % лише фізикам, Шаман/Містик 0 → Мага ніхто не бафає
+    expect(spreadsOf(stats, on)).toEqual({ gear: 0, strength: 69.5 });
+  });
+
+  it('після заміни гравця сила зі знімка змінюється, а гір — ні (RPC 0022 оновлює склад, сила рахується при читанні)', () => {
+    // Прист (100) не прийшов, замінили Магом (100) з резерву: Лучник втрачає 3 % від Приста, Страж — 16 % → 2 % від Мага
+    const after: BalanceStats = { ...stats, teams: [{ ...stats.teams[0], members: [m('a', 'archer', 250), m('x', 'wizard', 100), m('s', 'seeker', 150)] }, stats.teams[1]] };
+    const st = teamStrengthsOf(after, on);
+    expect(st.get('Команда 1')!.total).toBe(500);
+    expect(st.get('Команда 1')!.strength).toBeCloseTo(513.5, 9);
+    expect(spreadsOf(after, on).strength).toBeCloseTo(13.5, 9);
+    expect(spreadsOf(after, on).gear).toBe(0);
+  });
+
+  it('бафи не рахувались (стара жеребка або вимкнено) — сила null, гір як досі; без знімка — обидва null', () => {
+    expect(spreadsOf({ ...stats, buffs: undefined }, on)).toEqual({ gear: 0, strength: null });
+    expect(spreadsOf({ ...stats, buffs: { ...stats.buffs!, enabled: false } }, on)).toEqual({ gear: 0, strength: null });
+    expect(spreadsOf(null)).toEqual({ gear: null, strength: null });
+    expect(spreadsOf({ ...stats, teams: [] }, on)).toEqual({ gear: null, strength: null });
   });
 });

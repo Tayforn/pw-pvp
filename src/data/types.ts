@@ -3,6 +3,9 @@
 // supabase/migrations/0001_init.sql).
 // =========================================================
 
+import type { KxMode } from './gearRules';
+import type { TournamentRuleFlags } from './ruleFlags';
+
 export interface TournamentSeries {
   id: string;
   slug: string;
@@ -95,6 +98,14 @@ export interface BalanceSnapshot {
   /** [registrationId, клас, score, kill, amp] — відсортовано за id; kill/amp
    * (профіль для рольового шару, teams-ls-v2) у старих знімках відсутні. */
   players: Array<[string, CharClass, number, number?, number?]>;
+  /** Бафи тімейтів (teams-ls-v5): enabled — чи рахувались у силі (галочка у
+   * шкалі × правила турніру), source — що казали правила турніру ('none' =
+   * «бафи не дозволені»), kx — колонка таблиці, bySide — чи важила сторона.
+   * Сила команди в знімку не зберігається — рахується при читанні
+   * (balance.teamStrengthFromSnapshot). У старих знімках відсутнє. */
+  buffs?: { enabled: boolean; source: 'party' | 'none'; kx: KxMode; bySide: boolean };
+  /** Положення правила 4 для пар на момент жеребки (gearRules.PairsRule); у старих знімках відсутнє. */
+  pairsRule?: string;
 }
 
 /** tournaments.balance_stats — знімок генерації + склади на момент затвердження. */
@@ -141,6 +152,10 @@ export interface Tournament {
   /** Версія таблиць балів, якою рахувався цей турнір (напр. 'balance-v1.0'); null до формування. */
   balanceRulesVersion: string | null;
   balanceStats: BalanceStats | null;
+  /** Правила турніру рядками (знімок довідника, 0027); null — старий турнір
+   * із текстом лише в rulesMd (UI показує textarea). */
+  ruleFlags: TournamentRuleFlags | null;
+  ruleFlagsUpdatedAt?: string | null;
 }
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
