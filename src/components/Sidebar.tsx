@@ -1,11 +1,14 @@
 // =========================================================
 // Сайдбар: статичні пункти (Головна/Турніри/Реєстрація/Правила) +
-// Адмінка (лише для адміна). Пункт на серію прибрано — сайт спрощено
-// до однієї активної серії, показувати її окремо в меню зайве.
+// Адмінка (лише для адміна) — відфільтровані за рівнем доступу
+// (app/access.ts): гість без входу бачить лише Турніри/Заявку/Правила.
+// Пункт на серію прибрано — сайт спрощено до однієї активної серії,
+// показувати її окремо в меню зайве.
 // =========================================================
 
 import type { ReactNode } from 'react';
 import type { Route } from '../app/useRoute';
+import { canOpen, type Viewer } from '../app/access';
 
 interface NavEntry {
   route: Route;
@@ -27,20 +30,23 @@ function routeKey(r: Route): string {
 
 interface Props {
   route: Route;
-  isAdmin: boolean;
+  viewer: Viewer;
   onNavigate: (route: Route) => void;
 }
 
-export default function Sidebar({ route, isAdmin, onNavigate }: Props) {
-  const items: NavEntry[] = [
+export default function Sidebar({ route, viewer, onNavigate }: Props) {
+  const allItems: NavEntry[] = [
     { route: { name: 'home' }, label: 'Головна', ico: homeIco },
     { route: { name: 'tournaments' }, label: 'Турніри', ico: listIco },
     { route: { name: 'register' }, label: 'Заявка', ico: registerIco },
     { route: { name: 'rules' }, label: 'Правила', ico: rulesIco },
+    { route: { name: 'admin' }, label: 'Адмінка', ico: adminIco },
   ];
-  if (isAdmin) items.push({ route: { name: 'admin' }, label: 'Адмінка', ico: adminIco });
+  // Показуємо лише те, що людина реально може відкрити.
+  const items = allItems.filter((n) => canOpen(n.route.name, viewer));
 
-  const activeKey = routeKey(route);
+  // Гостю головна показує той самий список турнірів — підсвічуємо «Турніри».
+  const activeKey = route.name === 'home' && !canOpen('home', viewer) ? 'tournaments' : routeKey(route);
 
   return (
     <aside className="sidebar" id="appSidebar">

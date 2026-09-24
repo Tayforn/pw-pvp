@@ -1,6 +1,6 @@
 // =========================================================
-// Роутинг pw-pvp: History API, гібрид статичних шляхів + 2 динамічних
-// сегменти (/series/:slug, /t/:id) — без бібліотеки роутера, просто
+// Роутинг pw-pvp: History API, гібрид статичних шляхів + динамічні
+// сегменти (/series/:slug, /t/:id, /t/:id/bracket) — без бібліотеки роутера, просто
 // парсимо перший/другий сегмент шляху (в стилі pw-calc/pw-events, але
 // pw-calc-івський ROUTES-реєстр тут не підходить — сторінки контент-driven,
 // а не фіксований список вкладок).
@@ -21,6 +21,8 @@ export type Route =
   | { name: 'admin' }
   | { name: 'series'; slug: string }
   | { name: 'tournament'; id: string }
+  /** /t/:id/bracket — лише сітка, без шапки й меню: посилання «Поділитися» */
+  | { name: 'tournament-bracket'; id: string }
   /** лише dev-збірка: /dev/bracket — сітка з фейковими командами (верстка) */
   | { name: 'dev-bracket' };
 
@@ -28,13 +30,14 @@ function parsePath(): Route {
   let p = location.pathname;
   if (p.startsWith(APP_BASE)) p = p.slice(APP_BASE.length);
   const segs = p.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-  const [a, b] = segs;
+  const [a, b, c] = segs;
   if (!a) return { name: 'home' };
   if (a === 'tournaments') return { name: 'tournaments' };
   if (a === 'register') return { name: 'register' };
   if (a === 'rules') return { name: 'rules' };
   if (a === 'admin') return { name: 'admin' };
   if (a === 'series' && b) return { name: 'series', slug: b };
+  if (a === 't' && b && c === 'bracket') return { name: 'tournament-bracket', id: b };
   if (a === 't' && b) return { name: 'tournament', id: b };
   if (import.meta.env.DEV && a === 'dev' && b === 'bracket') return { name: 'dev-bracket' };
   return { name: 'home' };
@@ -45,6 +48,7 @@ export function routeUrl(route: Route): string {
     case 'home': return APP_BASE;
     case 'series': return APP_BASE + 'series/' + route.slug;
     case 'tournament': return APP_BASE + 't/' + route.id;
+    case 'tournament-bracket': return APP_BASE + 't/' + route.id + '/bracket';
     case 'dev-bracket': return APP_BASE + 'dev/bracket';
     default: return APP_BASE + route.name;
   }

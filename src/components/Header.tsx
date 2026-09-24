@@ -1,5 +1,7 @@
 // =========================================================
-// Шапка сайту: тогл меню, лого, партнер, тема.
+// Шапка сайту: тогл меню, лого, партнер, тема, вхід через Discord.
+// Посилання на сусідні сайти клану (ладдер/хелпер/гільдія) — лише для тих,
+// хто увійшов: гість приходить сюди подати заявку, решта йому ні до чого.
 // =========================================================
 
 import { routeUrl } from '../app/useRoute';
@@ -7,6 +9,12 @@ import { routeUrl } from '../app/useRoute';
 interface Props {
   navOpen: boolean;
   onNavToggle: () => void;
+  /** Discord-сесія (спільна на піддомени); undefined — ще перевіряємо. */
+  me: { nickname: string } | null | undefined;
+  /** Показувати посилання на сусідні сайти (увійшов через Discord або адмін). */
+  showSiblings: boolean;
+  onLogin: () => void;
+  onLogout: () => void;
 }
 
 function toggleTheme(): void {
@@ -19,7 +27,7 @@ function toggleTheme(): void {
   }
 }
 
-export default function Header({ navOpen, onNavToggle }: Props) {
+export default function Header({ navOpen, onNavToggle, me, showSiblings, onLogin, onLogout }: Props) {
   return (
     <header className="site-header">
       <div className="container header-inner">
@@ -43,9 +51,24 @@ export default function Header({ navOpen, onNavToggle }: Props) {
         <a href="https://cyberpw.fun/" target="_blank" rel="noopener" className="partner-logo" title="cyberpw.fun">
           <img src={import.meta.env.BASE_URL + 'assets/logo.webp'} alt="CyberPW" />
         </a>
-        <a href="https://ladder.thunderpw.fun/" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} title="Ладдер страждання">Ладдер</a>
-        <a href="https://calc.thunderpw.fun/" className="btn btn-ghost btn-sm" title="PW Хелпер — калькулятори">Хелпер</a>
-        <a href="https://guild.thunderpw.fun/" className="btn btn-ghost btn-sm" title="Гільдія">Гільдія</a>
+        <span className="header-links">
+          {showSiblings && (
+            <>
+              <a href="https://ladder.thunderpw.fun/" className="btn btn-ghost btn-sm" title="Ладдер страждання">Ладдер</a>
+              <a href="https://calc.thunderpw.fun/" className="btn btn-ghost btn-sm" title="PW Хелпер — калькулятори">Хелпер</a>
+              <a href="https://guild.thunderpw.fun/" className="btn btn-ghost btn-sm" title="Гільдія">Гільдія</a>
+            </>
+          )}
+          {me === undefined ? null : me ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onLogout} title="Вийти з Discord">
+              {me.nickname} ✕
+            </button>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onLogin} title="Вхід через Discord для учасників клану">
+              Увійти
+            </button>
+          )}
+        </span>
         <button
           type="button"
           className="theme-toggle"

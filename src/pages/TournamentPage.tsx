@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import PageMeta from '../app/PageMeta';
-import type { BracketMatch, CharClass, Registration, Tier, Tournament } from '../data/types';
-import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isRegistrationOpen } from '../data/types';
-import { fetchRegistrations, fetchTournament, subscribeToTournamentChanges } from '../data/tournaments';
-import { fetchBracket } from '../data/bracket';
+import { routeUrl } from '../app/useRoute';
+import { useTournamentLive } from '../app/useTournamentLive';
+import type { CharClass, Registration, Tier, Tournament } from '../data/types';
+import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isPastTournament, isRegistrationOpen } from '../data/types';
 import { CLASS_LABELS, computeGearScore, tierFor } from '../data/gearRules';
 import { useRules } from '../data/rulesStore';
 import { rulesVersionFor, teamMembers, teamRows } from '../data/teams';
 import BracketView from '../components/BracketView';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
+import MemberNotice from '../components/MemberNotice';
 
 /** Підтверджені гравці фул-рандому з анкетою — без анкети (старі/зламані
  * заявки) до формування не допускаються, тож і публічно їх не показуємо. */
@@ -111,46 +112,15 @@ function BalancedTeams({ tournament, registrations }: { tournament: Tournament; 
   );
 }
 
-export default function TournamentPage({ id }: { id: string }) {
+/** `guest` — не увійшов через Discord: минулий турнір бачить повністю, а
+ * поточний — лише шапку, правила/призи й кнопку заявки (форма заявки веде
+ * сюди по правила). Сітку поточного турніру гостям дають окремим
+ * посиланням /t/:id/bracket (BracketSharePage). */
+export default function TournamentPage({ id, guest, onLogin }: { id: string; guest?: boolean; onLogin: () => void }) {
   // суми гіру команд рахуються за версією шкали турніру — підписка на реєстр версій
   useRules();
-  const [tournament, setTournament] = useState<Tournament | null | undefined>(undefined);
-  const [registrations, setRegistrations] = useState<Registration[]>([]);
-  const [bracket, setBracket] = useState<BracketMatch[]>([]);
+  const { tournament, registrations, bracket, updatedAt, refreshing, reload } = useTournamentLive(id);
   const [copied, setCopied] = useState(false);
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [reloadTick, setReloadTick] = useState(0);
-
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      setRefreshing(true);
-      try {
-        const [t, regs, matches] = await Promise.all([fetchTournament(id), fetchRegistrations(id), fetchBracket(id)]);
-        if (!alive) return;
-        setTournament(t);
-        setRegistrations(regs);
-        setBracket(matches);
-        setUpdatedAt(new Date());
-      } finally {
-        if (alive) setRefreshing(false);
-      }
-    };
-    load().catch(() => { /* помилка мережі — лишаємо те, що є */ });
-    // Телефон заснув → realtime-вебсокет упав, події за цей час втрачено;
-    // при поверненні на вкладку перечитуємо все.
-    const onWake = () => { if (document.visibilityState === 'visible') load().catch(() => {}); };
-    document.addEventListener('visibilitychange', onWake);
-    window.addEventListener('focus', onWake);
-    const unsubscribe = subscribeToTournamentChanges(() => { load().catch(() => {}); });
-    return () => {
-      alive = false;
-      document.removeEventListener('visibilitychange', onWake);
-      window.removeEventListener('focus', onWake);
-      unsubscribe();
-    };
-  }, [id, reloadTick]);
 
   if (tournament === undefined) return <p className="hint">Завантаження…</p>;
   if (tournament === null) return <p className="hint">Турнір не знайдено.</p>;
@@ -164,11 +134,48 @@ export default function TournamentPage({ id }: { id: string }) {
   const players = balanced ? gearedPlayers(registrations) : [];
   const teamsFormed = balanced && confirmed.length > 0;
 
+  // Гість і поточний турнір — лише шапка, правила й заявка.
+  const limited = !!guest && !isPastTournament(tournament);
+
+  // Ділимось не цією сторінкою, а окремою сторінкою сітки: без меню й
+  // решти сайту, відкривається будь-кому (і без входу).
   const share = () => {
-    navigator.clipboard?.writeText(window.location.href);
+    navigator.clipboard?.writeText(window.location.origin + routeUrl({ name: 'tournament-bracket', id: tournament.id }));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
+  /* Після завершення турніру правила/призи вже не актуальні — ховаємо
+     їх у згорнутий <details>-акордеон, щоб не займали місце під сіткою
+     (кому треба — розгорне). Для активних турнірів картка як була. */
+  const rulesBlock = (tournament.rulesMd || tournament.prizesMd) && (() => {
+    const grid = (
+      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: tournament.rulesMd && tournament.prizesMd ? '1fr 1fr' : '1fr' }}>
+        {tournament.rulesMd && (
+          <div>
+            <h4 style={{ marginTop: 0 }}>Правила</h4>
+            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
+          </div>
+        )}
+        {tournament.prizesMd && (
+          <div>
+            <h4 style={{ marginTop: 0 }}>Призи</h4>
+            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.prizesMd}</p>
+          </div>
+        )}
+      </div>
+    );
+    return tournament.status === 'completed' ? (
+      <details className="card" style={{ marginBottom: 18 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+          {tournament.rulesMd && tournament.prizesMd ? 'Правила та призи' : tournament.rulesMd ? 'Правила' : 'Призи'}
+        </summary>
+        <div style={{ marginTop: 12 }}>{grid}</div>
+      </details>
+    ) : (
+      <div className="card" style={{ marginBottom: 18 }}>{grid}</div>
+    );
+  })();
 
   return (
     <div>
@@ -178,9 +185,11 @@ export default function TournamentPage({ id }: { id: string }) {
         <h2>{tournament.name}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
           <span className={'badge ' + (status === 'completed' ? 'good' : status === 'cancelled' ? 'bad' : 'warn')}>{STATUS_LABELS[status]}</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={share}>
-            {copied ? 'Скопійовано!' : '🔗 Поділитися'}
-          </button>
+          {!limited && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={share} title="Скопіювати посилання на сітку — відкриється лише сітка цього турніру, без решти сайту">
+              {copied ? 'Скопійовано!' : '🔗 Поділитися сіткою'}
+            </button>
+          )}
           {isRegistrationOpen(tournament) && (
             <a className="btn btn-primary btn-sm" href={import.meta.env.BASE_URL + 'register?t=' + tournament.id}>
               ✍ Реєстрація
@@ -194,132 +203,111 @@ export default function TournamentPage({ id }: { id: string }) {
         )}
       </div>
 
-      {/* Коли сітка вже згенерована — вона головний контент сторінки,
-          тож іде першою, а правила/призи опускаються під неї. До генерації
-          порядок звичний: правила → учасники → заглушка сітки внизу. */}
-      {bracket.length > 0 && (
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <h3 style={{ margin: 0 }}>Сітка</h3>
-            {updatedAt && <span className="hint" style={{ margin: 0 }}>оновлено о {updatedAt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}</span>}
-            <button type="button" className="btn btn-ghost btn-sm" disabled={refreshing} title="Перечитати сітку" onClick={() => setReloadTick((t) => t + 1)}>↻</button>
-          </div>
-          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
-        </div>
-      )}
-
-      {/* Фул-рандом: після генерації сітки склади команд НЕ ховаємо (у сітці
-          лише назви — гравець інакше не знайде свою команду), а згортаємо
-          в акордеон під сіткою; для завершеного турніру — одразу згорнутий. */}
-      {bracket.length > 0 && teamsFormed && (
-        <details className="card" open={tournament.status !== 'completed'} style={{ marginBottom: 18 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Склади команд</summary>
-          <div style={{ marginTop: 12 }}>
-            <BalancedTeams tournament={tournament} registrations={registrations} />
-          </div>
-        </details>
-      )}
-
-      {/* Після завершення турніру правила/призи вже не актуальні — ховаємо
-          їх у згорнутий <details>-акордеон, щоб не займали місце під сіткою
-          (кому треба — розгорне). Для активних турнірів картка як була. */}
-      {(tournament.rulesMd || tournament.prizesMd) && (() => {
-        const grid = (
-          <div style={{ display: 'grid', gap: 16, gridTemplateColumns: tournament.rulesMd && tournament.prizesMd ? '1fr 1fr' : '1fr' }}>
-            {tournament.rulesMd && (
-              <div>
-                <h4 style={{ marginTop: 0 }}>Правила</h4>
-                <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.rulesMd}</p>
-              </div>
-            )}
-            {tournament.prizesMd && (
-              <div>
-                <h4 style={{ marginTop: 0 }}>Призи</h4>
-                <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{tournament.prizesMd}</p>
-              </div>
-            )}
-          </div>
-        );
-        return tournament.status === 'completed' ? (
-          <details className="card" style={{ marginBottom: 18 }}>
-            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-              {tournament.rulesMd && tournament.prizesMd ? 'Правила та призи' : tournament.rulesMd ? 'Правила' : 'Призи'}
-            </summary>
-            <div style={{ marginTop: 12 }}>{grid}</div>
-          </details>
-        ) : (
-          <div className="card" style={{ marginBottom: 18 }}>{grid}</div>
-        );
-      })()}
-
-      {/* Фул-рандом до сітки: сформовані команди картками, а до формування —
-          учасники з класами (щоб було видно, кого бракує). */}
-      {bracket.length === 0 && balanced && teamsFormed && (
+      {limited ? (
         <>
-          <h3>Команди ({confirmed.length})</h3>
-          <div style={{ marginBottom: 18 }}>
-            <BalancedTeams tournament={tournament} registrations={registrations} />
-          </div>
+          {rulesBlock}
+          <MemberNotice compact onLogin={onLogin} />
         </>
-      )}
-
-      {bracket.length === 0 && balanced && !teamsFormed && (
+      ) : (
         <>
-          <h3>Учасники ({players.length})</h3>
-          <div className="card" style={{ marginBottom: 18 }}>
-            {players.length === 0 ? (
-              <p className="hint">Ще немає підтверджених учасників.</p>
-            ) : (
-              <>
-                <div className="participants-grid">
-                  {players.map((r) => <PlayerRow key={r.id} reg={r} info={publicInfo(r, tournament)} />)}
-                </div>
-                <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)} · натисни на ранг гравця, щоб побачити анкету</span>
-              </>
-            )}
-            {(status === 'registration_closed' || status === 'in_progress') && (
-              <span className="hint" style={{ marginTop: 10 }}>Команди формуються — з'являться тут.</span>
-            )}
-          </div>
-        </>
-      )}
+          {/* Коли сітка вже згенерована — вона головний контент сторінки,
+              тож іде першою, а правила/призи опускаються під неї. До генерації
+              порядок звичний: правила → учасники → заглушка сітки внизу. */}
+          {bracket.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0 }}>Сітка</h3>
+                {updatedAt && <span className="hint" style={{ margin: 0 }}>оновлено о {updatedAt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}</span>}
+                <button type="button" className="btn btn-ghost btn-sm" disabled={refreshing} title="Перечитати сітку" onClick={reload}>↻</button>
+              </div>
+              <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
+            </div>
+          )}
 
-      {bracket.length === 0 && !balanced && (
-        <>
-          <h3>{tournament.teamSize ? `Команди (${confirmed.length})` : `Учасники (${confirmed.length})`}</h3>
-          <div className="card" style={{ marginBottom: 18 }}>
-            {confirmed.length === 0 ? (
-              <p className="hint">Ще немає підтверджених учасників.</p>
-            ) : tournament.teamSize ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {confirmed.map((r) => (
-                  <div key={r.id}>
-                    <b>{r.nickname}</b>
-                    {r.memberNicknames && r.memberNicknames.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                        {r.memberNicknames.map((m, i) => (
-                          <span key={i} className="badge mute">{m}</span>
-                        ))}
+          {/* Фул-рандом: після генерації сітки склади команд НЕ ховаємо (у сітці
+              лише назви — гравець інакше не знайде свою команду), а згортаємо
+              в акордеон під сіткою; для завершеного турніру — одразу згорнутий. */}
+          {bracket.length > 0 && teamsFormed && (
+            <details className="card" open={tournament.status !== 'completed'} style={{ marginBottom: 18 }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Склади команд</summary>
+              <div style={{ marginTop: 12 }}>
+                <BalancedTeams tournament={tournament} registrations={registrations} />
+              </div>
+            </details>
+          )}
+
+          {rulesBlock}
+
+          {/* Фул-рандом до сітки: сформовані команди картками, а до формування —
+              учасники з класами (щоб було видно, кого бракує). */}
+          {bracket.length === 0 && balanced && teamsFormed && (
+            <>
+              <h3>Команди ({confirmed.length})</h3>
+              <div style={{ marginBottom: 18 }}>
+                <BalancedTeams tournament={tournament} registrations={registrations} />
+              </div>
+            </>
+          )}
+
+          {bracket.length === 0 && balanced && !teamsFormed && (
+            <>
+              <h3>Учасники ({players.length})</h3>
+              <div className="card" style={{ marginBottom: 18 }}>
+                {players.length === 0 ? (
+                  <p className="hint">Ще немає підтверджених учасників.</p>
+                ) : (
+                  <>
+                    <div className="participants-grid">
+                      {players.map((r) => <PlayerRow key={r.id} reg={r} info={publicInfo(r, tournament)} />)}
+                    </div>
+                    <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)} · натисни на ранг гравця, щоб побачити анкету</span>
+                  </>
+                )}
+                {(status === 'registration_closed' || status === 'in_progress') && (
+                  <span className="hint" style={{ marginTop: 10 }}>Команди формуються — з'являться тут.</span>
+                )}
+              </div>
+            </>
+          )}
+
+          {bracket.length === 0 && !balanced && (
+            <>
+              <h3>{tournament.teamSize ? `Команди (${confirmed.length})` : `Учасники (${confirmed.length})`}</h3>
+              <div className="card" style={{ marginBottom: 18 }}>
+                {confirmed.length === 0 ? (
+                  <p className="hint">Ще немає підтверджених учасників.</p>
+                ) : tournament.teamSize ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {confirmed.map((r) => (
+                      <div key={r.id}>
+                        <b>{r.nickname}</b>
+                        {r.memberNicknames && r.memberNicknames.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                            {r.memberNicknames.map((m, i) => (
+                              <span key={i} className="badge mute">{m}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {confirmed.map((r) => (
+                      <span key={r.id} className="badge mute">{r.nickname}</span>
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {confirmed.map((r) => (
-                  <span key={r.id} className="badge mute">{r.nickname}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+            </>
+          )}
 
-      {bracket.length === 0 && (
-        <>
-          <h3>Сітка</h3>
-          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} />
+          {bracket.length === 0 && (
+            <>
+              <h3>Сітка</h3>
+              <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} />
+            </>
+          )}
         </>
       )}
     </div>

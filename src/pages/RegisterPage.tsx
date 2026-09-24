@@ -7,7 +7,7 @@ import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament 
 import { fetchLastGearByNickname, fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 import GearFields, { isGearComplete } from '../components/GearFields';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
-import { useDiscordMe } from '../app/useDiscordMe';
+import { useMe } from '../app/useMe';
 
 /** Суфікс до назви турніру у виборі/підписі — формат командного турніру. */
 function teamSuffix(t: Tournament): string {
@@ -26,7 +26,7 @@ export default function RegisterPage() {
   const [pinned, setPinned] = useState<Tournament | null | undefined>(pinnedId ? undefined : null);
   const [tournamentId, setTournamentId] = useState('');
   const [nickname, setNickname] = useState('');
-  const { me: discordMe } = useDiscordMe();
+  const { me: discordMe } = useMe();
   const [members, setMembers] = useState<string[]>([]);
   // Анкета спорядження — лише для балансного фул-рандому.
   const [gear, setGear] = useState<Partial<PlayerGear>>({});

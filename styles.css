@@ -198,6 +198,12 @@ html.nav-open .nav-toggle-bars::after  { transform: translateY(-6px) rotate(-45d
 /* Другий (перехресний) партнер-лого прибираємо трохи раніше за основний —
  * два однакові за розміром значки поруч не влазять у той самий проміжок. */
 @media (max-width: 760px) { .partner-logo-alt { display: none; } }
+/* Сусідні сайти + вхід через Discord — праворуч, той самий крок, що й у шапці. */
+.header-links { display: inline-flex; align-items: center; gap: 16px; margin-left: auto; }
+/* Невдалий вхід через Discord (?login=denied|error) — над сторінкою. */
+.login-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 16px; }
+/* Сітка за посиланням «Поділитися» — сторінка без шапки й меню. */
+.share-page { padding-top: 20px; padding-bottom: 32px; }
 
 .theme-toggle {
   display: inline-grid;

@@ -3,16 +3,23 @@
 // На відміну від pw-calc/pw-events (фіксований список вкладок, усі
 // панелі змонтовані постійно), тут сторінки контент-driven (динамічні
 // /series/:slug, /t/:id) — рендеримо рівно одну сторінку за route.name.
+//
+// Доступ (app/access.ts): гість без входу через Discord бачить лише заявку,
+// правила й минулі турніри; /t/:id/bracket — окрема сторінка без шапки й
+// меню (посилання «Поділитися»), відкрита всім.
 // =========================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRoute, type Route } from '../app/useRoute';
 import { useAuth } from '../app/useAuth';
+import { takeLoginError, useMe } from '../app/useMe';
+import { ROUTE_ACCESS, isInsider, type Viewer } from '../app/access';
 import { fetchSeries, subscribeToTournamentChanges } from '../data/tournaments';
 import type { TournamentSeries } from '../data/types';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Footer from './Footer';
+import MemberNotice from './MemberNotice';
 
 import HomePage from '../pages/HomePage';
 import TournamentsPage from '../pages/TournamentsPage';
@@ -22,12 +29,19 @@ import RegisterPage from '../pages/RegisterPage';
 import RulesPage from '../pages/RulesPage';
 import AdminPage from '../pages/AdminPage';
 import DevBracketPage from '../pages/DevBracketPage';
+import BracketSharePage from '../pages/BracketSharePage';
 
 const isMobile = () => window.matchMedia('(max-width: 880px)').matches;
 
 export default function Layout() {
   const [route, navigate] = useRoute();
-  const { isAdmin } = useAuth();
+  const { isAdmin, loading: adminLoading } = useAuth();
+  const { me, loading: meLoading, login, logout } = useMe();
+  const viewer: Viewer = { member: !!me, admin: isAdmin };
+  const insider = isInsider(viewer);
+  // Поки не знаємо, хто це, — не блимаємо гостьовим видом перед своїм.
+  const checking = meLoading || adminLoading;
+  const [loginError, setLoginError] = useState(takeLoginError);
   const [series, setSeries] = useState<TournamentSeries[]>([]);
   const [navOpen, setNavOpen] = useState(() => document.documentElement.classList.contains('nav-open'));
 
@@ -74,23 +88,51 @@ export default function Layout() {
     };
   }, [setOpen, go]);
 
+  // Сітка за посиланням «Поділитися» — сама по собі, без шапки, меню й
+  // футера: той, кому скинули лінк, бачить турнір і нічого зайвого.
+  if (route.name === 'tournament-bracket') return <BracketSharePage id={route.id} />;
+
   let page;
-  if (route.name === 'home') page = <HomePage series={series} onNavigate={go} />;
-  else if (route.name === 'tournaments') page = <TournamentsPage onNavigate={go} />;
+  if (route.name === 'home') page = insider ? <HomePage series={series} onNavigate={go} /> : <TournamentsPage onNavigate={go} guest />;
+  else if (route.name === 'tournaments') page = <TournamentsPage onNavigate={go} guest={!insider} />;
   else if (route.name === 'register') page = <RegisterPage />;
   else if (route.name === 'rules') page = <RulesPage />;
   else if (route.name === 'series') page = <SeriesPage slug={route.slug} onNavigate={go} />;
-  else if (route.name === 'tournament') page = <TournamentPage id={route.id} />;
+  else if (route.name === 'tournament') page = <TournamentPage id={route.id} guest={!insider} onLogin={login} />;
   else if (route.name === 'admin') page = <AdminPage series={series} />;
   else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
 
+  // Вид гостя й свого різний — до з'ясування сесії сторінку не рендеримо
+  // (інакше гість на мить побачить чуже, а свій — заглушку). Заявка й
+  // правила однакові для всіх, адмінка має власну перевірку сесії.
+  const viewerDependent = route.name === 'home' || route.name === 'tournaments' || route.name === 'tournament' || route.name === 'series';
+  if (checking && viewerDependent) {
+    page = <p className="hint" style={{ padding: 24 }}>Перевірка доступу…</p>;
+  } else if (ROUTE_ACCESS[route.name] === 'member' && route.name !== 'home' && !insider) {
+    // Головна для гостя — не заглушка, а список минулих турнірів (вище).
+    page = <MemberNotice onLogin={login} />;
+  }
+
   return (
     <>
-      <Header navOpen={navOpen} onNavToggle={() => setOpen(!document.documentElement.classList.contains('nav-open'))} />
+      <Header
+        navOpen={navOpen}
+        onNavToggle={() => setOpen(!document.documentElement.classList.contains('nav-open'))}
+        me={meLoading ? undefined : me}
+        showSiblings={insider}
+        onLogin={login}
+        onLogout={logout}
+      />
       <div className="nav-backdrop" aria-hidden="true" onClick={() => setOpen(false)}></div>
       <div className="app-shell container">
-        <Sidebar route={route} isAdmin={isAdmin} onNavigate={go} />
+        <Sidebar route={route} viewer={viewer} onNavigate={go} />
         <div className="content">
+          {loginError && (
+            <div className="card login-error" role="alert">
+              <span className="form-err">{loginError}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLoginError(null)} aria-label="Закрити">✕</button>
+            </div>
+          )}
           <main>{page}</main>
         </div>
       </div>
