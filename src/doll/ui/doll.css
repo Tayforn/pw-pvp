@@ -422,3 +422,12 @@ html[data-theme='light'] .doll-menu-title[class*='gx-'] { color: var(--text); }
   /* Вступ на телефоні ховаємо: ті самі підказки є в редакторі, а фігура має бути ближче до верху. */
   .doll-page > .section-head p { display: none; }
 }
+
+/* ── Мої персонажі ──────────────────────────────────────────── */
+.doll-char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+.doll-char-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 16px; text-align: left; cursor: pointer; font: inherit; color: var(--text); }
+.doll-char-card:hover, .doll-char-card:focus-visible { border-color: var(--accent); }
+.doll-char-card.is-draft { border-style: dashed; }
+.doll-char-name { font-weight: 700; font-size: 16px; }
+.doll-char-meta { font-size: 13px; color: var(--text-dim); }
+.doll-char-hint { font-size: 12.5px; color: var(--accent); margin-top: 4px; }

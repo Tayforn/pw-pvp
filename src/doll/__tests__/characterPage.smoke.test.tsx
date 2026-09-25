@@ -95,10 +95,10 @@ function expectEditor(html: string): void {
   expect(html).toContain('class="doll-hero"');
   for (const label of ['Здоровʼя', 'ПА', 'ПЗ', 'Крит']) expect(heroValue(html, label), label).toMatch(/^[0-9]/);
   expect(html).toContain('у скор не входить');
-  // сторінка: збереження в профіль — неактивне, з поясненням
-  expect(html).toMatch(/disabled=""[^>]*>Зберегти в профіль/);
+  // сторінка без входу (у тестах /api/me недоступний): замість збереження — вхід, чернетка в браузері
   const text = visible(html);
-  expect(text).toContain('чернетка зберігається в цьому браузері');
+  expect(text).toContain('Увійти через Discord, щоб зберегти');
+  expect(text).toContain('чернетка в цьому браузері');
   expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
 }
 
@@ -180,11 +180,18 @@ describe('CharacterPage — перший рендер без винятків', 
     expect(store.getItem(brokenKey(KEY))).toBe('{"v":2,"cls":"zz"');
   });
 
-  it('чужий id — повідомлення про наступний етап замість редактора', async () => {
+  it('збережений персонаж — до відповіді сервера лише «завантажую», без редактора', async () => {
     setLocation('');
     const html = renderToStaticMarkup(<CharacterPage id="abc123" />);
-    expect(html).toContain('Збережених персонажів ще немає');
+    expect(html).toContain('Завантажую персонажа');
     expect(html).not.toContain('doll-fig-svg');
+  });
+
+  it('список «Мої персонажі» до перевірки входу — без винятків', async () => {
+    setLocation('');
+    const html = renderToStaticMarkup(<CharacterPage id={null} />);
+    expect(html).toContain('Мої персонажі');
+    expect(html).toContain('Перевірка входу');
   });
 
   it('документ валідний і поміщається в ліміт розміру', () => {

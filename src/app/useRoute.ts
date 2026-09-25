@@ -31,9 +31,9 @@ export type Route =
   | { name: 'tournament-bracket'; id: string }
   /** лише dev-збірка: /dev/bracket — сітка з фейковими командами (верстка) */
   | { name: 'dev-bracket' }
-  /** /characters — лялька персонажа (поки що те саме, що /characters/new) */
+  /** /characters — «Мої персонажі» (список збережених; гостю — вхід і чернетка) */
   | { name: 'characters' }
-  /** /characters/:id — 'new' = локальна чернетка; інші id — збережені персонажі (наступний етап) */
+  /** /characters/:id — 'new' = новий персонаж на локальній чернетці; інакше — збережений (uuid) */
   | { name: 'character'; id: string };
 
 /** Id персонажа в адресі: 'new' або короткий ідентифікатор без спецсимволів. */

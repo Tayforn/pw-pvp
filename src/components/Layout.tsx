@@ -140,9 +140,9 @@ export default function Layout() {
   else if (route.name === 'admin') page = <AdminPage series={series} tab={route.tab} onTab={(tab) => go({ name: 'admin', tab })} />;
   else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
   else if (route.name === 'characters' || route.name === 'character') {
-    const id = route.name === 'character' ? route.id : 'new';
+    const id = route.name === 'character' ? route.id : null;
     page = (
-      <LazyPageBoundary key={id}>
+      <LazyPageBoundary key={id ?? 'list'}>
         <Suspense fallback={lazyFallback}>
           <CharacterPage id={id} onNavigate={go} />
         </Suspense>
