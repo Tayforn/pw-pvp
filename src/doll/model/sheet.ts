@@ -167,6 +167,8 @@ export function buildOf(doc: CharacterDoc, rules: ScoringRules): Build {
 export interface DollFacts {
   build: Build;
   weaponPz: boolean;
+  /** На скільки ПЗ більше з ПЗ-зброєю сету на Головному (0 — немає ПЗ-зброї). */
+  weaponPzGain: number;
   specialSets: SpecialSet[];
   /** Камені кожного знайденого сету (з речей сету). */
   specialSetGems: Partial<Record<SpecialSet, Gems>>;
@@ -206,7 +208,7 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
   const main = numsOf(model, CFG_MAIN);
   const kinds = new Set<SpecialSet>();
   const kindGems: Partial<Record<SpecialSet, number>> = {};
-  let weaponPz = false;
+  let weaponPzGain = 0;
   for (const set of doc.sets) {
     const n = numsOf(model, set.id);
     const got: SpecialSet[] = [];
@@ -223,10 +225,11 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
       }
     }
     const ta = set.slots.ta;
-    if (!weaponPz && ta && ta !== doc.main.ta) {
+    if (ta && ta !== doc.main.ta) {
       // Лише зброя з сету на Головному — щоб ПЗ-сет з іншою зброєю не рахувався двічі.
+      // Скільки ПЗ дає заміна зброї — найбільше з усіх сетів.
       const probe: CharacterDoc = { ...doc, sets: [{ id: 'wpnprobe', name: 'w', kind: 'pz', slots: { ta } }] };
-      if (numsOf(hydrate(probe, lookup), 'wpnprobe').pz > main.pz) weaponPz = true;
+      weaponPzGain = Math.max(weaponPzGain, numsOf(hydrate(probe, lookup), 'wpnprobe').pz - main.pz);
     }
   }
 
@@ -253,7 +256,8 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
 
   return {
     build: buildOf(doc, rules),
-    weaponPz,
+    weaponPz: weaponPzGain > 0,
+    weaponPzGain: Math.max(0, weaponPzGain),
     specialSets,
     specialSetGems,
     weaponRefine: weapon?.item ? weaponRefineBucket(weapon.inst.r ?? 0) : null,

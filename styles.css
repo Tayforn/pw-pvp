@@ -736,3 +736,29 @@ html[data-theme="light"] { --trn-accent: var(--accent); --trn-accent-rgb: 176, 1
 @media (max-width: 360px) {
   .doll-confirm-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Повзунки: темні з золотим бігунком, як у сітці (раніше — лише .bracket-scroll) ── */
+* { scrollbar-width: thin; scrollbar-color: var(--accent-2) var(--bg-2); }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--bg-2); border-radius: 6px; }
+*::-webkit-scrollbar-thumb { background: var(--accent-2); border-radius: 6px; border: 2px solid var(--bg-2); }
+*::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── «Шкала балів» → «Скор з ляльки» → абілки зброї: рядок = текст (переноситься) + поле балів ── */
+.abil-list { display: flex; flex-direction: column; gap: 6px; }
+.abil-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 12px; align-items: center;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2);
+}
+.abil-row.on { border-color: var(--line-2); background: rgba(var(--accent-3-rgb), 0.06); }
+.abil-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.abil-name { font-weight: 700; font-size: 14px; cursor: pointer; }
+.abil-where { font-size: 12px; color: var(--accent-2); }
+.abil-desc { font-size: 12.5px; line-height: 1.4; color: var(--text-mute); overflow-wrap: anywhere; }
+.abil-pts { display: flex; flex-direction: column; gap: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-mute); }
+.abil-pts input { width: 100%; text-align: center; font-size: 15px; font-weight: 700; }
+.abil-more { margin: 8px 0 14px; }
+.abil-more > summary { cursor: pointer; padding: 6px 0; color: var(--text-dim); }
+.abil-more > summary:hover { color: var(--text); }
+.abil-more[open] > summary { margin-bottom: 6px; }

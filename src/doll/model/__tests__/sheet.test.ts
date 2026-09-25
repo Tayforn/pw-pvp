@@ -14,7 +14,7 @@ beforeAll(() => loadRef());
 const rules = normalizeRules({});
 const SHEET: Sheet = { weaponGrade: 'r8r', armorSet: 'r8r', tract: 't7', genie: 'g100', shg: false, voznes: false, ring1: 'r9', ring2: 'r9r1' };
 const FACTS: DollFacts = {
-  build: 'dd', weaponPz: false, specialSets: [], specialSetGems: {}, weaponRefine: 'w10', armorRefine: 'a8', armorRefineAvg: 7.4,
+  build: 'dd', weaponPz: false, weaponPzGain: 0, specialSets: [], specialSetGems: {}, weaponRefine: 'w10', armorRefine: 'a8', armorRefineAvg: 7.4,
   gems: 'pa', gemPoints: 26, gemCounts: { topPa: 24 }, ring1Refine: 0, ring2Refine: 3, pa: 12.4, pz: 7.6,
 };
 const gem = (hf: number, dop: [string, number]): Item => ({ id: 1, hf, obDops: [dop, dop], name: 'g' } as unknown as Item);

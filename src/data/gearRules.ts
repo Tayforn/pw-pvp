@@ -313,6 +313,8 @@ export interface DollRef {
   label: string;
   /** Абілка зброї еталона (код ac) — бонус гравця рахується відносно неї. */
   abil?: string;
+  /** ПА на зброї еталона — бали за ПА зброї гравця рахуються понад неї. */
+  wpa?: number;
 }
 
 /** off — не рахуємо; shadow — рахуємо й показуємо адміну, жеребка по анкеті;
@@ -332,6 +334,19 @@ export interface DollScoreRules {
   /** Бали за абілку основної зброї (код ac → бали; нема в списку — 0). Лялька
    * рахує лише стати, а абілки (зняття бафів, подвійний урон…) — ні. */
   abilityPoints: Record<string, number>;
+  /** Стеля балів за свап ПЗ-зброю (бали — за курсом каменів Лагеря). */
+  weaponPzCap: number;
+}
+
+/** Скільки ПА дає ПА-камінь 13 рівня в броні і скільки ПЗ — камінь Лагеря: курс
+ * «бали за 1 ПА/ПЗ» = бали за такий камінь (doll.gemPoints) ÷ це число. */
+export const PA_PER_TOP_GEM = 2;
+export const PZ_PER_CAMP_GEM = 2;
+export const weaponPaRate = (r: ScoringRules): number => r.doll.gemPoints.topPa / PA_PER_TOP_GEM;
+export const weaponPzRate = (r: ScoringRules): number => r.doll.gemPoints.campPz / PZ_PER_CAMP_GEM;
+/** Бали за ПЗ-зброю з ляльки: ПЗ × курс Лагерів, не більше стелі. */
+export function weaponPzPointsFromDoll(pzw: number, r: ScoringRules): number {
+  return Math.min(r.dollScore.weaponPzCap, Math.round(Math.max(0, pzw) * weaponPzRate(r)));
 }
 
 /** Стартові бали за абілки топової зброї (300к репутації); решта — 0, адмін задає сам. */
@@ -345,6 +360,7 @@ export const BUILTIN_DOLL_SCORE: DollScoreRules = {
   oppPz: 40,
   refs: {},
   abilityPoints: RECOMMENDED_ABILITY_POINTS,
+  weaponPzCap: 25,
 };
 
 const ABIL_CODE = /^[a-z_]{1,32}$/;
@@ -368,7 +384,11 @@ function normalizeDollScore(raw: unknown): DollScoreRules {
     const off = num(x.off, 0), def = num(x.def, 0);
     if (off <= 0 || def <= 0) continue;
     const abil = typeof x.abil === 'string' && ABIL_CODE.test(x.abil) ? x.abil : undefined;
-    refs[cls as CharClass] = { off, def, base: num(x.base, 0, -1000), label: typeof x.label === 'string' ? x.label.slice(0, 40) : '', ...(abil ? { abil } : {}) };
+    const wpa = typeof x.wpa === 'number' && Number.isFinite(x.wpa) && x.wpa >= 0 ? x.wpa : undefined;
+    refs[cls as CharClass] = {
+      off, def, base: num(x.base, 0, -1000), label: typeof x.label === 'string' ? x.label.slice(0, 40) : '',
+      ...(abil ? { abil } : {}), ...(wpa !== undefined ? { wpa } : {}),
+    };
   }
   let abilityPoints: Record<string, number> = { ...BUILTIN_DOLL_SCORE.abilityPoints };
   if (d.abilityPoints && typeof d.abilityPoints === 'object') {
@@ -378,7 +398,9 @@ function normalizeDollScore(raw: unknown): DollScoreRules {
     }
   }
   const mode = d.mode === 'shadow' || d.mode === 'on' ? d.mode : 'off';
-  return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs, abilityPoints };
+  return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs, abilityPoints,
+    weaponPzCap: Math.min(100, num(d.weaponPzCap, BUILTIN_DOLL_SCORE.weaponPzCap)),
+  };
 }
 
 /** Вбудована версія — фолбек і шаблон для нових версій. */
@@ -820,8 +842,9 @@ export function weaponGradeScore(cls: CharClass, grade: WeaponGrade, r: ScoringR
 export const RECOMMENDED_SWAP_TOTAL_CAP = 25;
 
 /** Усе «запасне» разом: ПЗ-зброя + свап-сети + камені в них, не більше спільної стелі. */
-export function swapScore(g: Pick<PlayerGear, 'weaponPz' | 'specialSets' | 'specialSetGems'>, r: ScoringRules): number {
-  const sum = (g.weaponPz ? r.weaponPz : 0) + specialSetGemsScore(g, r) + specialSetsScore(g.specialSets, r);
+export function swapScore(g: Pick<PlayerGear, 'weaponPz' | 'specialSets' | 'specialSetGems'>, r: ScoringRules, weaponPzPoints?: number): number {
+  const wpz = g.weaponPz ? weaponPzPoints ?? r.weaponPz : 0;
+  const sum = wpz + specialSetGemsScore(g, r) + specialSetsScore(g.specialSets, r);
   return r.swapTotalCap == null ? sum : Math.min(r.swapTotalCap, sum);
 }
 
@@ -889,8 +912,12 @@ export function dollGearScoreWith(g: PlayerGear, power: DollPower, r: ScoringRul
   if (!ref || power.off <= 0 || power.def <= 0) return null;
   const alpha = r.dollScore.alphaByBuild[g.build ?? 'dd'];
   const rel = alpha * Math.log2(power.off / ref.off) + (1 - alpha) * Math.log2(power.def / ref.def);
-  const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel + abilityBonus(r, power.abil, ref.abil));
-  return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + shgVoznesScore(g, r) + swapScore(g, r));
+  // ПА на зброї — окремо, за курсом ПА-каменів (в атаку ляльки вона не входить).
+  const wpaBonus = power.wpa !== undefined ? weaponPaRate(r) * (power.wpa - (ref.wpa ?? 0)) : 0;
+  const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel + abilityBonus(r, power.abil, ref.abil) + wpaBonus);
+  // ПЗ-зброя — за тим, скільки ПЗ вона дає (курс Лагерів, до стелі); старі заявки — як в анкеті.
+  const wpz = power.pzw !== undefined ? weaponPzPointsFromDoll(power.pzw, r) : undefined;
+  return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + shgVoznesScore(g, r) + swapScore(g, r, wpz));
 }
 
 /** Бали спорядження еталона за таблицею — те, що скор з ляльки замінює (без класу, джина, ШГ/Вознєса, запасного). */

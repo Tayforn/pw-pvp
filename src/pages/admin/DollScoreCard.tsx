@@ -8,7 +8,7 @@
 // =========================================================
 
 import { useState } from 'react';
-import { BUILD_LABELS, CLASS_LABELS, CLASS_ORDER, RECOMMENDED_ABILITY_POINTS, type DollRef, type DollScoreMode, type GearRules } from '../../data/gearRules';
+import { BUILD_LABELS, CLASS_LABELS, CLASS_ORDER, RECOMMENDED_ABILITY_POINTS, weaponPaRate, weaponPzRate, type DollRef, type DollScoreMode, type GearRules } from '../../data/gearRules';
 import { WEAPON_ABILITIES, WEAPON_ABILITY_BY_CODE, type WeaponAbility } from '../../data/weaponAbilities';
 import type { Build, CharClass } from '../../data/types';
 import { useMe } from '../../app/useMe';
@@ -26,17 +26,19 @@ const num = (v: string, min = 0) => Math.max(min, Number(v) || 0);
 const TOP_ABILITIES = new Set(Object.keys(RECOMMENDED_ABILITY_POINTS));
 
 function AbilityRow({ a, value, onChange }: { a: WeaponAbility; value: number; onChange: (v: number) => void }) {
+  const id = 'abil-' + a.code;
   return (
-    <tr>
-      <td title={a.desc}>
-        <b>{a.name}</b>
-        <div className="hint" style={{ margin: 0 }}>{a.desc}</div>
-      </td>
-      <td className="hint" style={{ margin: 0 }}>{a.where}</td>
-      <td>
-        <input type="number" style={{ width: 70 }} value={value} onChange={(e) => onChange(Math.max(-100, Math.min(100, Math.round(Number(e.target.value) || 0))))} />
-      </td>
-    </tr>
+    <div className={'abil-row' + (value ? ' on' : '')}>
+      <div className="abil-text">
+        <label htmlFor={id} className="abil-name">{a.name}</label>
+        <span className="abil-where">{a.where}</span>
+        <span className="abil-desc">{a.desc}</span>
+      </div>
+      <label className="field abil-pts">
+        <span>Бали</span>
+        <input id={id} type="number" min={-100} max={100} value={value} onChange={(e) => onChange(Math.max(-100, Math.min(100, Math.round(Number(e.target.value) || 0))))} />
+      </label>
+    </div>
   );
 }
 
@@ -188,17 +190,10 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
       {(() => {
         const setPts = (code: string, v: number) => set({ abilityPoints: { ...ds.abilityPoints, [code]: v } });
         const table = (list: WeaponAbility[]) => (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="buff-table" style={{ minWidth: 560 }}>
-              <thead>
-                <tr><th>Абілка</th><th>Де трапляється</th><th>Бали</th></tr>
-              </thead>
-              <tbody>
-                {list.map((a) => (
-                  <AbilityRow key={a.code} a={a} value={ds.abilityPoints[a.code] ?? 0} onChange={(v) => setPts(a.code, v)} />
-                ))}
-              </tbody>
-            </table>
+          <div className="abil-list">
+            {list.map((a) => (
+              <AbilityRow key={a.code} a={a} value={ds.abilityPoints[a.code] ?? 0} onChange={(v) => setPts(a.code, v)} />
+            ))}
           </div>
         );
         const top = WEAPON_ABILITIES.filter((a) => TOP_ABILITIES.has(a.code));
@@ -207,13 +202,26 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
         return (
           <>
             {table(top)}
-            <details style={{ margin: '8px 0 14px' }}>
-              <summary style={{ cursor: 'pointer' }}>Інші абілки ({rest.length}{restSet ? `, з балами ${restSet}` : ''}) — ЦГД/РЦГД 80 рів., старіша зброя</summary>
+            <details className="abil-more">
+              <summary>Інші абілки ({rest.length}{restSet ? `, з балами ${restSet}` : ''}) — ЦГД/РЦГД 80 рів., старіша зброя</summary>
               <div style={{ marginTop: 8 }}>{table(rest)}</div>
             </details>
           </>
         );
       })()}
+
+      <b style={{ fontSize: 14 }}>ПА і ПЗ на зброї</b>
+      <p className="hint" style={{ margin: '4px 0 6px' }}>
+        ПА на основній зброї рахується за курсом ПА-каменів: {weaponPaRate(draft).toFixed(2)} бала за 1 ПА (бали за ПА-камінь 13+ з картки «Лялька» ÷ 2 ПА),
+        понад ПА зброї еталона. В атаку ляльки вона не входить, щоб не рахувати двічі. Свап ПЗ-зброя — за курсом каменів Лагеря: {weaponPzRate(draft).toFixed(2)} бала
+        за кожну одиницю ПЗ, яку дає заміна зброї, але не більше стелі.
+      </p>
+      <div className="field-row" style={{ gap: 10, marginBottom: 14 }}>
+        <label className="field">
+          <span>Стеля за ПЗ-зброю</span>
+          <input type="number" min={0} max={100} value={ds.weaponPzCap} onChange={(e) => set({ weaponPzCap: Math.min(100, num(e.target.value)) })} />
+        </label>
+      </div>
 
       <b style={{ fontSize: 14 }}>Еталони класів</b>
       <div style={{ overflowX: 'auto', marginTop: 6 }}>

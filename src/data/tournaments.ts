@@ -84,7 +84,13 @@ const validPower = (p: unknown): DollPower | null => {
   if (!(n(o.off) > 0 && n(o.def) > 0)) return null;
   const gems = normalizeGemCounts(o.gems);
   const abil = typeof o.abil === 'string' && /^[a-z_]{1,32}$/.test(o.abil) ? o.abil : undefined;
-  return { off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine), ...(gems ? { gems } : {}), ...(abil ? { abil } : {}) };
+  const opt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
+  const wpa = opt(o.wpa);
+  const pzw = opt(o.pzw);
+  return {
+    off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine),
+    ...(gems ? { gems } : {}), ...(abil ? { abil } : {}), ...(wpa !== undefined ? { wpa } : {}), ...(pzw !== undefined ? { pzw } : {}),
+  };
 };
 const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
   const a = adj?.get(r.id);

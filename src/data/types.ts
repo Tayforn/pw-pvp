@@ -65,6 +65,10 @@ export interface DollPower {
   gems?: Partial<Record<string, number>>;
   /** Абілка основної зброї (код ac з каталогу), якщо є. */
   abil?: string;
+  /** ПА на основній зброї — рахується за курсом ПА-каменів, в атаку (off) не входить. */
+  wpa?: number;
+  /** На скільки ПЗ більше з ПЗ-зброєю свап-сету — бали за курсом каменів Лагеря. */
+  pzw?: number;
 }
 
 export interface PlayerGear {

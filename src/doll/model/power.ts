@@ -19,7 +19,7 @@ import { isPhysClass } from '../../data/gearRules';
 import type { DollPower } from '../../data/types';
 import { deriveIb } from '../core/buffs';
 import { atkLevelMult } from '../core/damage';
-import { computeStats } from '../core/stats';
+import { computeStats, flattenItemStats } from '../core/stats';
 import { computeSummary } from '../core/summary';
 import { DOLL_ENGINE_VER } from '../core/version';
 import type { CharacterDoc } from './doc';
@@ -50,7 +50,11 @@ export function powerOf(doc: CharacterDoc, opp: PowerOpponent, lookup?: ItemLook
   const critF = 1 + (crit * (critDmg - 100)) / 100;
   const channel = Math.max(0, Math.min(MAX_CHANNEL, g('ci') - g('re') + g('xj')));
   const speed = physical ? Math.max(0.5, c.aps || 0) : 1 / (1 - channel / 100);
-  const off = Math.max(1, atk) * critF * speed * atkLevelMult(pa, opp.pz);
+  // ПА основної зброї рахується окремо (за курсом ПА-каменів) — з атаки її прибираємо.
+  const w = build.equipped.ta;
+  const wRows = w ? [...(build.addons.ta?.length ? build.addons.ta : flattenItemStats(w)), ...(build.engrave.ta ?? [])] : [];
+  const wpa = wRows.reduce((s, r) => s + (r.type === 'ad' ? Number(r.val) || 0 : 0), 0);
+  const off = Math.max(1, atk) * critF * speed * atkLevelMult(pa - wpa, opp.pz);
 
   const pass = (perc: number) => Math.max(0.05, 1 - perc / 100);
   const ehp = c.hp / Math.sqrt(pass(c.physDefPerc) * pass(c.magDefPerc));
@@ -58,5 +62,5 @@ export function powerOf(doc: CharacterDoc, opp: PowerOpponent, lookup?: ItemLook
 
   const ac = (build.equipped.ta as { ac?: unknown } | undefined)?.ac;
   const abil = typeof ac === 'string' && ac ? ac : undefined;
-  return { off: Math.round(off), def: Math.round(def), pa: Math.round(pa), pz: Math.round(pz), engine: DOLL_ENGINE_VER, ...(abil ? { abil } : {}) };
+  return { off: Math.round(off), def: Math.round(def), pa: Math.round(pa), pz: Math.round(pz), engine: DOLL_ENGINE_VER, wpa: Math.round(wpa), ...(abil ? { abil } : {}) };
 }

@@ -84,4 +84,25 @@ describe('скор з ляльки', () => {
     expect(normalizeRules({}).dollScore.abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 });
     expect(normalizeRules({ dollScore: { abilityPoints: { ka: 500, 'BAD KEY': 3, zl: 'x', kl: 4.4 } } }).dollScore.abilityPoints).toEqual({ ka: 100, kl: 4 });
   });
+
+  it('ПА зброї — за курсом ПА-каменів понад еталон; ПЗ-зброя — за курсом Лагерів до стелі', () => {
+    const r = normalizeRules({ dollScore: { refs: { archer: { ...ref, wpa: 20 } } } });
+    const p0 = { ...power(10000, 20000), wpa: 20 };
+    const base = dollGearScoreWith(gear, p0, r, 3)!;
+    // +30 ПА на зброї понад еталон × (26/24 ÷ 2) ≈ 16
+    expect(dollGearScoreWith(gear, { ...p0, wpa: 50 }, r, 3)! - base).toBe(Math.round(30 * (26 / 24) / 2));
+    const pz = { ...gear, weaponPz: true };
+    const withPz = (pzw: number) => dollGearScoreWith(pz, { ...p0, pzw }, r, 3)! - base;
+    expect(withPz(10)).toBe(Math.round(10 * (40 / 24) / 2)); // ≈ 8
+    expect(withPz(60)).toBe(25); // стеля
+    // стара заявка без pzw — як в анкеті (weaponPz з таблиці)
+    expect(dollGearScoreWith(pz, p0, r, 3)! - base).toBe(r.weaponPz);
+  });
+
+  it('сила: ПА зброї записана окремо й не входить в атаку', () => {
+    const doc = docFrom('typical-js');
+    const p = powerOf(doc, OPP, lookup);
+    expect(p.wpa).toBeGreaterThanOrEqual(0);
+    expect(normalizeRules({}).dollScore.weaponPzCap).toBe(25);
+  });
 });

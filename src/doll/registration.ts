@@ -42,7 +42,11 @@ export async function characterForRegistration(id: string): Promise<CharacterFor
   const facts = dollFacts(doc, rules);
   const result = gearFromCharacter(doc, facts, { setsFromDoll });
   // Разом із силою в заявку йде склад каменів — адмін бачить його замість рядка таблиці.
-  const power = { ...powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz }), gems: facts.gemCounts };
+  const power = {
+    ...powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz }),
+    gems: facts.gemCounts,
+    ...(facts.weaponPzGain > 0 ? { pzw: Math.round(facts.weaponPzGain * 10) / 10 } : {}),
+  };
   return { rec, doc, result, setsFromDoll, power };
 }
 
@@ -62,7 +66,7 @@ export async function referenceFromCharacter(id: string, rules: GearRules): Prom
   const base = result.gear ? Math.round(tableGearPartWith(result.gear, rules, 3)) : 0;
   return {
     cls: CLS_CHAR[doc.cls],
-    ref: { off: power.off, def: power.def, base, label: rec.name, ...(power.abil ? { abil: power.abil } : {}) },
+    ref: { off: power.off, def: power.def, base, label: rec.name, ...(power.abil ? { abil: power.abil } : {}), wpa: power.wpa ?? 0 },
     note: result.gear ? null : `Анкета персонажа неповна (${result.missing.join(', ')}) — бали еталона впиши вручну.`,
   };
 }
