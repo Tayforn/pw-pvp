@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { computeStats } from '../../core/stats';
 import type { Item } from '../../core/types';
 import { readJson } from '../../core/__tests__/testData';
-import { gemOk } from '../gemOk';
+import { gemOk, NOT_ON_SERVER_GEMS } from '../gemOk';
 import { filterPickerItems, parsePickerQuery, pickerReqLvl, pickerTypeIrs } from '../pickerFilter';
 import { calcState, loadRef, lookup } from './testDoc';
 
@@ -14,7 +14,7 @@ const OB = readJson<Item[]>('ob');
 describe('gemOk', () => {
   it('рівень каменя не вище речі; у броню/зброю — лише generic', () => {
     const weapon = lookup('ta', 1900)!; // hf 16
-    const generic = OB.find((g) => g.pg === 'generic' && Number(g.hf) <= 16)!;
+    const generic = OB.find((g) => g.pg === 'generic' && Number(g.hf) <= 16 && !NOT_ON_SERVER_GEMS.has(Number(g.id)))!;
     const jewel = OB.find((g) => g.pg !== 'generic')!;
     const high = { ...generic, hf: 99 };
     expect(gemOk(generic, 'ta', weapon)).toBe(true);
@@ -61,5 +61,13 @@ describe('filterPickerItems', () => {
     const gems = filterPickerItems(OB, '', { cls: 'by', level: 1, onlyFit: true, gemHost: { item: weapon, cat: 'ta' }, types: new Set(['zzz']), limit: 10000 });
     expect(gems.total).toBeGreaterThan(0);
     expect(gems.rows.every((g) => gemOk(g, 'ta', weapon))).toBe(true);
+  });
+
+  it('камені, яких немає на сервері (понад +1 ПА / +2 ПЗ), у пікері не видно', () => {
+    const host = { id: 1, hf: 16, pg: 'generic' } as unknown as Item;
+    const gem = (id: number) => ({ id, hf: 13, pg: 'generic', name: 'g' + id } as unknown as Item);
+    expect(gemOk(gem(55), 'rv', host)).toBe(false); // Камень светлого духа
+    expect(gemOk(gem(54), 'rv', host)).toBe(false); // Камень Ракшаса
+    expect(gemOk(gem(57), 'rv', host)).toBe(true); // Камень лагеря
   });
 });
