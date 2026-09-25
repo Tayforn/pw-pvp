@@ -177,7 +177,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                     <b title={`гір ${bd.gear} · корекція ${signed(bd.adjust)} · рейтинг ${signed(bd.rating)}`}>{bd.total}</b>
                     <TierBadge
                       info={{
-                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version), gemsMix: gemMixLabel(r.dollPower?.gems) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil),
+                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version), gemsMix: gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil),
                         admin: {
                           score: bd.total, gearScore: bd.gear, adjust: bd.adjust, rating: bd.rating, adjustNote: r.scoreAdjustNote,
                           elo, attackLevel: r.attackLevel, defenseLevel: r.defenseLevel, version,
@@ -253,7 +253,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
               </button>
             </div>
             {balanced && r.gear && (
-              <span className="hint" style={{ marginTop: 4 }}>{gearSummary(r.gear, version, gemMixLabel(r.dollPower?.gems) || undefined)}</span>
+              <span className="hint" style={{ marginTop: 4 }}>{gearSummary(r.gear, version, gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined)}</span>
             )}
             {r.memberNicknames && r.memberNicknames.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>

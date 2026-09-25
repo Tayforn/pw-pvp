@@ -38,7 +38,9 @@ describe('анкета персонажа', () => {
   });
 
   it('клас каменя з каталогу і сума → рядок таблиці «Камні»', () => {
-    expect(gemClass(gem(13, ['sx', 2]))).toBe('campPz');
+    expect(gemClass(gem(13, ['sx', 2]))).toBe('campPz'); // Лагеря
+    expect(gemClass(gem(12, ['sx', 1]))).toBe('pz1'); // Каменная броня
+    expect(gemClass(gem(12, ['ad', 1]))).toBe('topPa'); // Алмазная броня
     expect(gemClass(gem(14, ['ad', 3]))).toBe('topPa');
     expect(gemClass(gem(13, ['hp', 200]))).toBe('topOther');
     expect(gemClass(gem(12, ['ed', 1]))).toBe('g12');
@@ -50,9 +52,11 @@ describe('анкета персонажа', () => {
     // половина Лагерів + половина ПА = 33 → «Сюаньки / Лагеря» за балами
     expect(gemsBucket(12 * old.doll.gemPoints.campPz + 12 * old.doll.gemPoints.topPa, old)).toBe('xuan_camp');
     expect(gemsBucket(0, old)).toBe('g0_9');
-    // Зараз: Лагеря = 2 «Каменні броні» (1 ПЗ = 1 ПА = бал каменя 12 рів.) → повна броня 28 б.
-    expect(rules.doll.gemPoints.campPz).toBeCloseTo(2 * rules.doll.gemPoints.g12, 9);
-    expect(gemsBucket(24 * rules.doll.gemPoints.campPz, rules)).toBe('pa');
+    // Зараз: 1 ПА = 1 ПЗ = 1 бал — Лагеря ×24 = 48, Каменная й Алмазная броня ×24 = 24.
+    expect(24 * rules.doll.gemPoints.campPz).toBe(48);
+    expect(24 * rules.doll.gemPoints.pz1).toBe(24);
+    expect(24 * rules.doll.gemPoints.topPa).toBe(24);
+    expect(gemsBucket(24 * rules.doll.gemPoints.campPz, rules)).toBe('camp');
   });
 
   it('збірка з атрибутів: частка очок у Тілобудові', () => {
@@ -127,8 +131,9 @@ describe('анкета персонажа', () => {
     const total = Object.values(f.gemCounts).reduce((a, b) => a + (b ?? 0), 0);
     expect(total).toBeGreaterThan(0);
     expect(total).toBeLessThanOrEqual(24);
-    // Сюаньки ×16 + Лагеря ×8 ≈ 23 б. → рядок «Сюаньки / ПА» (20), але підпис каже правду
-    expect(gemMixLabel({ g12: 16, campPz: 8 })).toBe('ПЗ 13+ ×8 · 12 рів. ×16');
+    // Сюань Юань ×16 + Лагеря ×8: 16 × 14/24 + 8 × 2 ≈ 25 б.
+    expect(gemMixLabel({ g12: 16, campPz: 8 })).toBe('ПЗ+2 ×8 · 12 рів. ×16');
+    expect(gemMixLabel({ g12: 16, campPz: 8 }, rules)).toBe('ПЗ+2 ×8 · 12 рів. ×16 = 25 б.');
     expect(gemMixLabel(null)).toBe('');
     expect(normalizeGemCounts({ g12: 16, campPz: 8.4, bogus: 3, low: 0 })).toEqual({ g12: 16, campPz: 8 });
     expect(normalizeGemCounts('x')).toBeNull();

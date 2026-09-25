@@ -51,7 +51,7 @@ export function gearRows(g: PlayerGear, gemsMix?: string): { label: string; valu
     { label: 'Збірка', value: g.build ? BUILD_LABELS[g.build] : '—' },
     { label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' · є ПЗ-зброя' : ''}` },
     { label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} · круг точки ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
-    { label: 'Камені', value: gemsMix ? `${gemsMix} → бали як «${GEMS_LABELS[g.gems]}»` : GEMS_LABELS[g.gems] },
+    { label: 'Камені', value: gemsMix || GEMS_LABELS[g.gems] },
     { label: 'Сети', value: sets.length ? sets.map((s) => `${SPECIAL_SET_LABELS[s]} (${GEMS_LABELS[g.specialSetGems[s] ?? 'g0_9']})`).join(', ') : '—' },
     { label: 'Трактат', value: TRACT_LABELS[g.tract] },
     { label: 'Джин', value: GENIE_LABELS[g.genie] },

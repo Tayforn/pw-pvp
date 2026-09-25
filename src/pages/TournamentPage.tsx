@@ -4,7 +4,7 @@ import { routeUrl } from '../app/useRoute';
 import { useTournamentLive } from '../app/useTournamentLive';
 import type { CharClass, Registration, Tier, Tournament } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isPastTournament, isRegistrationOpen } from '../data/types';
-import { CLASS_LABELS, computeGearScore, gemMixLabel, tierFor } from '../data/gearRules';
+import { CLASS_LABELS, computeGearScore, gemMixLabel, rulesFor, tierFor } from '../data/gearRules';
 import { describeSnapshotBuffs } from '../data/ruleFlags';
 import { useRules } from '../data/rulesStore';
 import { rulesVersionFor, teamMembers, teamRows, teamStrengthFor } from '../data/teams';
@@ -38,7 +38,7 @@ function publicInfo(r: Registration, tournament: Tournament, frozenTiers?: Map<s
   if (!r.gear) return null;
   const version = rulesVersionFor(tournament);
   const tier = frozenTiers?.get(r.id) ?? tierFor(computeGearScore(r.gear, version, tournament.teamSize), version);
-  return { nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil) };
+  return { nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil) };
 }
 
 /** Рядок гравця «як у таблиці» (ті самі колонки, що в адмінці): нік · клас · ранг. */

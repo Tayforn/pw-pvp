@@ -186,7 +186,7 @@ function playerInfos(regs: Registration[], version: string, teamSize: number | n
       nickname: r.nickname,
       gear: r.gear,
       tier: tierFor(score, version),
-      gemsMix: gemMixLabel(r.dollPower?.gems) || undefined,
+      gemsMix: gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined,
       weaponAbility: weaponAbilityName(r.dollPower?.abil),
       admin: {
         score, gearScore: b.gear, adjust: b.adjust, rating: b.rating, adjustNote: r.scoreAdjustNote,

@@ -9,7 +9,7 @@
 
 import { Fragment, useState } from 'react';
 import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../data/types';
-import {
+import { unitGemPoints,
   ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
   RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
@@ -292,17 +292,18 @@ export default function ScaleTab() {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            onClick={() => patch({ doll: { ...draft.doll, gemPoints: { ...draft.doll.gemPoints, campPz: 2 * draft.doll.gemPoints.g12 } } })}
+            onClick={() => patch({ doll: { ...draft.doll, gemPoints: { ...draft.doll.gemPoints, ...unitGemPoints(1) } } })}
           >
-            Лагеря = 2 × камінь 12 рів.
+            1 ПА = 1 ПЗ = 1 бал
           </button>
           <span className="hint" style={{ margin: 0 }}>
-            Лагеря дає +2 ПЗ, «Каменная броня» — +1 ПЗ, «Алмазная броня» — +1 ПА: 1 ПЗ = 1 ПА. Від бала Лагеря ÷ 2 рахуються й ПА/ПЗ на зброї.
+            Лагеря (+2 ПЗ) — 2 бали, «Каменная броня» (+1 ПЗ) і «Алмазная броня» (+1 ПА) — по 1. За цим курсом рахуються й ПА та свап ПЗ на зброї.
           </span>
         </div>
         <p className="hint" style={{ margin: '6px 0 12px' }}>
-          Бали за ОДИН камінь. Повна броня (24 камені): ПЗ-камені 13+ — {Math.round(24 * draft.doll.gemPoints.campPz)}, ПА — {Math.round(24 * draft.doll.gemPoints.topPa)},
-          12 рівень — {Math.round(24 * draft.doll.gemPoints.g12)}. Клас каменя лялька бере з каталогу: рівень каменя і що він дає в броні.
+          Бали за ОДИН камінь. Повна броня (24 гнізда): Лагеря — {Math.round(24 * draft.doll.gemPoints.campPz)}, «Каменная броня» — {Math.round(24 * draft.doll.gemPoints.pz1)},
+          «Алмазная броня» — {Math.round(24 * draft.doll.gemPoints.topPa)}, камені 12 рів. (Сюань Юань, Пань Гу, Нюйва) — {Math.round(24 * draft.doll.gemPoints.g12)}.
+          ПЗ- і ПА-камені лялька розпізнає за тим, що камінь дає в броні; решту — за рівнем.
         </p>
         <div className="field-row" style={{ gap: 10 }}>
           <label className="field">

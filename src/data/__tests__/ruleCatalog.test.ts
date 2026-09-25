@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 // Seed міграції — текстом (vite ?raw): тест звіряє його з BUILTIN_RULE_ITEMS.
 import seedSql from '../../../supabase/migrations/0027_rule_catalog.sql?raw';
 import spivSql from '../../../supabase/migrations/0030_rule_spiv_set.sql?raw';
+import dollOnlySql from '../../../supabase/migrations/0031_rule_doll_only.sql?raw';
 
-// Тексти сіду 0027 з поправками пізніших міграцій (0030 — рядок про Спів-сет).
-const migrationSql = [seedSql, spivSql].join(String.fromCharCode(10));
+// Тексти сіду 0027 з поправками пізніших міграцій (0030 — Спів-сет, 0031 — заявка лише лялькою).
+const migrationSql = [seedSql, spivSql, dollOnlySql].join(String.fromCharCode(10));
 import {
   BUILTIN_RULE_ITEMS, REG_BLOCK_LINES, blankRuleItem, catalogTextFor, defaultFlagsFor, drawEffectHint, drawSummary, flagsFromLegacyText, formatLabel, formatOf,
   itemsForFormat, mergeCatalog, newCustomKey, normalizeRuleItem, parseRulesMd, renderRulesMd, renderRulesPoints, stripBullet, textOfItem, type RuleItem,

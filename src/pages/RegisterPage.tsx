@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageMeta from '../app/PageMeta';
 import { routeUrl } from '../app/useRoute';
 import { errorMessage } from '../app/errorMessage';
 import { hasRegistered, markRegistered } from '../app/registeredTournaments';
 import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
-import { fetchLastGearByNickname, fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
-import GearFields, { isGearComplete } from '../components/GearFields';
+import { fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
+import { isGearComplete } from '../components/GearFields';
 import RulesList from '../components/RulesList';
 import { parseRulesMd } from '../data/ruleCatalog';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 import { useMe } from '../app/useMe';
-import { BUILD_LABELS, CLASS_LABELS, computeGearScore, gearParts, gearSummary, gemMixLabel, SPECIAL_SET_LABELS } from '../data/gearRules';
+import { BUILD_LABELS, CLASS_LABELS, computeGearScore, gearParts, gearSummary, gemMixLabel, rulesFor, SPECIAL_SET_LABELS } from '../data/gearRules';
 import type { CharacterForRegistration, CharacterSummary } from '../doll/registration';
 
 // Модуль ляльки (каталоги, формули) — окремий чанк: вантажимо лише коли
@@ -42,26 +42,14 @@ export default function RegisterPage() {
   const [pinned, setPinned] = useState<Tournament | null | undefined>(pinnedId ? undefined : null);
   const [tournamentId, setTournamentId] = useState('');
   const [nickname, setNickname] = useState('');
-  const { me: discordMe } = useMe();
+  const { me: discordMe, login } = useMe();
   const [members, setMembers] = useState<string[]>([]);
   // Анкета спорядження — лише для балансного фул-рандому.
   const [gear, setGear] = useState<Partial<PlayerGear>>({});
   const [attackLevel, setAttackLevel] = useState<number | null>(null);
   const [defenseLevel, setDefenseLevel] = useState<number | null>(null);
-  // Звідки підтягнуто анкету (попередня заявка за цим ніком) — підказка над
-  // полями; null = заповнюють з нуля.
-  const [prefilledFrom, setPrefilledFrom] = useState<{ nick: string; tournamentName: string | null; eventDate: string | null } | null>(null);
-  // Актуальна анкета для async-колбеку пошуку (стан у замиканні застарілий).
-  const gearRef = useRef(gear);
-  gearRef.current = gear;
-  // Що саме підставлено автоматично (нік + об'єкт анкети): поки в стані той
-  // самий об'єкт — людина нічого не міняла (GearFields віддає новий об'єкт на
-  // кожну зміну), і при зміні ніка його можна скинути й пошукати анкету вже
-  // нового ніка. Інакше на спільному ПК Bob подав би заявку з анкетою Alice.
-  const prefilledRef = useRef<{ nick: string; gear: Partial<PlayerGear> } | null>(null);
-  // Лічильник запитів: відповідь застарілого (змінили нік/турнір) ігноруємо.
-  const lookupSeq = useRef(0);
-  // Заявка персонажем (учасник клану з лялькою): '' — анкета вручну.
+  // Фул-рандом — лише персонажем з ляльки (рішення власника 25.09.2026: «все має
+  // йти через ляльку»); ручної анкети більше немає. '' — персонажа не обрано.
   const [chars, setChars] = useState<CharacterSummary[] | null>(null);
   const [charId, setCharId] = useState('');
   const [charLoad, setCharLoad] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; data?: CharacterForRegistration; err?: string }>({ status: 'idle' });
@@ -95,40 +83,8 @@ export default function RegisterPage() {
 
   const clearGear = () => {
     setGear({});
-    gearRef.current = {};
     setAttackLevel(null);
     setDefenseLevel(null);
-    setPrefilledFrom(null);
-    prefilledRef.current = null;
-    lookupSeq.current++;
-  };
-
-  // Підтягнути анкету з попередньої заявки за ніком. Заповнену руками анкету
-  // не чіпаємо; свою ж автопідстановку для іншого ніка — скидаємо і шукаємо
-  // заново. Помилки ковтаємо: це підказка, форма працює й без неї.
-  const prefillGear = (rawNick: string) => {
-    const nick = rawNick.trim();
-    if (!isBalanced || !nick) return;
-    if (gearRef.current.charClass) {
-      const pf = prefilledRef.current;
-      if (!pf || pf.gear !== gearRef.current || pf.nick.toLowerCase() === nick.toLowerCase()) return;
-      clearGear();
-    }
-    const seq = ++lookupSeq.current;
-    fetchLastGearByNickname(nick)
-      .then((found) => {
-        if (!found || seq !== lookupSeq.current || gearRef.current.charClass) return;
-        // Свап-сети в публічній анкеті поки вимкнені — не тягнемо їх із минулої заявки.
-        const pfGear = { ...found.gear, specialSets: [], specialSetGems: {} };
-        prefilledRef.current = { nick, gear: pfGear };
-        setGear(pfGear);
-        setAttackLevel(found.attackLevel);
-        setDefenseLevel(found.defenseLevel);
-        setPrefilledFrom({ nick, tournamentName: found.tournamentName, eventDate: found.eventDate });
-      })
-      .catch(() => {
-        /* немає попередньої анкети або мережа — просто без підказки */
-      });
   };
 
   useEffect(() => {
@@ -141,9 +97,6 @@ export default function RegisterPage() {
     const stored = readLastNickname();
     const nick = isTeam ? (nickname === stored ? '' : nickname) : nickname || stored;
     if (nick !== nickname) setNickname(nick);
-    // Нік уже відомий (зі сховища або набраний) → підтягуємо анкету одразу,
-    // не чекаючи blur; prefillGear сам перевіряє, що турнір балансний.
-    prefillGear(nick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament?.teamSize, tournamentId]);
 
@@ -152,7 +105,6 @@ export default function RegisterPage() {
   useEffect(() => {
     if (!discordMe || isTeam || nickname.trim()) return;
     setNickname(discordMe.nickname);
-    prefillGear(discordMe.nickname);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discordMe, isTeam]);
 
@@ -186,10 +138,7 @@ export default function RegisterPage() {
       .then((m) => m.characterForRegistration(id))
       .then((data) => {
         setCharLoad({ status: 'ready', data });
-        if (data.result.gear) {
-          setGear(data.result.gear);
-          gearRef.current = data.result.gear;
-        }
+        if (data.result.gear) setGear(data.result.gear);
         setAttackLevel(data.result.attackLevel);
         setDefenseLevel(data.result.defenseLevel);
         setNickname(data.rec.name);
@@ -198,12 +147,9 @@ export default function RegisterPage() {
   };
   const charData = charId && charLoad.status === 'ready' ? charLoad.data ?? null : null;
 
-  const prefillHint = prefilledFrom
-    ? `Анкету для «${prefilledFrom.nick}» підтягнуто з ${prefilledFrom.tournamentName ? `заявки на «${prefilledFrom.tournamentName}»${prefilledFrom.eventDate ? ` (${prefilledFrom.eventDate})` : ''}` : 'попередньої заявки'} — перевір, чи нічого не змінилось.`
-    : null;
-
   const membersValid = !isTeam || members.every((m) => m.trim());
-  const gearValid = !isBalanced || (charId ? !!charData?.result.gear : isGearComplete(gear));
+  // Фул-рандом — лише персонажем із заповненою анкетою персонажа.
+  const gearValid = !isBalanced || (!!charData?.result.gear && isGearComplete(gear));
   // Клієнтська перевірка — доповнює серверний unique-індекс (той блокує лише
   // повтор ТОГО САМОГО нікнейму); ця блокує ще одну заявку з ІНШИМ нікнеймом
   // з того самого браузера.
@@ -330,14 +276,30 @@ export default function RegisterPage() {
           )}
           {isBalanced && (
             <p className="hint" style={{ margin: 0 }}>
-              Команду формує система випадково після закриття реєстрації. Заповни чесно — адмін перевіряє в грі, неправда = дискваліфікація.
+              Команду формує система випадково після закриття реєстрації. Заявка — лише персонажем з ляльки: спорядження береться з неї, адмін звіряє в грі.
             </p>
+          )}
+          {isBalanced && !discordMe && (
+            <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <b>Потрібен персонаж з ляльки</b>
+              <span className="hint" style={{ margin: 0 }}>
+                На цей турнір подаються персонажем: увійди через Discord, створи персонажа на сторінці «Персонаж» і обери його тут.
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={login}>
+                  Увійти через Discord
+                </button>
+                <a className="btn btn-ghost btn-sm" href={routeUrl({ name: 'characters' })}>
+                  Мої персонажі
+                </a>
+              </div>
+            </div>
           )}
           {isBalanced && discordMe && (
             <div className="field">
               <label htmlFor="regChar">Яким персонажем ідеш?</label>
               <select id="regChar" value={charId} onChange={(e) => pickCharacter(e.target.value)} disabled={!chars}>
-                <option value="">{chars === null ? 'Завантажую персонажів…' : 'Заповнити анкету вручну'}</option>
+                <option value="">{chars === null ? 'Завантажую персонажів…' : '— обери персонажа —'}</option>
                 {(chars ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} · {CLS_NAME[c.cls] ?? c.cls} · {c.level}
@@ -345,7 +307,7 @@ export default function RegisterPage() {
                 ))}
               </select>
               <small className="hint">
-                {chars && chars.length === 0 ? 'Збережених персонажів ще немає — ' : 'Персонаж із ляльки підставить анкету сам. '}
+                {chars && chars.length === 0 ? 'Збережених персонажів ще немає — створи його: ' : 'Спорядження підставиться з ляльки. '}
                 <a className="link" href={routeUrl({ name: 'characters' })} target="_blank" rel="noreferrer">
                   Мої персонажі
                 </a>
@@ -360,7 +322,6 @@ export default function RegisterPage() {
               maxLength={40}
               required
               onChange={(e) => setNickname(e.target.value)}
-              onBlur={isBalanced ? () => prefillGear(nickname) : undefined}
               placeholder={isTeam ? 'Назва твоєї команди' : 'Твій нікнейм у грі'}
             />
           </label>
@@ -381,9 +342,6 @@ export default function RegisterPage() {
               </div>
             </div>
           )}
-          {isBalanced && prefillHint && (
-            <p className="hint" style={{ margin: 0 }}>{prefillHint}</p>
-          )}
           {isBalanced && charId && charLoad.status === 'loading' && <p className="hint" style={{ margin: 0 }}>Завантажую персонажа й рахую анкету з ляльки…</p>}
           {isBalanced && charId && charLoad.status === 'error' && <p className="form-err">Не вдалося завантажити персонажа: {charLoad.err}</p>}
           {isBalanced && charData && (
@@ -391,7 +349,7 @@ export default function RegisterPage() {
               <b>Анкета з персонажа «{charData.rec.name}»</b>
               {charData.result.gear ? (
                 <>
-                  <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear, null, gemMixLabel(charData.result.facts.gemCounts) || undefined)}</span>
+                  <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear, null, gemMixLabel(charData.result.facts.gemCounts, rulesFor()) || undefined)}</span>
                   <span className="hint" style={{ margin: 0 }}>
                     Свап-сети з ляльки: {charData.result.facts.specialSets.length ? charData.result.facts.specialSets.map((k) => SPECIAL_SET_LABELS[k]).join(', ') : 'немає'}
                     {charData.result.facts.specialSets.length > 0 && !charData.setsFromDoll ? ' (у бали поки не йдуть — це вмикає адмін)' : ''}
@@ -409,21 +367,6 @@ export default function RegisterPage() {
               <small className="hint" style={{ margin: 0 }}>Змінив персонажа в іншій вкладці? Обери його тут ще раз, щоб підтягнути зміни.</small>
             </div>
           )}
-          {isBalanced && !charId && (
-            <GearFields
-              value={gear}
-              onChange={setGear}
-              attackLevel={attackLevel}
-              defenseLevel={defenseLevel}
-              onExtraChange={(a, d) => {
-                setAttackLevel(a);
-                setDefenseLevel(d);
-              }}
-              showScore
-              teamSize={tournament?.teamSize}
-              hideSpecialSets
-            />
-          )}
           {/* Пункти правил над галочкою — з rules_md турніру, щоб гравець читав те,
               що підтверджує, не переходячи на сторінку турніру. */}
           {tournament?.rulesMd && (() => {
@@ -439,7 +382,7 @@ export default function RegisterPage() {
           })()}
           <label className="checkbox-row">
             <input type="checkbox" checked={rulesAck} onChange={(e) => setRulesAck(e.target.checked)} />
-            {isBalanced ? 'З правилами ознайомлений(а), дані про спорядження правдиві' : 'З правилами турніру ознайомлений(а)'}
+            {isBalanced ? 'З правилами ознайомлений(а), лялька відповідає моєму спорядженню в грі' : 'З правилами турніру ознайомлений(а)'}
           </label>
           <small className="hint">
             Ще не знайомий(а) з правилами?{' '}
@@ -486,7 +429,7 @@ export default function RegisterPage() {
                 </div>
 
                 <dl className="doll-confirm-grid">
-                  {gearParts(g, gemMixLabel(f.gemCounts) || undefined).map((p) => (
+                  {gearParts(g, gemMixLabel(f.gemCounts, rulesFor()) || undefined).map((p) => (
                     <div key={p.key} className="doll-confirm-row">
                       <dt>{p.label}</dt>
                       <dd>{p.value}</dd>

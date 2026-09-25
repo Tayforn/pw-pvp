@@ -228,20 +228,29 @@ export interface GearRules extends ScoringRules {
   balance: BalanceRules;
 }
 
-/** Клас каменя для балів — з каталогу ляльки: рівень (грейд) і що камінь дає в броні. */
-export type GemClass = 'campPz' | 'topPa' | 'topOther' | 'g12' | 'g11' | 'g10' | 'low';
-export const GEM_CLASS_ORDER: GemClass[] = ['campPz', 'topPa', 'topOther', 'g12', 'g11', 'g10', 'low'];
+/** Клас каменя для балів — з каталогу ляльки: що камінь дає в броні (ПЗ/ПА —
+ * за одиницями, рішення власника 25.09.2026: 1 ПА = 1 ПЗ = 1 бал, 24 гнізда:
+ * Лагеря ×24 = 48, Каменная броня ×24 = 24, Алмазная броня ×24 = 24), решта —
+ * за рівнем. Ключі campPz/topPa — історичні (так лежать у версіях шкали). */
+export type GemClass = 'campPz' | 'pz1' | 'topPa' | 'topOther' | 'g12' | 'g11' | 'g10' | 'low';
+export const GEM_CLASS_ORDER: GemClass[] = ['campPz', 'pz1', 'topPa', 'topOther', 'g12', 'g11', 'g10', 'low'];
 /** Короткі підписи класів каменів — для складу каменів у картках. */
 export const GEM_CLASS_SHORT: Record<GemClass, string> = {
-  campPz: 'ПЗ 13+', topPa: 'ПА 13+', topOther: 'інші 13+', g12: '12 рів.', g11: '11 рів.', g10: '10 рів.', low: '≤9 рів.',
+  campPz: 'ПЗ+2', pz1: 'ПЗ+1', topPa: 'ПА', topOther: 'інші 13', g12: '12 рів.', g11: '11 рів.', g10: '10 рів.', low: '≤9 рів.',
 };
 /** Скільки каменів кожного класу в броні (з ляльки). */
 export type GemCounts = Partial<Record<GemClass, number>>;
 
-/** «12 рів. ×16 · ПЗ 13+ ×8» — склад каменів; '' — немає даних. */
-export function gemMixLabel(c: GemCounts | null | undefined): string {
+/** «ПЗ+2 ×8 · 12 рів. ×16 = 25 б.» — склад каменів (з балами, якщо передано
+ * шкалу); '' — немає даних. */
+export function gemMixLabel(c: GemCounts | null | undefined, r?: ScoringRules): string {
   if (!c) return '';
-  return GEM_CLASS_ORDER.filter((k) => (c[k] ?? 0) > 0).map((k) => `${GEM_CLASS_SHORT[k]} ×${c[k]}`).join(' · ');
+  const keys = GEM_CLASS_ORDER.filter((k) => (c[k] ?? 0) > 0);
+  if (!keys.length) return '';
+  const mix = keys.map((k) => `${GEM_CLASS_SHORT[k]} ×${c[k]}`).join(' · ');
+  if (!r) return mix;
+  const pts = keys.reduce((s, k) => s + (c[k] ?? 0) * r.doll.gemPoints[k], 0);
+  return `${mix} = ${Math.round(pts)} б.`;
 }
 
 /** Склад каменів із бази — лише відомі класи й цілі 0..99. */
@@ -256,9 +265,10 @@ export function normalizeGemCounts(raw: unknown): GemCounts | null {
   return Object.keys(out).length ? out : null;
 }
 export const GEM_CLASS_LABELS: Record<GemClass, string> = {
-  campPz: 'ПЗ-камені 13+ рівня (Лагеря, Государя, Цзин Юе…)',
-  topPa: 'ПА-камені 13+ рівня (Світлого духу, Ракшаса…)',
-  topOther: 'Інші камені 13+ рівня (HP, атака, спів…)',
+  campPz: 'ПЗ-камені на +2 ПЗ (Лагеря)',
+  pz1: 'ПЗ-камені на +1 ПЗ (Каменная броня)',
+  topPa: 'ПА-камені (Алмазная броня, +1 ПА)',
+  topOther: 'Інші камені 13+ рівня',
   g12: 'Камені 12 рівня (Сюаньки, Нюйви, Пань Гу…)',
   g11: 'Камені 11 рівня',
   g10: 'Камені 10 рівня',
@@ -283,8 +293,8 @@ export interface DollGearRules {
  * Сюаньки 14, 11 рівень 8, 10 рівень 4 (за повний набір). */
 export const BUILTIN_DOLL_GEAR: DollGearRules = {
   scope: 'main',
-  // Лагеря = 2 «Каменні броні» (+2 ПЗ проти +1 ПЗ): 1 ПЗ = 1 ПА = бал каменя 12 рів. (власник 25.09.2026).
-  gemPoints: { campPz: 28 / 24, topPa: 26 / 24, topOther: 14 / 24, g12: 14 / 24, g11: 8 / 24, g10: 4 / 24, low: 0 },
+  // 1 ПА = 1 ПЗ = 1 бал (власник 25.09.2026): Лагеря (+2 ПЗ) — 2, Каменная броня (+1 ПЗ) і Алмазная (+1 ПА) — 1.
+  gemPoints: { campPz: 2, pz1: 1, topPa: 1, topOther: 14 / 24, g12: 14 / 24, g11: 8 / 24, g10: 4 / 24, low: 0 },
   buildVit: { hybrid: 0.25, con: 0.5 },
 };
 
@@ -339,13 +349,15 @@ export interface DollScoreRules {
   weaponPzCap: number;
 }
 
-/** Скільки ПЗ дає камінь Лагеря на сервері (ПА-камінь — лише +1 ПА, тому його
- * ставлять рідше). Курс «бали за 1 ПЗ» = бали за камінь Лагеря (doll.gemPoints)
- * ÷ 2. Рішення власника 25.09.2026: 1 ПА на зброї важить стільки ж, скільки 1 ПЗ,
- * тож курс ПА — той самий. */
-export const PZ_PER_CAMP_GEM = 2;
-export const weaponPzRate = (r: ScoringRules): number => r.doll.gemPoints.campPz / PZ_PER_CAMP_GEM;
+/** Курс «бали за 1 ПЗ» = бали за камінь на +1 ПЗ («Каменная броня», doll.gemPoints.pz1).
+ * Рішення власника 25.09.2026: 1 ПА важить стільки ж, скільки 1 ПЗ, тож курс ПА
+ * на зброї — той самий. */
+export const weaponPzRate = (r: ScoringRules): number => r.doll.gemPoints.pz1;
 export const weaponPaRate = weaponPzRate;
+/** Курс «1 ПА = 1 ПЗ = u бала» для каменів: Лагеря 2u, Каменная й Алмазная броня — u. */
+export function unitGemPoints(u: number): Pick<Record<GemClass, number>, 'campPz' | 'pz1' | 'topPa'> {
+  return { campPz: 2 * u, pz1: u, topPa: u };
+}
 /** Бали за ПЗ-зброю з ляльки: ПЗ × курс Лагерів, не більше стелі. */
 export function weaponPzPointsFromDoll(pzw: number, r: ScoringRules): number {
   return Math.min(r.dollScore.weaponPzCap, Math.round(Math.max(0, pzw) * weaponPzRate(r)));
@@ -1044,7 +1056,7 @@ export function gearParts(g: PlayerGear, gemsMix?: string): Array<{ key: string;
   const out: Array<{ key: string; label: string; value: string }> = [
     { key: 'weapon', label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}` },
     { key: 'armor', label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
-    { key: 'gems', label: 'Камені', value: gemsMix ? `${gemsMix} → бали як «${shortGems(g.gems)}»` : shortGems(g.gems) },
+    { key: 'gems', label: 'Камені', value: gemsMix || shortGems(g.gems) },
     { key: 'tract', label: 'Трактат', value: TRACT_LABELS[g.tract].replace(/ \(.*\)$/, '').replace(' грейд', '') },
     { key: 'genie', label: 'Джин', value: GENIE_LABELS[g.genie] },
   ];
@@ -1062,7 +1074,7 @@ export function gearSummary(g: PlayerGear, version?: string | null, gemsMix?: st
   if (g.build && g.build !== 'dd') parts.push(`Збірка: ${BUILD_LABELS[g.build]}`);
   parts.push(`${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}`);
   parts.push(`${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}`);
-  parts.push(gemsMix ? `Камені ${gemsMix} (бали як «${shortGems(g.gems)}»)` : `Камні ${shortGems(g.gems)}`);
+  parts.push(gemsMix ? `Камені ${gemsMix}` : `Камні ${shortGems(g.gems)}`);
   if (g.specialSets.length) {
     parts.push(SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s)).map((s) => `${SPECIAL_SET_LABELS[s]} (${shortGems(g.specialSetGems[s] ?? 'g0_9')})`).join(', '));
   }

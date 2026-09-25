@@ -83,12 +83,11 @@ const REFINE_SLOTS: SlotKey[] = ['ft', 'vx', 'rv', 'st', 'tg', 'rx', 'wy', 'mj',
 /** Клас каменя за каталогом: рівень (грейд hf) і що він дає в броні. */
 export function gemClass(gem: Item): GemClass {
   const grade = Number(gem.hf) || 0;
-  if (grade >= 13) {
-    const dop = gemDop(gem, false)?.[0];
-    if (dop === 'sx') return 'campPz';
-    if (dop === 'ad') return 'topPa';
-    return 'topOther';
-  }
+  // ПЗ і ПА — за тим, скільки камінь дає в броні, незалежно від рівня.
+  const dop = gemDop(gem, false);
+  if (dop?.[0] === 'sx') return dop[1] >= 2 ? 'campPz' : 'pz1';
+  if (dop?.[0] === 'ad') return 'topPa';
+  if (grade >= 13) return 'topOther';
   if (grade === 12) return 'g12';
   if (grade === 11) return 'g11';
   if (grade === 10) return 'g10';

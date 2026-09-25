@@ -66,7 +66,7 @@ export default function SheetCard({ doc, onChange, readOnly }: { doc: CharacterD
         </fieldset>
       )}
       {result && !complete && result.missing.length > 0 && <p className="hint">Ще бракує: {result.missing.join(', ')}.</p>}
-      {result?.gear && <p className="hint">У заявці буде: {gearSummary(result.gear, null, gemMixLabel(result.facts.gemCounts) || undefined)}.</p>}
+      {result?.gear && <p className="hint">У заявці буде: {gearSummary(result.gear, null, gemMixLabel(result.facts.gemCounts, rulesFor()) || undefined)}.</p>}
     </details>
   );
 }
