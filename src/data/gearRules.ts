@@ -338,12 +338,13 @@ export interface DollScoreRules {
   weaponPzCap: number;
 }
 
-/** Скільки ПА дає ПА-камінь 13 рівня в броні і скільки ПЗ — камінь Лагеря: курс
- * «бали за 1 ПА/ПЗ» = бали за такий камінь (doll.gemPoints) ÷ це число. */
-export const PA_PER_TOP_GEM = 2;
+/** Скільки ПЗ дає камінь Лагеря на сервері (ПА-камінь — лише +1 ПА, тому його
+ * ставлять рідше). Курс «бали за 1 ПЗ» = бали за камінь Лагеря (doll.gemPoints)
+ * ÷ 2. Рішення власника 25.09.2026: 1 ПА на зброї важить стільки ж, скільки 1 ПЗ,
+ * тож курс ПА — той самий. */
 export const PZ_PER_CAMP_GEM = 2;
-export const weaponPaRate = (r: ScoringRules): number => r.doll.gemPoints.topPa / PA_PER_TOP_GEM;
 export const weaponPzRate = (r: ScoringRules): number => r.doll.gemPoints.campPz / PZ_PER_CAMP_GEM;
+export const weaponPaRate = weaponPzRate;
 /** Бали за ПЗ-зброю з ляльки: ПЗ × курс Лагерів, не більше стелі. */
 export function weaponPzPointsFromDoll(pzw: number, r: ScoringRules): number {
   return Math.min(r.dollScore.weaponPzCap, Math.round(Math.max(0, pzw) * weaponPzRate(r)));
@@ -912,7 +913,7 @@ export function dollGearScoreWith(g: PlayerGear, power: DollPower, r: ScoringRul
   if (!ref || power.off <= 0 || power.def <= 0) return null;
   const alpha = r.dollScore.alphaByBuild[g.build ?? 'dd'];
   const rel = alpha * Math.log2(power.off / ref.off) + (1 - alpha) * Math.log2(power.def / ref.def);
-  // ПА на зброї — окремо, за курсом ПА-каменів (в атаку ляльки вона не входить).
+  // ПА на зброї — окремо, за курсом 1 ПА = 1 ПЗ (в атаку ляльки вона не входить).
   const wpaBonus = power.wpa !== undefined ? weaponPaRate(r) * (power.wpa - (ref.wpa ?? 0)) : 0;
   const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel + abilityBonus(r, power.abil, ref.abil) + wpaBonus);
   // ПЗ-зброя — за тим, скільки ПЗ вона дає (курс Лагерів, до стелі); старі заявки — як в анкеті.
