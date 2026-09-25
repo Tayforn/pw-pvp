@@ -39,8 +39,10 @@ export async function characterForRegistration(id: string): Promise<CharacterFor
   await Promise.all([ensureRefData(), ensureCats(docCats(doc))]);
   const rules = rulesFor(currentRulesVersion());
   const setsFromDoll = rules.setsFromDoll;
-  const result = gearFromCharacter(doc, dollFacts(doc, rules), { setsFromDoll });
-  const power = powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz });
+  const facts = dollFacts(doc, rules);
+  const result = gearFromCharacter(doc, facts, { setsFromDoll });
+  // Разом із силою в заявку йде склад каменів — адмін бачить його замість рядка таблиці.
+  const power = { ...powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz }), gems: facts.gemCounts };
   return { rec, doc, result, setsFromDoll, power };
 }
 

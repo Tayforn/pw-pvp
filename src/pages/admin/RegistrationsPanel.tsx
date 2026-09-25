@@ -13,7 +13,7 @@ import { errorMessage, reportError } from '../../app/errorMessage';
 import type { PlayerGear, Registration, Tournament } from '../../data/types';
 import { isBalancedRandom } from '../../data/types';
 import { deleteRegistration, fetchRegistrations, setRegistrationStatus, subscribeToTournamentChanges, updateRegistrationAdjust, updateRegistrationGear } from '../../data/tournaments';
-import { CLASS_LABELS, computeGearScore, gearSummary, rulesFor, tierFor } from '../../data/gearRules';
+import { CLASS_LABELS, computeGearScore, gearSummary, gemMixLabel, rulesFor, tierFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import { dollScoreOf, rulesVersionFor, scoreBreakdown, teamRows } from '../../data/teams';
@@ -176,7 +176,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                     <b title={`гір ${bd.gear} · корекція ${signed(bd.adjust)} · рейтинг ${signed(bd.rating)}`}>{bd.total}</b>
                     <TierBadge
                       info={{
-                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version),
+                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version), gemsMix: gemMixLabel(r.dollPower?.gems) || undefined,
                         admin: {
                           score: bd.total, gearScore: bd.gear, adjust: bd.adjust, rating: bd.rating, adjustNote: r.scoreAdjustNote,
                           elo, attackLevel: r.attackLevel, defenseLevel: r.defenseLevel, version,
@@ -252,7 +252,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
               </button>
             </div>
             {balanced && r.gear && (
-              <span className="hint" style={{ marginTop: 4 }}>{gearSummary(r.gear, version)}</span>
+              <span className="hint" style={{ marginTop: 4 }}>{gearSummary(r.gear, version, gemMixLabel(r.dollPower?.gems) || undefined)}</span>
             )}
             {r.memberNicknames && r.memberNicknames.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>

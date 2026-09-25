@@ -10,7 +10,7 @@ import RulesList from '../components/RulesList';
 import { parseRulesMd } from '../data/ruleCatalog';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 import { useMe } from '../app/useMe';
-import { BUILD_LABELS, CLASS_LABELS, computeGearScore, gearParts, gearSummary, SPECIAL_SET_LABELS } from '../data/gearRules';
+import { BUILD_LABELS, CLASS_LABELS, computeGearScore, gearParts, gearSummary, gemMixLabel, SPECIAL_SET_LABELS } from '../data/gearRules';
 import type { CharacterForRegistration, CharacterSummary } from '../doll/registration';
 
 // Модуль ляльки (каталоги, формули) — окремий чанк: вантажимо лише коли
@@ -391,7 +391,7 @@ export default function RegisterPage() {
               <b>Анкета з персонажа «{charData.rec.name}»</b>
               {charData.result.gear ? (
                 <>
-                  <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear)}</span>
+                  <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear, null, gemMixLabel(charData.result.facts.gemCounts) || undefined)}</span>
                   <span className="hint" style={{ margin: 0 }}>
                     Свап-сети з ляльки: {charData.result.facts.specialSets.length ? charData.result.facts.specialSets.map((k) => SPECIAL_SET_LABELS[k]).join(', ') : 'немає'}
                     {charData.result.facts.specialSets.length > 0 && !charData.setsFromDoll ? ' (у бали поки не йдуть — це вмикає адмін)' : ''}
@@ -486,7 +486,7 @@ export default function RegisterPage() {
                 </div>
 
                 <dl className="doll-confirm-grid">
-                  {gearParts(g).map((p) => (
+                  {gearParts(g, gemMixLabel(f.gemCounts) || undefined).map((p) => (
                     <div key={p.key} className="doll-confirm-row">
                       <dt>{p.label}</dt>
                       <dd>{p.value}</dd>

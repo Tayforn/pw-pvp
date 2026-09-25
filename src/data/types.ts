@@ -61,6 +61,8 @@ export interface DollPower {
   pa: number;
   pz: number;
   engine: number;
+  /** Склад каменів у броні: клас каменя → кількість (GemCounts з gearRules). */
+  gems?: Partial<Record<string, number>>;
 }
 
 export interface PlayerGear {

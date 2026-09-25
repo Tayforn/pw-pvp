@@ -10,6 +10,7 @@ import {
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
+import { normalizeGemCounts } from './gearRules';
 import { normalizeRuleFlags, type TournamentRuleFlags } from './ruleFlags';
 
 interface SeriesRow { id: string; slug: string; name: string; is_active: boolean; auto_weekday: number | null }
@@ -80,7 +81,9 @@ const validPower = (p: unknown): DollPower | null => {
   if (!p || typeof p !== 'object') return null;
   const o = p as Record<string, unknown>;
   const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-  return n(o.off) > 0 && n(o.def) > 0 ? { off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine) } : null;
+  if (!(n(o.off) > 0 && n(o.def) > 0)) return null;
+  const gems = normalizeGemCounts(o.gems);
+  return { off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine), ...(gems ? { gems } : {}) };
 };
 const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
   const a = adj?.get(r.id);

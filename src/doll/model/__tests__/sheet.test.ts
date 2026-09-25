@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { normalizeRules } from '../../../data/gearRules';
+import { gemMixLabel, normalizeGemCounts, normalizeRules } from '../../../data/gearRules';
 import type { Item } from '../../core/types';
 import { validateDoc } from '../doc';
 import { createSet, equip, updateInstance } from '../ops';
@@ -15,7 +15,7 @@ const rules = normalizeRules({});
 const SHEET: Sheet = { weaponGrade: 'r8r', armorSet: 'r8r', tract: 't7', genie: 'g100', shg: false, voznes: false, ring1: 'r9', ring2: 'r9r1' };
 const FACTS: DollFacts = {
   build: 'dd', weaponPz: false, specialSets: [], specialSetGems: {}, weaponRefine: 'w10', armorRefine: 'a8', armorRefineAvg: 7.4,
-  gems: 'pa', gemPoints: 26, ring1Refine: 0, ring2Refine: 3, pa: 12.4, pz: 7.6,
+  gems: 'pa', gemPoints: 26, gemCounts: { topPa: 24 }, ring1Refine: 0, ring2Refine: 3, pa: 12.4, pz: 7.6,
 };
 const gem = (hf: number, dop: [string, number]): Item => ({ id: 1, hf, obDops: [dop, dop], name: 'g' } as unknown as Item);
 
@@ -115,6 +115,18 @@ describe('анкета персонажа', () => {
     const all = dollFacts(d1, normalizeRules({ doll: { scope: 'all' } }), lookup);
     expect(all.armorRefineAvg).toBeCloseTo(main.armorRefineAvg!, 6);
     expect(all.gemPoints).toBeCloseTo(main.gemPoints, 6);
+  });
+
+  it('склад каменів: рахується поштучно, у заявці — підпис замість рядка таблиці', () => {
+    const f = dollFacts(docFrom('typical-by'), rules, lookup);
+    const total = Object.values(f.gemCounts).reduce((a, b) => a + (b ?? 0), 0);
+    expect(total).toBeGreaterThan(0);
+    expect(total).toBeLessThanOrEqual(24);
+    // Сюаньки ×16 + Лагеря ×8 ≈ 23 б. → рядок «Сюаньки / ПА» (20), але підпис каже правду
+    expect(gemMixLabel({ g12: 16, campPz: 8 })).toBe('ПЗ 13+ ×8 · 12 рів. ×16');
+    expect(gemMixLabel(null)).toBe('');
+    expect(normalizeGemCounts({ g12: 16, campPz: 8.4, bogus: 3, low: 0 })).toEqual({ g12: 16, campPz: 8 });
+    expect(normalizeGemCounts('x')).toBeNull();
   });
 
   it('зміна з анкети зберігає лише грейди', () => {

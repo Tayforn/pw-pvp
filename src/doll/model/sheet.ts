@@ -14,7 +14,7 @@
 import { deriveIb } from '../core/buffs';
 import {
   ARMOR_REFINE_ORDER, ARMOR_SET_ORDER, BUILD_ORDER, GEMS_ORDER, GENIE_ORDER, RING_ORDER, SPECIAL_SET_ORDER,
-  TRACT_ORDER, WEAPON_GRADE_ORDER, WEAPON_REFINE_ORDER, type GemClass, type ScoringRules,
+  TRACT_ORDER, WEAPON_GRADE_ORDER, WEAPON_REFINE_ORDER, GEM_CLASS_ORDER, type GemClass, type GemCounts, type ScoringRules,
 } from '../../data/gearRules';
 import type { ArmorRefine, Build, CharClass, CharLevel, Gems, PlayerGear, SpecialSet, WeaponRefine } from '../../data/types';
 import { ATTR_BASE, gemDop } from '../core/stats';
@@ -107,6 +107,18 @@ function gemPointsOf(model: CharacterModel, cfgId: string, rules: ScoringRules):
   return sum;
 }
 
+/** Склад каменів у броні конфігурації: скільки каменів кожного класу. */
+function gemCountsOf(model: CharacterModel, cfgId: string): GemCounts {
+  const slots = effectiveSlots(model, cfgId, { fillFromMain: true });
+  const out: GemCounts = {};
+  for (const slot of ARMOR_SLOTS) {
+    const iid = slots[slot];
+    const h = iid ? model.items.get(iid) : undefined;
+    for (const g of h?.gems ?? []) if (g) out[gemClass(g)] = (out[gemClass(g)] ?? 0) + 1;
+  }
+  return out;
+}
+
 /** Бали каменів → найближчий знизу рядок таблиці «Камні» (без проміжних значень у базі). */
 export function gemsBucket(points: number, rules: ScoringRules): Gems {
   let best: Gems = 'g0_9';
@@ -163,6 +175,8 @@ export interface DollFacts {
   /** Середня точка до округлення (для підказки). */
   armorRefineAvg: number | null;
   gems: Gems;
+  /** Склад каменів у броні (обсяг — як у gemPoints). */
+  gemCounts: GemCounts;
   gemPoints: number;
   /** Точка кілець (для R9R1): cr — кільце 1, cd — кільце 2. */
   ring1Refine: number | null;
@@ -220,6 +234,13 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
   const refines = cfgs.map((c) => avgRefineOf(model, c)).filter((x): x is number => x != null);
   const armorRefineAvg = refines.length ? avg(refines) : null;
   const gemPoints = avg(cfgs.map((c) => gemPointsOf(model, c, rules)));
+  // Склад каменів — у тому ж обсязі (для «усіх сетів» — середнє, округлене).
+  const counts = cfgs.map((c) => gemCountsOf(model, c));
+  const gemCounts: GemCounts = {};
+  for (const k of GEM_CLASS_ORDER) {
+    const v = Math.round(avg(counts.map((c) => c[k] ?? 0)));
+    if (v > 0) gemCounts[k] = v;
+  }
   const weapon = doc.main.ta ? model.items.get(doc.main.ta) : undefined;
   const ringR = (slot: 'cr' | 'cd') => {
     const iid = doc.main[slot];
@@ -240,6 +261,7 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
     armorRefineAvg,
     gems: gemsBucket(gemPoints, rules),
     gemPoints,
+    gemCounts,
     ring1Refine: ringR('cr'),
     ring2Refine: ringR('cd'),
     pa: main.pa,

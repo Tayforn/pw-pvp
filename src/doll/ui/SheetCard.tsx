@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react';
 import GearFields from '../../components/GearFields';
-import { ARMOR_REFINE_LABELS, BUILD_LABELS, GEMS_LABELS, WEAPON_REFINE_LABELS, gearSummary, rulesFor } from '../../data/gearRules';
+import { ARMOR_REFINE_LABELS, BUILD_LABELS, GEMS_LABELS, WEAPON_REFINE_LABELS, gearSummary, gemMixLabel, rulesFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
 import { useCatalog } from '../data/catalog';
 import { useRefData } from '../data/refLoader';
@@ -66,7 +66,7 @@ export default function SheetCard({ doc, onChange, readOnly }: { doc: CharacterD
         </fieldset>
       )}
       {result && !complete && result.missing.length > 0 && <p className="hint">Ще бракує: {result.missing.join(', ')}.</p>}
-      {result?.gear && <p className="hint">У заявці буде: {gearSummary(result.gear)}.</p>}
+      {result?.gear && <p className="hint">У заявці буде: {gearSummary(result.gear, null, gemMixLabel(result.facts.gemCounts) || undefined)}.</p>}
     </details>
   );
 }

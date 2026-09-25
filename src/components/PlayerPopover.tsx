@@ -22,6 +22,8 @@ export interface PlayerCardInfo {
   nickname: string;
   gear: PlayerGear;
   tier: Tier;
+  /** Склад каменів з ляльки (заявка персонажем) — показується замість рядка таблиці. */
+  gemsMix?: string;
   /** Адмінська частина — публічно не передається. */
   admin?: {
     score: number;
@@ -40,14 +42,14 @@ export interface PlayerCardInfo {
 }
 
 /** Анкета рядками «поле → значення» (та сама інформація, що в gearSummary, але читабельно). */
-export function gearRows(g: PlayerGear): { label: string; value: string }[] {
+export function gearRows(g: PlayerGear, gemsMix?: string): { label: string; value: string }[] {
   const sets = SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s));
   return [
     { label: 'Рівень', value: g.charLevel ? CHAR_LEVEL_LABELS[g.charLevel] : '—' },
     { label: 'Збірка', value: g.build ? BUILD_LABELS[g.build] : '—' },
     { label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' · є ПЗ-зброя' : ''}` },
     { label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} · круг точки ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
-    { label: 'Камні', value: GEMS_LABELS[g.gems] },
+    { label: 'Камені', value: gemsMix ? `${gemsMix} → бали як «${GEMS_LABELS[g.gems]}»` : GEMS_LABELS[g.gems] },
     { label: 'Сети', value: sets.length ? sets.map((s) => `${SPECIAL_SET_LABELS[s]} (${GEMS_LABELS[g.specialSetGems[s] ?? 'g0_9']})`).join(', ') : '—' },
     { label: 'Трактат', value: TRACT_LABELS[g.tract] },
     { label: 'Джин', value: GENIE_LABELS[g.genie] },
@@ -69,7 +71,7 @@ function tierRange(tier: Tier, version: string): string {
   return upper === null ? `від ${min}` : `${min}–${upper}`;
 }
 
-const POP_W = 300;
+const POP_W = 380;
 const GAP = 6;
 
 function Popover({ info, anchor, pinned, onEnter, onLeave }: { info: PlayerCardInfo; anchor: DOMRect; pinned: boolean; onEnter: () => void; onLeave: () => void }) {
@@ -88,7 +90,7 @@ function Popover({ info, anchor, pinned, onEnter, onLeave }: { info: PlayerCardI
   }, [anchor]);
 
   const a = info.admin;
-  const rows = gearRows(info.gear);
+  const rows = gearRows(info.gear, info.gemsMix);
   const style: CSSProperties = { top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: Math.min(POP_W, window.innerWidth - 16) };
 
   return createPortal(

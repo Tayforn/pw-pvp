@@ -231,6 +231,30 @@ export interface GearRules extends ScoringRules {
 /** Клас каменя для балів — з каталогу ляльки: рівень (грейд) і що камінь дає в броні. */
 export type GemClass = 'campPz' | 'topPa' | 'topOther' | 'g12' | 'g11' | 'g10' | 'low';
 export const GEM_CLASS_ORDER: GemClass[] = ['campPz', 'topPa', 'topOther', 'g12', 'g11', 'g10', 'low'];
+/** Короткі підписи класів каменів — для складу каменів у картках. */
+export const GEM_CLASS_SHORT: Record<GemClass, string> = {
+  campPz: 'ПЗ 13+', topPa: 'ПА 13+', topOther: 'інші 13+', g12: '12 рів.', g11: '11 рів.', g10: '10 рів.', low: '≤9 рів.',
+};
+/** Скільки каменів кожного класу в броні (з ляльки). */
+export type GemCounts = Partial<Record<GemClass, number>>;
+
+/** «12 рів. ×16 · ПЗ 13+ ×8» — склад каменів; '' — немає даних. */
+export function gemMixLabel(c: GemCounts | null | undefined): string {
+  if (!c) return '';
+  return GEM_CLASS_ORDER.filter((k) => (c[k] ?? 0) > 0).map((k) => `${GEM_CLASS_SHORT[k]} ×${c[k]}`).join(' · ');
+}
+
+/** Склад каменів із бази — лише відомі класи й цілі 0..99. */
+export function normalizeGemCounts(raw: unknown): GemCounts | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const out: GemCounts = {};
+  for (const k of GEM_CLASS_ORDER) {
+    const v = o[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[k] = Math.min(99, Math.round(v));
+  }
+  return Object.keys(out).length ? out : null;
+}
 export const GEM_CLASS_LABELS: Record<GemClass, string> = {
   campPz: 'ПЗ-камені 13+ рівня (Лагеря, Государя, Цзин Юе…)',
   topPa: 'ПА-камені 13+ рівня (Світлого духу, Ракшаса…)',
@@ -962,11 +986,11 @@ const shortGems = (gems: Gems) => GEMS_LABELS[gems].replace(/ \(.*\)$/, '');
 /** Компактний рядок для адмінки/публічної сторінки:
  * «ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря), Спів / Аспід (0–9) · Тракт 8 · Джин 100/100». */
 /** Спорядження по полях — для карток (попап «Лялька актуальна?»). Ті самі підписи, що в gearSummary. */
-export function gearParts(g: PlayerGear): Array<{ key: string; label: string; value: string }> {
+export function gearParts(g: PlayerGear, gemsMix?: string): Array<{ key: string; label: string; value: string }> {
   const out: Array<{ key: string; label: string; value: string }> = [
     { key: 'weapon', label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}` },
     { key: 'armor', label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
-    { key: 'gems', label: 'Камені', value: shortGems(g.gems) },
+    { key: 'gems', label: 'Камені', value: gemsMix ? `${gemsMix} → бали як «${shortGems(g.gems)}»` : shortGems(g.gems) },
     { key: 'tract', label: 'Трактат', value: TRACT_LABELS[g.tract].replace(/ \(.*\)$/, '').replace(' грейд', '') },
     { key: 'genie', label: 'Джин', value: GENIE_LABELS[g.genie] },
   ];
@@ -977,14 +1001,14 @@ export function gearParts(g: PlayerGear): Array<{ key: string; label: string; va
   return out;
 }
 
-export function gearSummary(g: PlayerGear, version?: string | null): string {
+export function gearSummary(g: PlayerGear, version?: string | null, gemsMix?: string): string {
   void version;
   const parts: string[] = [];
   if (g.charLevel) parts.push(`Рівень ${CHAR_LEVEL_LABELS[g.charLevel]}`);
   if (g.build && g.build !== 'dd') parts.push(`Збірка: ${BUILD_LABELS[g.build]}`);
   parts.push(`${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}`);
   parts.push(`${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}`);
-  parts.push(`Камні ${shortGems(g.gems)}`);
+  parts.push(gemsMix ? `Камені ${gemsMix} (бали як «${shortGems(g.gems)}»)` : `Камні ${shortGems(g.gems)}`);
   if (g.specialSets.length) {
     parts.push(SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s)).map((s) => `${SPECIAL_SET_LABELS[s]} (${shortGems(g.specialSetGems[s] ?? 'g0_9')})`).join(', '));
   }

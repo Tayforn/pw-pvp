@@ -32,7 +32,7 @@ import {
   DRUID_AMP, PAIR_HARD_PENALTY, buffCtxFor, buffPctTo, estimateSpread, evaluateTeams, formTeams, newSeed, pairViolates, penalty as penaltyOf, spreadOf, strengthSpreadOf,
   suggestReplacement, teamStats, unavoidable, type BalancePlayer, type ReservePolicy,
 } from '../../data/balance';
-import { CLASS_LABELS, CLASS_ORDER, playerProfile, rulesFor, tierFor, type BalanceRules, type KxMode, type PairsRule } from '../../data/gearRules';
+import { CLASS_LABELS, CLASS_ORDER, gemMixLabel, playerProfile, rulesFor, tierFor, type BalanceRules, type KxMode, type PairsRule } from '../../data/gearRules';
 import { describeSnapshotBuffs, reservePolicyFromFlags, resolveBuffOptions } from '../../data/ruleFlags';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
@@ -185,6 +185,7 @@ function playerInfos(regs: Registration[], version: string, teamSize: number | n
       nickname: r.nickname,
       gear: r.gear,
       tier: tierFor(score, version),
+      gemsMix: gemMixLabel(r.dollPower?.gems) || undefined,
       admin: {
         score, gearScore: b.gear, adjust: b.adjust, rating: b.rating, adjustNote: r.scoreAdjustNote,
         elo: ratings ? ratingOf(ratings, r.nickname) : undefined,
