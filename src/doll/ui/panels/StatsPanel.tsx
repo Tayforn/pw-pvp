@@ -65,11 +65,6 @@ export function StatsPanelView({ calc, doc, cfgId }: StatsPanelViewProps) {
           {isMain ? '' : '; порожні слоти — як у Головному'}
         </span>
       </header>
-      {(calc.ib.re || calc.ib.xj) && (
-        <p className="doll-pn-warn" role="note">
-          «Спів» зі станами, що прискорюють чи сповільнюють спів, рахується як у PW Хелпері — з оберненим знаком цих станів. Без них число точне.
-        </p>
-      )}
       <div className="doll-hero">
         {hero.map((h) => (
           <div className={'doll-hero-cell ' + h.key + flashCls('hero:' + h.key)} key={h.key}>

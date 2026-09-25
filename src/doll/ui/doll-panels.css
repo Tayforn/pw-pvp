@@ -250,8 +250,3 @@ html[data-theme='light'] .doll-delta .doll-delta-row.focus { background: rgba(va
   .doll-stats .flash-down .doll-hero-v, .doll-stats .doll-stat.flash-down b { animation: none; }
 }
 
-/* Застереження про «Спів» зі станами (відома помилка знака, успадкована з Хелпера). */
-.doll-pn p.doll-pn-warn {
-  margin: 0 0 10px; padding: 6px 10px; font-size: 12px; line-height: 1.45; color: var(--text-dim);
-  border-left: 3px solid var(--accent); background: rgba(var(--doll-acc-rgb, 255, 187, 5), 0.06); border-radius: 0 var(--radius) var(--radius) 0;
-}
