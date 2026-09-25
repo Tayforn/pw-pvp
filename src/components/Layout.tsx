@@ -5,11 +5,16 @@
 // /series/:slug, /t/:id) — рендеримо рівно одну сторінку за route.name.
 //
 // Доступ (app/access.ts): гість без входу через Discord бачить лише заявку,
-// правила й минулі турніри; /t/:id/bracket — окрема сторінка без шапки й
-// меню (посилання «Поділитися»), відкрита всім.
+// правила, минулі турніри й ляльку персонажа; /t/:id/bracket — окрема
+// сторінка без шапки й меню (посилання «Поділитися»), відкрита всім.
+//
+// Лялька персонажа — ледачий чанк (каталог і спрайти важать мегабайти).
+// Після деплою старий чанк зникає з сервера, і вкладка, відкрита до деплою,
+// отримує помилку імпорту — тоді показуємо «Сайт оновився» з перезавантаженням
+// (інший збій сторінки — окремим повідомленням, бо перезавантаження його не лікує).
 // =========================================================
 
-import { useCallback, useEffect, useState } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useRoute, type Route } from '../app/useRoute';
 import { useAuth } from '../app/useAuth';
 import { takeLoginError, useMe } from '../app/useMe';
@@ -30,6 +35,39 @@ import RulesPage from '../pages/RulesPage';
 import AdminPage from '../pages/AdminPage';
 import DevBracketPage from '../pages/DevBracketPage';
 import BracketSharePage from '../pages/BracketSharePage';
+
+const CharacterPage = lazy(() => import('../pages/CharacterPage'));
+
+/** Помилка саме завантаження чанка (JS чи його CSS), а не збій усередині сторінки.
+ * Тексти — з Chrome, Firefox, Safari і прелоадера Vite. */
+const CHUNK_ERROR_RE = /dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i;
+
+/** Ловить помилку ледачої сторінки. Зниклий після деплою чанк лікується
+ * перезавантаженням; інший збій — ні, і казати «сайт оновився» було б неправдою. */
+class LazyPageBoundary extends Component<{ children: ReactNode }, { failed: false | 'chunk' | 'crash' }> {
+  state: { failed: false | 'chunk' | 'crash' } = { failed: false };
+  static getDerivedStateFromError(error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { failed: CHUNK_ERROR_RE.test(msg) ? ('chunk' as const) : ('crash' as const) };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="card" role="alert">
+        <p>
+          {this.state.failed === 'chunk'
+            ? 'Сайт оновився — цю сторінку треба завантажити заново.'
+            : 'Сторінка зламалась через помилку в програмі. Спробуй перезавантажити; якщо не допоможе — напиши адміну.'}
+        </p>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => location.reload()}>
+          Перезавантажити
+        </button>
+      </div>
+    );
+  }
+}
+
+const lazyFallback = <p className="hint" style={{ padding: 24 }}>Завантаження…</p>;
 
 const isMobile = () => window.matchMedia('(max-width: 880px)').matches;
 
@@ -75,7 +113,7 @@ export default function Layout() {
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-goto]');
       const name = a?.dataset.goto;
-      if (name && ['home', 'tournaments', 'register', 'rules', 'admin'].includes(name)) {
+      if (name && ['home', 'tournaments', 'register', 'rules', 'admin', 'characters'].includes(name)) {
         e.preventDefault();
         go({ name } as Route);
       }
@@ -101,6 +139,16 @@ export default function Layout() {
   else if (route.name === 'tournament') page = <TournamentPage id={route.id} guest={!insider} onLogin={login} />;
   else if (route.name === 'admin') page = <AdminPage series={series} tab={route.tab} onTab={(tab) => go({ name: 'admin', tab })} />;
   else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
+  else if (route.name === 'characters' || route.name === 'character') {
+    const id = route.name === 'character' ? route.id : 'new';
+    page = (
+      <LazyPageBoundary key={id}>
+        <Suspense fallback={lazyFallback}>
+          <CharacterPage id={id} onNavigate={go} />
+        </Suspense>
+      </LazyPageBoundary>
+    );
+  }
 
   // Вид гостя й свого різний — до з'ясування сесії сторінку не рендеримо
   // (інакше гість на мить побачить чуже, а свій — заглушку). Заявка й

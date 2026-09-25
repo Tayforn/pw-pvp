@@ -1,0 +1,17 @@
+# Дані й код ляльки — завжди LF, щоб хеш DOLL_DATA_VER і sha256 ядра були однакові
+# на Windows і в CI. Лише текстові типи: правило на весь каталог позначило б як текст
+# і будь-який новий бінарний файл (webp, шрифт) — git «нормалізував» би його й зіпсував.
+src/doll/**/*.ts text eol=lf
+src/doll/**/*.tsx text eol=lf
+src/doll/**/*.json text eol=lf
+src/doll/**/*.css text eol=lf
+src/doll/**/*.md text eol=lf
+# Бінарні — ніколи не чіпати кінці рядків.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

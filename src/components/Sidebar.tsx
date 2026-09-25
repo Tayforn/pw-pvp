@@ -1,7 +1,7 @@
 // =========================================================
-// Сайдбар: статичні пункти (Головна/Турніри/Реєстрація/Правила) +
+// Сайдбар: статичні пункти (Головна/Турніри/Реєстрація/Правила/Персонаж) +
 // Адмінка (лише для адміна) — відфільтровані за рівнем доступу
-// (app/access.ts): гість без входу бачить лише Турніри/Заявку/Правила.
+// (app/access.ts): гість без входу бачить лише Турніри/Заявку/Правила/Персонаж.
 // Пункт на серію прибрано — сайт спрощено до однієї активної серії,
 // показувати її окремо в меню зайве.
 // =========================================================
@@ -23,9 +23,14 @@ const listIco = <svg {...S}><rect x="4" y="4" width="16" height="16" rx="2" /><p
 const registerIco = <svg {...S}><path d="M12 3 5 6v5c0 4.8 3 7.8 7 9.8 4-2 7-5 7-9.8V6z" /><path d="M9 12l2 2 4-4" /></svg>;
 const rulesIco = <svg {...S}><path d="M12 5.5C10 4 6.5 4 4 4.5v14c2.5-.5 6-.5 8 1 2-1.5 5.5-1.5 8-1v-14c-2.5-.5-6-.5-8 1z" /><path d="M12 5.5v15" /></svg>;
 const adminIco = <svg {...S}><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" /></svg>;
+const charIco = <svg {...S}><circle cx="12" cy="5" r="2.2" /><path d="M8 21l1.2-7.5L7 12l1.5-4.2h7L17 12l-2.2 1.5L16 21" /><path d="M10.4 13.5h3.2" /></svg>;
 
 function routeKey(r: Route): string {
-  return r.name === 'series' ? `series:${r.slug}` : r.name === 'tournament' ? `tournament:${r.id}` : r.name;
+  if (r.name === 'series') return `series:${r.slug}`;
+  if (r.name === 'tournament') return `tournament:${r.id}`;
+  // Будь-який персонаж підсвічує один пункт «Персонаж».
+  if (r.name === 'character') return 'characters';
+  return r.name;
 }
 
 interface Props {
@@ -40,6 +45,7 @@ export default function Sidebar({ route, viewer, onNavigate }: Props) {
     { route: { name: 'tournaments' }, label: 'Турніри', ico: listIco },
     { route: { name: 'register' }, label: 'Заявка', ico: registerIco },
     { route: { name: 'rules' }, label: 'Правила', ico: rulesIco },
+    { route: { name: 'characters' }, label: 'Персонаж', ico: charIco },
     { route: { name: 'admin' }, label: 'Адмінка', ico: adminIco },
   ];
   // Показуємо лише те, що людина реально може відкрити.

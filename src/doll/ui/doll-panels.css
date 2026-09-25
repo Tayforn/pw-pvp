@@ -1,0 +1,257 @@
+/* =========================================================
+   ЛЯЛЬКА — панелі: характеристики (hero + групи), стани, перевірка урону,
+   дельти сету. Кольори лише з токенів pvp (--bg-*, --text*, --line*,
+   --accent*, --good/--bad), тож світла тема працює без окремих правил,
+   крім «зебри» (там прозорий білий на пергаменті не видно).
+   Без filter: вимкнений стан — opacity (сайт стримлять із CPU-рендером).
+   Усі правила вкладені в .doll-pn, щоб не зачепити класи каркаса й модалок.
+   ========================================================= */
+
+/* ── Спільне для карток-панелей ───────────────────────── */
+/* Кожна картка — контейнер: розкладка всередині залежить від ширини самої
+   панелі (@container), а не вікна, бо каркас може поставити її і в бічну
+   колонку, і на всю ширину. Ширину картка бере від батька (блок / grid / flex: 1). */
+.card.doll-pn { padding: 16px 18px; min-width: 0; container-type: inline-size; }
+.doll-pn-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin-bottom: 12px;
+}
+.doll-pn h3 {
+  margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.01em;
+  font-family: 'Grunt Grotesk', system-ui, sans-serif;
+}
+.doll-pn-tag {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 11.5px; line-height: 1.4; white-space: nowrap;
+  color: var(--accent-3); border: 1px solid var(--line-2); background: rgba(var(--accent-3-rgb), 0.08);
+}
+.doll-pn-tag.mute { color: var(--text-mute); background: transparent; border-color: var(--line); }
+.doll-pn-tag.good { color: var(--good); border-color: rgba(var(--good-rgb), 0.4); background: rgba(var(--good-rgb), 0.1); }
+.doll-pn-note { font-size: 12px; line-height: 1.45; color: var(--text-mute); }
+.doll-pn p.doll-pn-note { margin: 4px 0 10px; }
+/* Пояснення — окремим рядком під заголовком: кнопка, що зʼявляється справа
+   («Вимкнути всі»), тоді не переносить його і не штовхає вміст картки вниз */
+.doll-pn-head .doll-pn-note { flex: 1 1 100%; order: 1; }
+.doll-pn-head .doll-pn-act { margin-left: auto; }
+.doll-pn-head .btn-sm.doll-pn-act { padding: 3px 10px; font-size: 12px; }
+.doll-pn-sub {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  margin: 16px 0 8px; font-size: 13.5px; font-weight: 600; color: var(--text-dim);
+}
+
+/* ── Характеристики: hero-рядок ────────────────────────── */
+/* 6 комірок: в один ряд на широкій панелі, 3 × 2 на середній, 2 × 3 на вузькій —
+   без «сироти» в останньому ряду */
+.doll-stats .doll-hero {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  margin-bottom: 14px;
+}
+@container (min-width: 760px) { .doll-stats .doll-hero { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@container (max-width: 360px) { .doll-stats .doll-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.doll-stats .doll-hero-cell {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: rgba(var(--accent-3-rgb), 0.04);
+}
+.doll-stats .doll-hero-l {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute);
+}
+.doll-stats .doll-hero-v {
+  font-family: 'Grunt Grotesk', system-ui, sans-serif;
+  font-size: 18px; font-weight: 700; line-height: 1.2; color: var(--text);
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Діапазон атаки довгий («18 778–23 927»): трохи дрібніше і з переносом після тире
+   (розділювач тисяч нерозривний), а не обрізаний трикрапкою */
+.doll-stats .doll-hero-cell.atk .doll-hero-v { font-size: 16px; white-space: normal; overflow: visible; }
+/* ПА і ПЗ — головні числа pvp, виділені акцентом */
+.doll-stats .doll-hero-cell.pa, .doll-stats .doll-hero-cell.pz { border-color: var(--line-2); background: rgba(var(--accent-3-rgb), 0.08); }
+.doll-stats .doll-hero-cell.pa .doll-hero-v, .doll-stats .doll-hero-cell.pz .doll-hero-v { color: var(--accent-3); }
+
+/* ── Характеристики: групи зведення ───────────────────── */
+/* Колонки CSS, а не сітка: групи різної висоти (4…14 рядків) лягають без дірок,
+   к-сть колонок — від ширини панелі. Порядок у розмітці підібрано під колонки
+   (див. StatsPanel.tsx); в одну колонку повертаємо звичний через order. */
+.doll-stats .doll-stat-groups { columns: 230px; column-gap: 22px; }
+.doll-stats .doll-stat-group { min-width: 0; break-inside: avoid; margin-bottom: 14px; }
+.doll-stats .doll-stat-group:last-child { margin-bottom: 0; }
+@container (max-width: 481px) {
+  .doll-stats .doll-stat-groups { columns: auto; display: flex; flex-direction: column; gap: 14px; }
+  .doll-stats .doll-stat-group { margin-bottom: 0; }
+  .doll-stats .doll-stat-group.attack { order: 1; }
+  .doll-stats .doll-stat-group.defense { order: 2; }
+  .doll-stats .doll-stat-group.attrs { order: 3; }
+  .doll-stats .doll-stat-group.other { order: 4; }
+}
+.doll-stats .doll-stat-group h4 {
+  margin: 0 0 6px; padding: 0 8px; font-size: 11.5px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent);
+}
+.doll-stats .doll-stat {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 3px 8px; border-radius: var(--radius); font-size: 13px;
+}
+.doll-stats .doll-stat:nth-child(odd) { background: rgba(255, 255, 255, 0.03); }
+html[data-theme='light'] .doll-stats .doll-stat:nth-child(odd) { background: rgba(0, 0, 0, 0.04); }
+.doll-stats .doll-stat span { color: var(--text-mute); min-width: 0; }
+.doll-stats .doll-stat b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Фліш зміненого значення: зелений — виросло, червоний — впало (як у Хелпері).
+   Значення має key={val}, тож анімація перезапускається на кожну зміну. */
+.doll-stats .flash-up .doll-hero-v, .doll-stats .doll-stat.flash-up b { animation: dollPnFlashUp 1s ease-out; }
+.doll-stats .flash-down .doll-hero-v, .doll-stats .doll-stat.flash-down b { animation: dollPnFlashDown 1s ease-out; }
+@keyframes dollPnFlashUp { 0%, 60% { color: var(--good); } }
+@keyframes dollPnFlashDown { 0%, 60% { color: var(--doll-bad-text, var(--bad)); } }
+
+/* ── Стани (бафи / дебафи) ─────────────────────────────── */
+.doll-mods .doll-mods-row {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: start;
+  padding: 8px 0;
+}
+.doll-mods .doll-mods-row + .doll-mods-row { border-top: 1px solid var(--line); }
+.doll-mods .doll-mods-l { padding-top: 9px; font-size: 12.5px; color: var(--text-dim); }
+.doll-mods .doll-buffs { display: flex; flex-wrap: wrap; gap: 8px 6px; align-items: flex-start; }
+.doll-mods .doll-buff { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.doll-mods .doll-buff-ic {
+  position: relative; width: 34px; height: 34px; padding: 0; overflow: hidden; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-1);
+  color: var(--text-mute); font: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+/* Іконка 32×32 рівно по центру — і в 34-px кнопці, і в збільшеній на тачі */
+.doll-mods .doll-buff-img {
+  position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px;
+  background-repeat: no-repeat; image-rendering: pixelated;
+  opacity: 0.45; transition: opacity 0.12s;
+}
+.doll-mods .doll-buff.on .doll-buff-img,
+.doll-mods .doll-buff-ic:hover .doll-buff-img,
+.doll-mods .doll-buff-ic:focus-visible .doll-buff-img { opacity: 1; }
+.doll-mods .doll-buff-ic:hover { border-color: var(--accent); }
+.doll-mods .doll-buff.on .doll-buff-ic { border-color: rgba(var(--good-rgb), 0.7); box-shadow: 0 0 0 1px rgba(var(--good-rgb), 0.35); }
+.doll-mods .doll-buff-ic.add { display: grid; place-items: center; font-size: 20px; line-height: 1; border-style: dashed; }
+.doll-mods .doll-buff-ic.add:hover { color: var(--accent); }
+/* Рівень — бейдж у куті поверх іконки; тло завжди темне, тож текст світлий в обох темах */
+.doll-mods .doll-buff-lvl {
+  position: absolute; right: 0; bottom: 0; min-width: 13px; padding: 0 2px;
+  font-size: 9.5px; line-height: 12px; font-weight: 700; text-align: center;
+  color: #fff; background: rgba(0, 0, 0, 0.72); border-top-left-radius: 3px;
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.doll-mods .doll-buff-lvl.rs { color: var(--accent-3); }
+.doll-mods .doll-buff-lvl.je { color: var(--doll-bad-text, #ff8a8a); }
+.doll-mods .doll-buff-cb { margin: 0; width: 14px; height: 14px; cursor: pointer; accent-color: var(--good); }
+.doll-mods .doll-buff-cb:disabled { cursor: default; }
+
+/* ── Перевірка урону ───────────────────────────────────── */
+.doll-dmg > details > summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  list-style: none; cursor: pointer; user-select: none; min-height: 28px;
+}
+.doll-dmg > details > summary::-webkit-details-marker { display: none; }
+.doll-dmg > details > summary::before {
+  content: ''; flex: 0 0 auto; width: 8px; height: 8px; margin: -2px 2px 0 2px;
+  border-right: 2px solid var(--text-mute); border-bottom: 2px solid var(--text-mute);
+  transform: rotate(-45deg); transition: transform 0.15s ease;
+}
+.doll-dmg > details[open] > summary::before { transform: rotate(45deg); margin-top: -5px; }
+.doll-dmg > details[open] > summary { margin-bottom: 12px; }
+.doll-dmg > details > summary:hover h3 { color: var(--accent); }
+.doll-dmg > details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--radius); }
+
+.doll-dmg .doll-dmg-opp {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: rgba(var(--accent-3-rgb), 0.03);
+}
+.doll-dmg .doll-dmg-opp-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.doll-dmg .doll-dmg-opp-title b { color: var(--accent-3); font-size: 14.5px; }
+.doll-dmg .doll-dmg-opp-nums { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--text-mute); }
+.doll-dmg .doll-dmg-opp-nums b { color: var(--text); font-variant-numeric: tabular-nums; }
+.doll-dmg .doll-dmg-opp-nums i { font-style: normal; color: var(--text-mute); }
+.doll-dmg .doll-dmg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.doll-dmg .doll-skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.doll-dmg .doll-skill {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; text-align: left;
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--radius);
+  color: var(--text-dim); font: inherit; cursor: pointer; transition: border-color 0.12s, color 0.12s;
+}
+.doll-dmg .doll-skill:hover, .doll-dmg .doll-skill:focus-visible { border-color: var(--accent); color: var(--text); }
+.doll-dmg .doll-skill:active { background: var(--bg-3); }
+.doll-dmg .doll-skill-ic, .doll-dmg .doll-dmg-ic {
+  flex: none; width: 32px; height: 32px; border-radius: 3px;
+  background-repeat: no-repeat; image-rendering: pixelated;
+}
+.doll-dmg .doll-skill-cap { min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.doll-dmg .doll-dmg-loghead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 16px 0 8px; }
+.doll-dmg .doll-dmg-loghead .doll-pn-sub { margin: 0; }
+.doll-dmg .doll-dmg-log {
+  list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  max-height: 360px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-1);
+}
+.doll-dmg .doll-dmg-line {
+  display: flex; align-items: flex-start; gap: 10px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.doll-dmg .doll-dmg-txt { min-width: 0; font-size: 13px; line-height: 1.45; color: var(--text-dim); overflow-wrap: anywhere; }
+.doll-dmg .doll-dmg-txt b { color: var(--accent); }
+.doll-dmg .doll-dmg-v { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.doll-dmg p.doll-dmg-empty { margin: 0; padding: 10px 4px; }
+
+/* ── Дельти сету від Головного ─────────────────────────── */
+.doll-delta .doll-delta-rows { display: grid; max-width: 640px; font-size: 13px; }
+.doll-delta .doll-delta-row {
+  display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 8px;
+  align-items: baseline; padding: 4px 8px; border-radius: var(--radius);
+}
+.doll-delta .doll-delta-row:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
+html[data-theme='light'] .doll-delta .doll-delta-row:nth-child(even) { background: rgba(0, 0, 0, 0.04); }
+.doll-delta .doll-delta-row > :not(.doll-delta-l) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.doll-delta .doll-delta-l { min-width: 0; color: var(--text-mute); }
+.doll-delta .doll-delta-row.head {
+  border-bottom: 1px solid var(--line); border-radius: 0; margin-bottom: 2px;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute);
+}
+/* Рядок, за яким судять сет цього виду (ПЗ / ПА / темп) */
+.doll-delta .doll-delta-row.focus,
+html[data-theme='light'] .doll-delta .doll-delta-row.focus { background: rgba(var(--accent-3-rgb), 0.08); box-shadow: inset 2px 0 0 var(--accent-3); }
+.doll-delta .doll-delta-row.focus .doll-delta-l { color: var(--text); font-weight: 600; }
+.doll-delta .doll-delta-d { font-weight: 700; }
+.doll-delta .doll-delta-d.up { color: var(--good); }
+.doll-delta .doll-delta-d.down { color: var(--doll-bad-text, var(--bad)); }
+.doll-delta .doll-delta-d.zero { color: var(--text-mute); font-weight: 500; }
+
+/* ── Тач і вузькі екрани ───────────────────────────────── */
+@media (pointer: coarse) {
+  .doll-mods .doll-buff-ic { width: 42px; height: 42px; }
+  .doll-mods .doll-buff-cb { width: 20px; height: 20px; }
+  .doll-mods .doll-buffs { gap: 10px 8px; }
+  .doll-dmg > details > summary { min-height: 44px; }
+  .doll-dmg .doll-skill { min-height: 44px; }
+}
+@media (max-width: 560px) {
+  .card.doll-pn { padding: 14px 12px; }
+}
+@container (max-width: 440px) {
+  .doll-stats .doll-hero-v { font-size: 16px; }
+  .doll-mods .doll-mods-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .doll-mods .doll-mods-l { padding-top: 0; }
+  .doll-dmg .doll-skill-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .doll-delta .doll-delta-row { gap: 6px; padding: 4px 6px; }
+}
+@container (max-width: 380px) {
+  .doll-delta .doll-delta-rows { font-size: 12px; }
+  .doll-delta .doll-delta-row { grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doll-stats .flash-up .doll-hero-v, .doll-stats .doll-stat.flash-up b,
+  .doll-stats .flash-down .doll-hero-v, .doll-stats .doll-stat.flash-down b { animation: none; }
+}
+
+/* Застереження про «Спів» зі станами (відома помилка знака, успадкована з Хелпера). */
+.doll-pn p.doll-pn-warn {
+  margin: 0 0 10px; padding: 6px 10px; font-size: 12px; line-height: 1.45; color: var(--text-dim);
+  border-left: 3px solid var(--accent); background: rgba(var(--doll-acc-rgb, 255, 187, 5), 0.06); border-radius: 0 var(--radius) var(--radius) 0;
+}

@@ -3,7 +3,8 @@
 //
 //  * public — бачать усі, і без входу: заявка на турнір, правила (форма
 //    заявки посилається на них), список минулих турнірів, окреме посилання
-//    на сітку (/t/:id/bracket);
+//    на сітку (/t/:id/bracket), лялька персонажа (/characters — поки це
+//    локальна чернетка в браузері, збереження в профіль буде з входом);
 //  * member — увійшов через Discord — або адмін: головна, поточні турніри,
 //    серії. Перевірку робить спільний бекенд ладдера при вході: учасник
 //    сервера клану (DISCORD_GUILD_ID) з дозволеною роллю
@@ -34,6 +35,8 @@ export const ROUTE_ACCESS: Record<Route['name'], AccessLevel> = {
   series: 'member',
   admin: 'admin',
   'dev-bracket': 'public',
+  characters: 'public',
+  character: 'public',
 };
 
 export interface Viewer {

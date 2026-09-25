@@ -28,6 +28,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Типи й тести до білда: golden-тести ляльки (формули = Хелпер), сторож
+      # версії ядра й заборона innerHTML мають блокувати деплой, а не лише локальний прогін.
+      - run: npm run typecheck
+      - run: npm test
       - run: npm run build
         env:
           VITE_BASE: /
@@ -48,8 +52,8 @@ jobs:
 
       - name: Smoke test
         run: |
-          expected=$(grep -o '/assets/index-[^"]*\.js' dist/index.html)
-          live=$(curl -fsS "$SITE_URL/" | grep -o '/assets/index-[^"]*\.js')
+          expected=$(grep -o '/assets/index-[^"]*\.js' dist/index.html | head -1)
+          live=$(curl -fsS "$SITE_URL/" | grep -o '/assets/index-[^"]*\.js' | head -1)
           echo "expected $expected, live $live"
           test "$expected" = "$live"
           curl -fsS -o /dev/null "$SITE_URL$expected"

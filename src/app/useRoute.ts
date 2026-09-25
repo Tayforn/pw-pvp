@@ -1,6 +1,6 @@
 // =========================================================
 // Роутинг pw-pvp: History API, гібрид статичних шляхів + динамічні
-// сегменти (/series/:slug, /t/:id, /t/:id/bracket) — без бібліотеки роутера, просто
+// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id) — без бібліотеки роутера, просто
 // парсимо перший/другий сегмент шляху (в стилі pw-calc/pw-events, але
 // pw-calc-івський ROUTES-реєстр тут не підходить — сторінки контент-driven,
 // а не фіксований список вкладок).
@@ -30,7 +30,14 @@ export type Route =
   /** /t/:id/bracket — лише сітка, без шапки й меню: посилання «Поділитися» */
   | { name: 'tournament-bracket'; id: string }
   /** лише dev-збірка: /dev/bracket — сітка з фейковими командами (верстка) */
-  | { name: 'dev-bracket' };
+  | { name: 'dev-bracket' }
+  /** /characters — лялька персонажа (поки що те саме, що /characters/new) */
+  | { name: 'characters' }
+  /** /characters/:id — 'new' = локальна чернетка; інші id — збережені персонажі (наступний етап) */
+  | { name: 'character'; id: string };
+
+/** Id персонажа в адресі: 'new' або короткий ідентифікатор без спецсимволів. */
+const CHARACTER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 function parsePath(): Route {
   let p = location.pathname;
@@ -46,6 +53,7 @@ function parsePath(): Route {
   if (a === 'series' && b) return { name: 'series', slug: b };
   if (a === 't' && b && c === 'bracket') return { name: 'tournament-bracket', id: b };
   if (a === 't' && b) return { name: 'tournament', id: b };
+  if (a === 'characters') return b && CHARACTER_ID_RE.test(b) ? { name: 'character', id: b } : { name: 'characters' };
   if (import.meta.env.DEV && a === 'dev' && b === 'bracket') return { name: 'dev-bracket' };
   return { name: 'home' };
 }
@@ -59,6 +67,7 @@ export function routeUrl(route: Route): string {
     // перша вкладка без сегмента — щоб /admin і /admin/tournaments були одним шляхом
     case 'admin': return APP_BASE + 'admin' + (route.tab && route.tab !== 'tournaments' ? '/' + route.tab : '');
     case 'dev-bracket': return APP_BASE + 'dev/bracket';
+    case 'character': return APP_BASE + 'characters/' + encodeURIComponent(route.id);
     default: return APP_BASE + route.name;
   }
 }
