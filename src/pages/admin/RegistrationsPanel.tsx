@@ -195,6 +195,14 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                 <span className="badge mute" title={`${elo.wins} перемог`}>Ело {Math.round(elo.rating)} · {elo.games} ігор</span>
               )}
               <span className="hint" style={{ margin: 0 }}>{r.rulesAck ? 'з правилами ознайомлений' : 'правила НЕ підтверджено'}</span>
+              {r.characterId && (
+                <span
+                  className="badge mute"
+                  title={`Подано персонажем із ляльки (ревізія ${r.characterRev ?? '?'}); гравець підтвердив, що лялька актуальна${r.dollConfirmedAt ? ' — ' + new Date(r.dollConfirmedAt).toLocaleString('uk-UA') : ''}. Знімок ляльки збережено в заявці.`}
+                >
+                  з ляльки ✓
+                </span>
+              )}
               {Number.isFinite(rulesChangedAt) && Date.parse(r.createdAt) < rulesChangedAt && (
                 <span className="badge warn" title="Текст правил змінено після подання цієї заявки — гравець підтверджував інший текст">правила змінено після заявки</span>
               )}

@@ -41,6 +41,8 @@ interface RegistrationRow {
   build?: Build | null;
   // 0026
   ring1?: RingGrade | null; ring1_refine?: number | null; ring2?: RingGrade | null; ring2_refine?: number | null;
+  // 0028
+  character_id?: string | null; character_rev?: number | null; character_snapshot?: unknown; doll_confirmed_at?: string | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -79,6 +81,8 @@ const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registratio
     kind: r.kind ?? 'player', teamRegistrationId: r.team_registration_id ?? null, gear: gearFromRow(r),
     attackLevel: r.attack_level ?? null, defenseLevel: r.defense_level ?? null,
     scoreAdjust: a?.score_adjust ?? 0, scoreAdjustNote: a?.note ?? null,
+    characterId: r.character_id ?? null, characterRev: r.character_rev ?? null,
+    characterSnapshot: r.character_snapshot ?? null, dollConfirmedAt: r.doll_confirmed_at ?? null,
   };
 };
 const gearToRow = (g: PlayerGear) => ({
@@ -148,6 +152,8 @@ export async function submitRegistration(input: {
   tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[];
   /** Балансний фул-рандом: анкета обов'язкова (RLS відхилить заявку без char_class). */
   gear?: PlayerGear; attackLevel?: number | null; defenseLevel?: number | null;
+  /** Заявка персонажем із ляльки: хто, яка ревізія, знімок документа (0028). */
+  character?: { id: string; revision: number; snapshot: unknown };
 }): Promise<void> {
   // Свіжа перевірка прямо перед вставкою — стан на сторінці міг застаріти
   // (вкладка відкрита довго, адмін тим часом закрив реєстрацію чи турнір
@@ -163,6 +169,10 @@ export async function submitRegistration(input: {
     rules_ack: input.rulesAck,
     member_nicknames: input.memberNicknames && input.memberNicknames.length > 0 ? input.memberNicknames : null,
     ...(input.gear ? { ...gearToRow(input.gear), attack_level: input.attackLevel ?? null, defense_level: input.defenseLevel ?? null } : {}),
+    // Лише для заявки персонажем — звичайна анкета не пише нових колонок і працює й до 0028.
+    ...(input.character
+      ? { character_id: input.character.id, character_rev: input.character.revision, character_snapshot: input.character.snapshot, doll_confirmed_at: new Date().toISOString() }
+      : {}),
   });
   if (error) throw error;
 }

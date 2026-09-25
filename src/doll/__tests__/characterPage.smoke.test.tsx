@@ -12,6 +12,9 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Анкета персонажа тягне шкалу балів (rulesStore → Supabase) — у тестах без мережі.
+vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) } }));
 import { readJson } from '../core/__tests__/testData';
 import { ensureCats } from '../data/catalog';
 import { ensureRefData } from '../data/refLoader';

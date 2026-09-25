@@ -183,6 +183,12 @@ export interface Registration {
   /** Ручна корекція скору адміном (± бали) з причиною — лише адмінам (0021). */
   scoreAdjust: number;
   scoreAdjustNote: string | null;
+  /** Заявка персонажем із ляльки (0028): id персонажа, ревізія й знімок на момент подачі,
+   * час підтвердження «дані актуальні». null — звичайна анкета. */
+  characterId: string | null;
+  characterRev: number | null;
+  characterSnapshot: unknown;
+  dollConfirmedAt: string | null;
 }
 
 /** Балансний фул-рандом = командний турнір з індивідуальною реєстрацією. */

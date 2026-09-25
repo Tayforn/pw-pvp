@@ -10,6 +10,13 @@ import RulesList from '../components/RulesList';
 import { parseRulesMd } from '../data/ruleCatalog';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 import { useMe } from '../app/useMe';
+import { CLASS_LABELS, computeGearScore, gearSummary, SPECIAL_SET_LABELS } from '../data/gearRules';
+import type { CharacterForRegistration, CharacterSummary } from '../doll/registration';
+
+// Модуль ляльки (каталоги, формули) — окремий чанк: вантажимо лише коли
+// учасник клану відкрив форму фул-рандому.
+const loadDollReg = () => import('../doll/registration');
+const CLS_NAME: Record<string, string> = { by: 'Воїн', ga: 'Маг', ya: 'Танк', rl: 'Друїд', ij: 'Прист', js: 'Лучник', fx: 'Сін', sj: 'Шаман', ej: 'Страж', rg: 'Містик' };
 
 /** «1 пункт · 2 пункти · 5 пунктів». */
 function pointsLabel(n: number): string {
@@ -54,6 +61,12 @@ export default function RegisterPage() {
   const prefilledRef = useRef<{ nick: string; gear: Partial<PlayerGear> } | null>(null);
   // Лічильник запитів: відповідь застарілого (змінили нік/турнір) ігноруємо.
   const lookupSeq = useRef(0);
+  // Заявка персонажем (учасник клану з лялькою): '' — анкета вручну.
+  const [chars, setChars] = useState<CharacterSummary[] | null>(null);
+  const [charId, setCharId] = useState('');
+  const [charLoad, setCharLoad] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; data?: CharacterForRegistration; err?: string }>({ status: 'idle' });
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmChecked, setConfirmChecked] = useState(false);
   const [rulesAck, setRulesAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -143,20 +156,69 @@ export default function RegisterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discordMe, isTeam]);
 
+  // Персонажі учасника клану — лише для фул-рандому (там потрібна анкета).
+  useEffect(() => {
+    if (!discordMe || !isBalanced || chars) return;
+    let alive = true;
+    loadDollReg()
+      .then((m) => m.myCharacters())
+      .then((list) => { if (alive) setChars(list); })
+      .catch(() => { if (alive) setChars([]); });
+    return () => { alive = false; };
+  }, [discordMe, isBalanced, chars]);
+
+  // Інший турнір — анкету скинуто (clearGear вище), тож і вибір персонажа теж.
+  useEffect(() => {
+    setCharId('');
+    setCharLoad({ status: 'idle' });
+  }, [tournamentId]);
+
+  const pickCharacter = (id: string) => {
+    setCharId(id);
+    setConfirmChecked(false);
+    clearGear();
+    if (!id) {
+      setCharLoad({ status: 'idle' });
+      return;
+    }
+    setCharLoad({ status: 'loading' });
+    loadDollReg()
+      .then((m) => m.characterForRegistration(id))
+      .then((data) => {
+        setCharLoad({ status: 'ready', data });
+        if (data.result.gear) {
+          setGear(data.result.gear);
+          gearRef.current = data.result.gear;
+        }
+        setAttackLevel(data.result.attackLevel);
+        setDefenseLevel(data.result.defenseLevel);
+        setNickname(data.rec.name);
+      })
+      .catch((e) => setCharLoad({ status: 'error', err: errorMessage(e, String(e)) }));
+  };
+  const charData = charId && charLoad.status === 'ready' ? charLoad.data ?? null : null;
+
   const prefillHint = prefilledFrom
     ? `Анкету для «${prefilledFrom.nick}» підтягнуто з ${prefilledFrom.tournamentName ? `заявки на «${prefilledFrom.tournamentName}»${prefilledFrom.eventDate ? ` (${prefilledFrom.eventDate})` : ''}` : 'попередньої заявки'} — перевір, чи нічого не змінилось.`
     : null;
 
   const membersValid = !isTeam || members.every((m) => m.trim());
-  const gearValid = !isBalanced || isGearComplete(gear);
+  const gearValid = !isBalanced || (charId ? !!charData?.result.gear : isGearComplete(gear));
   // Клієнтська перевірка — доповнює серверний unique-індекс (той блокує лише
   // повтор ТОГО САМОГО нікнейму); ця блокує ще одну заявку з ІНШИМ нікнеймом
   // з того самого браузера.
   const alreadyRegistered = !!tournamentId && hasRegistered(tournamentId);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!tournamentId || !nickname.trim() || !rulesAck || !membersValid || !gearValid) return;
+    // Персонажем — спершу попап «дані в ляльці актуальні».
+    if (charData && !confirmOpen) {
+      setConfirmChecked(false);
+      setConfirmOpen(true);
+      return;
+    }
+    setConfirmOpen(false);
     setBusy(true);
     setErr(null);
     try {
@@ -166,6 +228,7 @@ export default function RegisterPage() {
         rulesAck,
         memberNicknames: isTeam ? members.map((m) => m.trim()) : undefined,
         ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
+        ...(charData ? { character: { id: charData.rec.id, revision: charData.rec.revision, snapshot: charData.doc } } : {}),
       });
       markRegistered(tournamentId);
       // У fixed-командному поле — назва команди, не нік; його не запам'ятовуємо.
@@ -270,6 +333,25 @@ export default function RegisterPage() {
               Команду формує система випадково після закриття реєстрації. Заповни чесно — адмін перевіряє в грі, неправда = дискваліфікація.
             </p>
           )}
+          {isBalanced && discordMe && (
+            <div className="field">
+              <label htmlFor="regChar">Яким персонажем ідеш?</label>
+              <select id="regChar" value={charId} onChange={(e) => pickCharacter(e.target.value)} disabled={!chars}>
+                <option value="">{chars === null ? 'Завантажую персонажів…' : 'Заповнити анкету вручну'}</option>
+                {(chars ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {CLS_NAME[c.cls] ?? c.cls} · {c.level}
+                  </option>
+                ))}
+              </select>
+              <small className="hint">
+                {chars && chars.length === 0 ? 'Збережених персонажів ще немає — ' : 'Персонаж із ляльки підставить анкету сам. '}
+                <a className="link" href={routeUrl({ name: 'characters' })} target="_blank" rel="noreferrer">
+                  Мої персонажі
+                </a>
+              </small>
+            </div>
+          )}
           <label className="field">
             <span>{isTeam ? 'Назва команди' : 'Нікнейм персонажа'}</span>
             <input
@@ -302,7 +384,32 @@ export default function RegisterPage() {
           {isBalanced && prefillHint && (
             <p className="hint" style={{ margin: 0 }}>{prefillHint}</p>
           )}
-          {isBalanced && (
+          {isBalanced && charId && charLoad.status === 'loading' && <p className="hint" style={{ margin: 0 }}>Завантажую персонажа й рахую анкету з ляльки…</p>}
+          {isBalanced && charId && charLoad.status === 'error' && <p className="form-err">Не вдалося завантажити персонажа: {charLoad.err}</p>}
+          {isBalanced && charData && (
+            <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <b>Анкета з персонажа «{charData.rec.name}»</b>
+              {charData.result.gear ? (
+                <>
+                  <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear)}</span>
+                  <span className="hint" style={{ margin: 0 }}>
+                    Свап-сети з ляльки: {charData.result.facts.specialSets.length ? charData.result.facts.specialSets.map((k) => SPECIAL_SET_LABELS[k]).join(', ') : 'немає'}
+                    {charData.result.facts.specialSets.length > 0 && !charData.setsFromDoll ? ' (у бали поки не йдуть — це вмикає адмін)' : ''}
+                  </span>
+                  <span className="badge mute" style={{ alignSelf: 'flex-start' }}>
+                    Орієнтовний гір-скор: {computeGearScore(charData.result.gear, null, tournament?.teamSize)}
+                  </span>
+                </>
+              ) : (
+                <span className="form-err" style={{ margin: 0 }}>У персонажа не заповнена анкета: бракує {charData.result.missing.join(', ')}.</span>
+              )}
+              <a className="link" href={routeUrl({ name: 'character', id: charData.rec.id })} target="_blank" rel="noreferrer">
+                {charData.result.gear ? 'Змінити в персонажі' : 'Заповнити анкету в персонажі'}
+              </a>
+              <small className="hint" style={{ margin: 0 }}>Змінив персонажа в іншій вкладці? Обери його тут ще раз, щоб підтягнути зміни.</small>
+            </div>
+          )}
+          {isBalanced && !charId && (
             <GearFields
               value={gear}
               onChange={setGear}
@@ -351,6 +458,32 @@ export default function RegisterPage() {
             {busy ? 'Надсилання…' : 'Подати заявку'}
           </button>
         </form>
+      )}
+      {confirmOpen && charData?.result.gear && (
+        <div className="modal-overlay" role="presentation" onClick={() => setConfirmOpen(false)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="confirmDollTitle" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <h3 id="confirmDollTitle" style={{ marginTop: 0 }}>Лялька актуальна?</h3>
+            <p className="hint">
+              Заявку буде подано персонажем «{charData.rec.name}» ({CLASS_LABELS[charData.result.gear.charClass]}). Адмін бачитиме ляльку такою, як зараз, і може перевірити спорядження в грі.
+            </p>
+            <p style={{ fontSize: 14 }}>{gearSummary(charData.result.gear)}</p>
+            <p className="hint">
+              Свап-сети: {charData.result.facts.specialSets.length ? charData.result.facts.specialSets.map((k) => SPECIAL_SET_LABELS[k]).join(', ') : 'немає'}.
+            </p>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} />
+              Так, лялька актуальна: саме в цьому спорядженні (Головний і сети) я гратиму на турнірі
+            </label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setConfirmOpen(false)}>
+                Повернутись
+              </button>
+              <button type="button" className="btn btn-primary" disabled={!confirmChecked || busy} onClick={() => void submit()}>
+                Подати заявку
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

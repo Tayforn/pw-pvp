@@ -22,6 +22,7 @@ import { browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, useD
 import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
 import DollEditor from '../doll/ui/DollEditor';
+import SheetCard from '../doll/ui/SheetCard';
 import { clsLabel } from '../doll/ui/DollHeader';
 
 const SET_PARAM = 'set';
@@ -271,6 +272,7 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
       {importOpen && <ImportPanel hasWork={hasWork} onImport={importDoc} onClose={() => setImportOpen(false)} />}
 
+      <SheetCard doc={doc} onChange={setDoc} />
       <DollEditor value={doc} onChange={setDoc} activeCfg={activeCfg} onActiveCfg={setActiveCfg} />
     </>
   );
@@ -470,6 +472,7 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
       )}
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
 
+      <SheetCard doc={doc} onChange={setDocState} />
       <DollEditor value={doc} onChange={setDocState} activeCfg={activeCfg} onActiveCfg={setActiveCfg} />
     </>
   );

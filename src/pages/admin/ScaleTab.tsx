@@ -262,6 +262,13 @@ export default function ScaleTab() {
           <b>Спеціальні сети</b>
           <span className="badge mute">max {draft.specialSetsCap}</span>
         </div>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={draft.setsFromDoll} onChange={(e) => patch({ setsFromDoll: e.target.checked })} />
+          Рахувати свап-сети з ляльки в заявках персонажем
+        </label>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Лялька сама бачить, які сети має гравець: сет рахується, якщо в ньому показник захисту чи атаки ≥ 30 (або швидкість атаки ≥ 3.33, спів −30 %) і вищий, ніж у Головному. Вимкнено — у заявку сети не йдуть, як і в звичайній анкеті.
+        </p>
         <p className="hint" style={{ margin: '0 0 8px' }}>
           Кілька сетів = найбільший + «бонус за додатковий» за кожен наступний, але не більше «стелі». Зараз: ПА+Спів {Math.min(draft.specialSetsCap, Math.max(draft.specialSets.pa, draft.specialSets.aspd) + draft.specialSetsExtra)},
           ПЗ+ПА {Math.min(draft.specialSetsCap, Math.max(draft.specialSets.pz, draft.specialSets.pa) + draft.specialSetsExtra)},

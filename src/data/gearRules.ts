@@ -173,6 +173,9 @@ export interface ScoringRules {
   armorSet: Record<ArmorSet, number>;
   /** сети, які в формі не показуються, поки ні в кого немає (feature flag) */
   hiddenArmorSets: ArmorSet[];
+  /** Заявка персонажем: свап-сети, які знайшла лялька, ідуть у заявку й у бали.
+   * Вимкнено — як у публічній анкеті, сети не рахуються (ПЗ-зброя — завжди). */
+  setsFromDoll: boolean;
   armorRefine: Record<ArmorRefine, number>;
   /** камені в основному сеті — за вартістю по зростанню; максимум = 24 камені по 2 ПЗ */
   gems: Record<Gems, number>;
@@ -390,6 +393,7 @@ const BUILTIN: GearRules = {
   // чистий R8 прибрано (гірший за Нірвану); мікс = Нірвана з частинами R8R — посередині між ними
   armorSet: { other: 0, nirvana: 5, nirvana_r8_mix: 14, r8r: 22, r9: 35 },
   hiddenArmorSets: ['r9'],
+  setsFromDoll: false,
   armorRefine: { a0_4: 0, a5: 3, a6: 7, a7: 11, a8: 17, a9: 23, a10: 27, a11: 29, a12: 30 },
   // 24 камені; повні Лагеря = 48 ПЗ (≈ різниця між топовим і слабким грейдом зброї) → max 40
   gems: { g0_9: 0, g10: 4, g11: 8, xuan: 14, xuan_pa: 20, pa: 26, xuan_camp: 33, camp: 40 },
@@ -585,6 +589,7 @@ export function normalizeRules(raw: unknown): GearRules {
     weaponPz: isNum(r.weaponPz) ? r.weaponPz : BUILTIN.weaponPz,
     armorSet: numTable(r.armorSet, BUILTIN.armorSet),
     hiddenArmorSets: hidden,
+    setsFromDoll: r.setsFromDoll === true,
     armorRefine: numTable(r.armorRefine, BUILTIN.armorRefine),
     gems: numTable(r.gems, BUILTIN.gems),
     specialSetGemsFactor: isNum(r.specialSetGemsFactor) ? r.specialSetGemsFactor : BUILTIN.specialSetGemsFactor,

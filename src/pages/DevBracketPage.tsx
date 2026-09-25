@@ -18,6 +18,7 @@ function fakeTeams(n: number, size: number, tournamentId: string): Registration[
     id: `team-${i + 1}`, tournamentId, nickname: `Команда ${i + 1}`, rulesAck: true, status: 'confirmed', createdAt: '2026-09-20T00:00:00Z',
     memberNicknames: size > 1 ? Array.from({ length: size }, (_, j) => NAMES[(i * size + j) % NAMES.length]) : null,
     kind: size > 1 ? 'team' : 'player', teamRegistrationId: null, gear: null, attackLevel: null, defenseLevel: null, scoreAdjust: 0, scoreAdjustNote: null,
+    characterId: null, characterRev: null, characterSnapshot: null, dollConfirmedAt: null,
   }));
 }
 

@@ -109,9 +109,10 @@ describe('golden: чернетка з balance-v1.13 серіалізується
     expect(r.balance.buffs.enabled).toBe(false);
     expect(r.balance.composition.pairsRule).toBe('legacy');
     expect(r.balance.composition.weights.topSupport).toBe(40); // не переписано на рекомендовані 100
-    // і жодних зайвих полів: збережений JSON = запис + рівно два нові блоки (buffs, pairsRule)
+    // і жодних зайвих полів: збережений JSON = запис + рівно три нові поля (setsFromDoll, buffs, pairsRule)
     const keys = (o: unknown) => Object.keys(o as object).sort();
-    expect(keys(out)).toEqual(keys(V113_RAW));
+    expect(keys(out)).toEqual([...keys(V113_RAW), 'setsFromDoll'].sort());
+    expect(r.setsFromDoll).toBe(false); // сети з ляльки — лише коли адмін увімкне
     expect(keys(out.balance)).toEqual([...keys(V113_RAW.balance), 'buffs'].sort());
     expect(keys((out.balance as Record<string, unknown>).composition)).toEqual([...keys(V113_RAW.balance.composition), 'pairsRule'].sort());
   });

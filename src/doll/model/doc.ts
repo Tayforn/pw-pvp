@@ -9,6 +9,7 @@
 
 import { ADDON_CODES, STAT_ALIAS, maxSockets } from '../core/constants';
 import { ATTR_BASE, TITLE_FIELDS } from '../core/stats';
+import { sheetErrors, type Sheet } from './sheet';
 
 export type SlotKey = 'ft' | 'vx' | 'rv' | 'st' | 'tg' | 'rx' | 'wy' | 'mj' | 'cr' | 'cd' | 'ta' | 'it' | 'qn' | 'pp' | 'pk' | 'gv' | 'ic';
 /** Слоти, доступні сетам: джинн і політ — лише в Головному. */
@@ -106,6 +107,8 @@ export interface CharacterDoc {
   main: Partial<Record<SlotKey, string>>;
   sets: SetCfg[];
   buffs?: { cfg: Record<string, BuffCfgRow>; extra: number[] }; // лише для перегляду статів, у скор не входить
+  /** Анкета для турнірів — поля, яких лялька не знає (грейди речей); див. model/sheet.ts. */
+  sheet?: Sheet;
 }
 
 export const DOC_LIMITS = { items: 100, rollRows: 400, sets: 5, nameLen: 32, setNameLen: 24, bytes: 32768 } as const;
@@ -323,7 +326,7 @@ function checkSlots(
   }
 }
 
-const DOC_KEYS = ['v', 'name', 'cls', 'gender', 'level', 'attrs', 'titles', 'path', 'nextIid', 'items', 'main', 'sets', 'buffs'];
+const DOC_KEYS = ['v', 'name', 'cls', 'gender', 'level', 'attrs', 'titles', 'path', 'nextIid', 'items', 'main', 'sets', 'buffs', 'sheet'];
 const SET_KEYS = ['id', 'name', 'kind', 'slots'];
 
 export type ValidateResult =
@@ -453,6 +456,8 @@ export function validateDoc(raw: unknown): ValidateResult {
       if (!Array.isArray(data.buffs.extra) || data.buffs.extra.some((x) => !isInt(x, 0, MAX_ID))) errs.add('buffs.extra має бути списком id');
     }
   }
+
+  if (data.sheet !== undefined) for (const e of sheetErrors(data.sheet)) errs.add(e);
 
   if (errs.list.length) return { ok: false, errors: [...errs.list, ...errs.softList].slice(0, 30) };
   const bytes = docSizeBytes(data);

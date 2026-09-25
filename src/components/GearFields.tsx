@@ -41,6 +41,10 @@ interface Props {
    * тимчасово вимкнено; анкета тоді завжди віддає specialSets=[] і без каменів.
    * Адмінка показує їх і далі (можна прибрати в старих заявках). */
   hideSpecialSets?: boolean;
+  /** Анкета персонажа: клас, рівень, ПЗ-зброю й свап-сети визначає лялька —
+   * вони показуються як готові (без вибору), а камені — лише для сетів,
+   * які лялька знайшла. Показники з вікна персонажа теж з ляльки — блок сховано. */
+  fromDoll?: boolean;
 }
 
 /** Анкета заповнена — усі 10 полів на місці. Чекбокси ніколи не null:
@@ -101,7 +105,7 @@ function RefineSelect({ label, value, onChange }: { label: string; value: number
   );
 }
 
-export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize, hideSpecialSets }: Props) {
+export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize, hideSpecialSets, fromDoll }: Props) {
   // Підписка на реєстр версій: коли шкала з БД довантажиться (або адмін
   // збереже нову), живий гір-скор і список сетів перемалюються.
   useRules();
@@ -112,8 +116,8 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
   const patch = (p: Partial<PlayerGear>) => {
     const next: Partial<PlayerGear> = { ...value, ...p };
     next.weaponPz = next.weaponPz ?? false;
-    next.specialSets = hideSpecialSets ? [] : next.specialSets ?? [];
-    next.specialSetGems = hideSpecialSets ? {} : next.specialSetGems ?? {};
+    next.specialSets = hideSpecialSets && !fromDoll ? [] : next.specialSets ?? [];
+    next.specialSetGems = hideSpecialSets && !fromDoll ? {} : next.specialSetGems ?? {};
     next.shg = next.shg ?? false;
     next.shgRefine = next.shg ? next.shgRefine ?? null : null;
     next.voznes = next.voznes ?? false;
@@ -144,11 +148,20 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
 
   return (
     <div className="gear-fields" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="field-row">
-        <OptionSelect label="Клас" value={value.charClass} options={CLASS_ORDER} labels={CLASS_LABELS} onChange={(v) => patch({ charClass: v })} />
-        <OptionSelect label="Рівень" value={value.charLevel ?? undefined} options={CHAR_LEVEL_ORDER} labels={CHAR_LEVEL_LABELS} onChange={(v) => patch({ charLevel: v ?? null })} />
-        <OptionSelect label="Збірка" value={value.build ?? undefined} options={BUILD_ORDER} labels={BUILD_LABELS} onChange={(v) => patch({ build: v ?? null })} />
-      </div>
+      {fromDoll ? (
+        <div className="field-row">
+          <OptionSelect label="Збірка" value={value.build ?? undefined} options={BUILD_ORDER} labels={BUILD_LABELS} onChange={(v) => patch({ build: v ?? null })} />
+          <span className="hint" style={{ alignSelf: 'end' }}>
+            З ляльки: {value.charClass ? CLASS_LABELS[value.charClass] : '—'}, рівень {value.charLevel ? CHAR_LEVEL_LABELS[value.charLevel] : '—'}
+          </span>
+        </div>
+      ) : (
+        <div className="field-row">
+          <OptionSelect label="Клас" value={value.charClass} options={CLASS_ORDER} labels={CLASS_LABELS} onChange={(v) => patch({ charClass: v })} />
+          <OptionSelect label="Рівень" value={value.charLevel ?? undefined} options={CHAR_LEVEL_ORDER} labels={CHAR_LEVEL_LABELS} onChange={(v) => patch({ charLevel: v ?? null })} />
+          <OptionSelect label="Збірка" value={value.build ?? undefined} options={BUILD_ORDER} labels={BUILD_LABELS} onChange={(v) => patch({ build: v ?? null })} />
+        </div>
+      )}
       <small className="hint" style={{ marginTop: -6 }}>Збірка — куди вкладені стати: ДД (урон), гібрид, кон (HP/захист замість урону). На бали за шмот не впливає, впливає на добір складу команд.</small>
 
       <div className="field-row">
@@ -157,10 +170,16 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
       </div>
       {/* Запасна зброя з показником захисту, на яку свапаються під уроном —
           є в будь-якого грейду основної зброї, тому чекбокс показуємо завжди. */}
-      <label className="checkbox-row" title="запасна зброя з показником захисту, на яку свапаєшся, щоб отримувати менше шкоди">
-        <input type="checkbox" checked={!!value.weaponPz} onChange={(e) => patch({ weaponPz: e.target.checked })} />
-        Є ПЗ-зброя (запасна, з показником захисту для свапу)
-      </label>
+      {fromDoll ? (
+        <small className="hint" style={{ marginTop: -6 }}>
+          ПЗ-зброя: {value.weaponPz ? 'є (знайдено в сетах ляльки)' : 'немає — додай у ляльці сет з іншою зброєю, якщо свапаєшся'}
+        </small>
+      ) : (
+        <label className="checkbox-row" title="запасна зброя з показником захисту, на яку свапаєшся, щоб отримувати менше шкоди">
+          <input type="checkbox" checked={!!value.weaponPz} onChange={(e) => patch({ weaponPz: e.target.checked })} />
+          Є ПЗ-зброя (запасна, з показником захисту для свапу)
+        </label>
+      )}
 
       <div className="field-row">
         <OptionSelect label="Сет броні" value={value.armorSet} options={armorSets} labels={ARMOR_SET_LABELS} onChange={(v) => patch({ armorSet: v })} />
@@ -174,7 +193,12 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
         <OptionSelect label="Трактат" value={value.tract} options={TRACT_ORDER} labels={TRACT_LABELS} onChange={(v) => patch({ tract: v })} />
       </div>
 
-      {!hideSpecialSets && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
+      {fromDoll && (
+        <small className="hint">
+          Свап-сети з ляльки: {sets.length ? SPECIAL_SET_ORDER.filter((s) => sets.includes(s)).map((s) => SPECIAL_SET_LABELS[s]).join(', ') : 'немає'} — вкажи, які в них камені.
+        </small>
+      )}
+      {!hideSpecialSets && !fromDoll && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
         {SPECIAL_SET_ORDER.map((s) => (
           <label key={s} className="checkbox-row" title={SPECIAL_SET_HINTS[s]}>
             <input type="checkbox" checked={sets.includes(s)} onChange={(e) => toggleSet(s, e.target.checked)} />
@@ -184,7 +208,7 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
       </div>}
       {/* Камені в кожному відміченому свап-сеті: «сет затиканий 7 бурштинками» і
           «сет із фул ПЗ-камінням» — різні речі (відгук гільдії). */}
-      {!hideSpecialSets && sets.length > 0 && (
+      {(!hideSpecialSets || fromDoll) && sets.length > 0 && (
         <div className="field-row">
           {SPECIAL_SET_ORDER.filter((s) => sets.includes(s)).map((s) => (
             <OptionSelect
@@ -232,7 +256,7 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
         </div>
       )}
 
-      <details className="gear-extra">
+      {!fromDoll && <details className="gear-extra">
         <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)', fontWeight: 500 }}>
           Показники з вікна персонажа (необов'язково)
         </summary>
@@ -247,7 +271,7 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
           </label>
         </div>
         <small className="hint">без бафів; зараз не впливає на бали</small>
-      </details>
+      </details>}
 
       {showScore && isGearComplete(value) && (
         <div>

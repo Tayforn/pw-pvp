@@ -18,12 +18,9 @@ import type { CharClass } from '../../data/types';
 import { CLS_KEYS, DOC_LIMITS, MAX_LEVEL, type CharacterDoc, type ClsKey } from '../model/doc';
 import { setAttr, setCls, setGender, setLevel, setName, setPath, setTitle } from '../model/ops';
 import { useEditor } from './EditorContext';
+import { CLS_CHAR } from '../model/sheet';
 
-/** Клас ляльки → клас сайту (підписи й порядок — як в анкеті турніру). */
-export const CLS_CHAR: Record<ClsKey, CharClass> = {
-  by: 'blademaster', ga: 'wizard', ya: 'barbarian', rl: 'venomancer', ij: 'cleric',
-  js: 'archer', fx: 'assassin', sj: 'psychic', ej: 'seeker', rg: 'mystic',
-};
+export { CLS_CHAR };
 export const clsLabel = (c: ClsKey): string => CLASS_LABELS[CLS_CHAR[c]];
 const CLS_OPTIONS: ClsKey[] = CLASS_ORDER.map((cc) => CLS_KEYS.find((k) => CLS_CHAR[k] === cc)).filter((k): k is ClsKey => !!k);
 
