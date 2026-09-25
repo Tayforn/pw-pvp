@@ -6,7 +6,7 @@
 import { supabase } from '../app/supabaseClient';
 import {
   isRegistrationOpen,
-  type ArmorRefine, type ArmorSet, type BalanceStats, type Build, type CharClass, type CharLevel, type Gems, type RingGrade, type Genie, type PlayerGear, type Registration,
+  type ArmorRefine, type ArmorSet, type BalanceStats, type DollPower, type Build, type CharClass, type CharLevel, type Gems, type RingGrade, type Genie, type PlayerGear, type Registration,
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
@@ -43,6 +43,8 @@ interface RegistrationRow {
   ring1?: RingGrade | null; ring1_refine?: number | null; ring2?: RingGrade | null; ring2_refine?: number | null;
   // 0028
   character_id?: string | null; character_rev?: number | null; character_snapshot?: unknown; doll_confirmed_at?: string | null;
+  // 0029
+  doll_power?: DollPower | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -73,6 +75,13 @@ const gearFromRow = (r: RegistrationRow): PlayerGear | null => {
     ring2: r.ring2 ?? null, ring2Refine: r.ring2 === 'r9r1' ? r.ring2_refine ?? 0 : null,
   };
 };
+/** Сила з ляльки лише коли обидва числа додатні — інакше скор з ляльки не рахуємо. */
+const validPower = (p: unknown): DollPower | null => {
+  if (!p || typeof p !== 'object') return null;
+  const o = p as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return n(o.off) > 0 && n(o.def) > 0 ? { off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine) } : null;
+};
 const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
   const a = adj?.get(r.id);
   return {
@@ -83,6 +92,7 @@ const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registratio
     scoreAdjust: a?.score_adjust ?? 0, scoreAdjustNote: a?.note ?? null,
     characterId: r.character_id ?? null, characterRev: r.character_rev ?? null,
     characterSnapshot: r.character_snapshot ?? null, dollConfirmedAt: r.doll_confirmed_at ?? null,
+    dollPower: validPower(r.doll_power),
   };
 };
 const gearToRow = (g: PlayerGear) => ({
@@ -153,7 +163,7 @@ export async function submitRegistration(input: {
   /** Балансний фул-рандом: анкета обов'язкова (RLS відхилить заявку без char_class). */
   gear?: PlayerGear; attackLevel?: number | null; defenseLevel?: number | null;
   /** Заявка персонажем із ляльки: хто, яка ревізія, знімок документа (0028). */
-  character?: { id: string; revision: number; snapshot: unknown };
+  character?: { id: string; revision: number; snapshot: unknown; power: DollPower | null };
 }): Promise<void> {
   // Свіжа перевірка прямо перед вставкою — стан на сторінці міг застаріти
   // (вкладка відкрита довго, адмін тим часом закрив реєстрацію чи турнір
@@ -171,7 +181,11 @@ export async function submitRegistration(input: {
     ...(input.gear ? { ...gearToRow(input.gear), attack_level: input.attackLevel ?? null, defense_level: input.defenseLevel ?? null } : {}),
     // Лише для заявки персонажем — звичайна анкета не пише нових колонок і працює й до 0028.
     ...(input.character
-      ? { character_id: input.character.id, character_rev: input.character.revision, character_snapshot: input.character.snapshot, doll_confirmed_at: new Date().toISOString() }
+      ? {
+          character_id: input.character.id, character_rev: input.character.revision, character_snapshot: input.character.snapshot,
+          doll_confirmed_at: new Date().toISOString(),
+          ...(input.character.power ? { doll_power: input.character.power } : {}),
+        }
       : {}),
   });
   if (error) throw error;

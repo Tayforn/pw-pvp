@@ -228,7 +228,7 @@ export default function RegisterPage() {
         rulesAck,
         memberNicknames: isTeam ? members.map((m) => m.trim()) : undefined,
         ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
-        ...(charData ? { character: { id: charData.rec.id, revision: charData.rec.revision, snapshot: charData.doc } } : {}),
+        ...(charData ? { character: { id: charData.rec.id, revision: charData.rec.revision, snapshot: charData.doc, power: charData.power } } : {}),
       });
       markRegistered(tournamentId);
       // У fixed-командному поле — назва команди, не нік; його не запам'ятовуємо.

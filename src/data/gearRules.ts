@@ -11,6 +11,7 @@
 // =========================================================
 
 import type {
+  DollPower,
   ArmorRefine, ArmorSet, Build, CharClass, CharLevel, RingGrade, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
 } from './types';
 
@@ -178,6 +179,8 @@ export interface ScoringRules {
   setsFromDoll: boolean;
   /** Точка й камені з ляльки (заявка персонажем). */
   doll: DollGearRules;
+  /** Скор прямо з характеристик ляльки (атака й живучість відносно еталона класу). */
+  dollScore: DollScoreRules;
   armorRefine: Record<ArmorRefine, number>;
   /** камені в основному сеті — за вартістю по зростанню; максимум = 24 камені по 2 ПЗ */
   gems: Record<Gems, number>;
@@ -273,6 +276,61 @@ function normalizeDollGear(raw: unknown): DollGearRules {
   const hybrid = share(bv.hybrid, BUILTIN_DOLL_GEAR.buildVit.hybrid);
   const con = Math.max(hybrid, share(bv.con, BUILTIN_DOLL_GEAR.buildVit.con));
   return { scope: d.scope === 'all' ? 'all' : 'main', gemPoints, buildVit: { hybrid, con } };
+}
+
+/** Еталон класу для скору з ляльки: атака й живучість еталонної ляльки і
+ * скільки балів спорядження вона має отримати. */
+export interface DollRef {
+  off: number;
+  def: number;
+  /** Бали спорядження еталона (без класу, джина, ШГ/Вознєса й запасного). */
+  base: number;
+  /** Звідки взято — ім'я персонажа (для адміна). */
+  label: string;
+}
+
+/** off — не рахуємо; shadow — рахуємо й показуємо адміну, жеребка по анкеті;
+ * on — у жеребці скор заявки персонажем береться з ляльки. */
+export type DollScoreMode = 'off' | 'shadow' | 'on';
+
+export interface DollScoreRules {
+  mode: DollScoreMode;
+  /** Бали за подвоєння сили відносно еталона. */
+  perDouble: number;
+  /** Частка атаки у скорі за збіркою (решта — живучість). */
+  alphaByBuild: Record<Build, number>;
+  /** Типовий суперник: його ПА (для живучості) і ПЗ (для атаки). */
+  oppPa: number;
+  oppPz: number;
+  refs: Partial<Record<CharClass, DollRef>>;
+}
+
+export const BUILTIN_DOLL_SCORE: DollScoreRules = {
+  mode: 'off',
+  perDouble: 50,
+  alphaByBuild: { dd: 0.7, hybrid: 0.5, con: 0.3 },
+  oppPa: 40,
+  oppPz: 40,
+  refs: {},
+};
+
+function normalizeDollScore(raw: unknown): DollScoreRules {
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const num = (v: unknown, def: number, min = 0) => (typeof v === 'number' && Number.isFinite(v) && v >= min ? v : def);
+  const ab = (d.alphaByBuild && typeof d.alphaByBuild === 'object' ? d.alphaByBuild : {}) as Record<string, unknown>;
+  const alphaByBuild = {} as Record<Build, number>;
+  for (const b of ['dd', 'hybrid', 'con'] as Build[]) alphaByBuild[b] = Math.min(1, num(ab[b], BUILTIN_DOLL_SCORE.alphaByBuild[b]));
+  const refs: Partial<Record<CharClass, DollRef>> = {};
+  const rr = (d.refs && typeof d.refs === 'object' ? d.refs : {}) as Record<string, unknown>;
+  for (const cls of Object.keys(rr)) {
+    const x = rr[cls] as Record<string, unknown> | null;
+    if (!x || typeof x !== 'object' || !(cls in BUILTIN_CLASS_PROFILES)) continue;
+    const off = num(x.off, 0), def = num(x.def, 0);
+    if (off <= 0 || def <= 0) continue;
+    refs[cls as CharClass] = { off, def, base: num(x.base, 0, -1000), label: typeof x.label === 'string' ? x.label.slice(0, 40) : '' };
+  }
+  const mode = d.mode === 'shadow' || d.mode === 'on' ? d.mode : 'off';
+  return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs };
 }
 
 /** Вбудована версія — фолбек і шаблон для нових версій. */
@@ -452,6 +510,7 @@ const BUILTIN: GearRules = {
   hiddenArmorSets: ['r9'],
   setsFromDoll: false,
   doll: BUILTIN_DOLL_GEAR,
+  dollScore: BUILTIN_DOLL_SCORE,
   armorRefine: { a0_4: 0, a5: 3, a6: 7, a7: 11, a8: 17, a9: 23, a10: 27, a11: 29, a12: 30 },
   // 24 камені; повні Лагеря = 48 ПЗ (≈ різниця між топовим і слабким грейдом зброї) → max 40
   gems: { g0_9: 0, g10: 4, g11: 8, xuan: 14, xuan_pa: 20, pa: 26, xuan_camp: 33, camp: 40 },
@@ -650,6 +709,7 @@ export function normalizeRules(raw: unknown): GearRules {
     hiddenArmorSets: hidden,
     setsFromDoll: r.setsFromDoll === true,
     doll: normalizeDollGear(r.doll),
+    dollScore: normalizeDollScore(r.dollScore),
     armorRefine: numTable(r.armorRefine, BUILTIN.armorRefine),
     gems: numTable(r.gems, BUILTIN.gems),
     specialSetGemsFactor: isNum(r.specialSetGemsFactor) ? r.specialSetGemsFactor : BUILTIN.specialSetGemsFactor,
@@ -767,6 +827,26 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
     shgVoznesScore(g, r) +
     ringsScore(g, r)
   );
+}
+
+/**
+ * Скор із ляльки: бали класу + бали спорядження з атаки й живучості відносно
+ * еталона класу + джин + ШГ/Вознєс + запасне (сети, ПЗ-зброя). Грейди зброї,
+ * броні, камені, точки, кільця, трактат і рівень уже сидять у характеристиках.
+ * null — немає еталона для класу.
+ */
+export function dollGearScoreWith(g: PlayerGear, power: DollPower, r: ScoringRules, teamSize: number | null | undefined): number | null {
+  const ref = r.dollScore.refs[g.charClass];
+  if (!ref || power.off <= 0 || power.def <= 0) return null;
+  const alpha = r.dollScore.alphaByBuild[g.build ?? 'dd'];
+  const rel = alpha * Math.log2(power.off / ref.off) + (1 - alpha) * Math.log2(power.def / ref.def);
+  const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel);
+  return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + shgVoznesScore(g, r) + swapScore(g, r));
+}
+
+/** Бали спорядження еталона за таблицею — те, що скор з ляльки замінює (без класу, джина, ШГ/Вознєса, запасного). */
+export function tableGearPartWith(g: PlayerGear, r: ScoringRules, teamSize: number | null | undefined): number {
+  return computeGearScoreWith(g, r, teamSize) - classPointsFor(r, g.charClass, teamSize) - r.genie[g.genie] - shgVoznesScore(g, r) - swapScore(g, r);
 }
 
 export function computeGearScore(g: PlayerGear, version: string | null | undefined, teamSize: number | null | undefined): number {

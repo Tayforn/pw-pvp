@@ -52,6 +52,17 @@ export type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
 
 /** Усі поля завжди присутні (constraint registrations_gear_all_or_none):
  * невідмічений чекбокс — це false / [] / {}, а не null. */
+/** «Сила» персонажа з ляльки (src/doll/model/power.ts) — рахується в браузері
+ * гравця в мить заявки й зберігається в ній (0029): off — атака, def —
+ * живучість, pa/pz — для довідки, engine — версія формул ляльки. */
+export interface DollPower {
+  off: number;
+  def: number;
+  pa: number;
+  pz: number;
+  engine: number;
+}
+
 export interface PlayerGear {
   charClass: CharClass;
   /** Рівень персонажа (0024); null — анкета, подана до появи поля (рахується як 90–100). */
@@ -189,6 +200,8 @@ export interface Registration {
   characterRev: number | null;
   characterSnapshot: unknown;
   dollConfirmedAt: string | null;
+  /** Атака й живучість із ляльки на момент заявки (0029); null — анкета без персонажа. */
+  dollPower: DollPower | null;
 }
 
 /** Балансний фул-рандом = командний турнір з індивідуальною реєстрацією. */

@@ -7,7 +7,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, computeGearScore, playerProfile, ratingBonus, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, computeGearScore, dollGearScoreWith, playerProfile, ratingBonus, rulesFor, tierFor } from './gearRules';
 import { evaluateTeams, teamStrengthFromSnapshot, type BalancePlayer, type FormTeamsResult } from './balance';
 import { resolveBuffOptions, type BuffOptions } from './ruleFlags';
 import { ratingOf, type PlayerRating } from './ratings';
@@ -47,10 +47,20 @@ export interface ScoreBreakdown {
 /** teamSize — розмір команди турніру (від нього залежать бали за клас). */
 export function scoreBreakdown(r: Registration, version: string, ratings: Map<string, PlayerRating> | undefined, teamSize: number | null | undefined): ScoreBreakdown | null {
   if (!r.gear) return null;
-  const gear = computeGearScore(r.gear, version, teamSize);
+  // Режим «увімкнено»: заявка персонажем рахується з ляльки (якщо для класу є еталон).
+  const rules = rulesFor(version);
+  const fromDoll = rules.dollScore.mode === 'on' ? dollScoreOf(r, version, teamSize) : null;
+  const gear = fromDoll ?? computeGearScore(r.gear, version, teamSize);
   const adjust = r.scoreAdjust ?? 0;
   const rating = ratings ? ratingBonus(ratingOf(ratings, r.nickname)?.rating, rulesFor(version)) : 0;
   return { gear, adjust, rating, total: gear + adjust + rating };
+}
+
+/** Скор спорядження з ляльки (атака й живучість відносно еталона класу) —
+ * для заявок персонажем; null — немає сили в заявці або еталона для класу. */
+export function dollScoreOf(r: Registration, version: string, teamSize: number | null | undefined): number | null {
+  if (!r.gear || !r.dollPower) return null;
+  return dollGearScoreWith(r.gear, r.dollPower, rulesFor(version), teamSize);
 }
 
 /** Скор гравця для жеребки/відображення в адмінці (з корекцією і рейтингом). */

@@ -18,6 +18,7 @@ import {
 } from '../../data/gearRules';
 import { draftTiersValid, patchDraft, useRulesDraft } from '../../data/rulesDraftStore';
 import { NumInput, NumTable } from './RulesEditor';
+import DollScoreCard from './DollScoreCard';
 
 /** Контрольні архетипи — щоб одразу бачити, куди зсунуться tier після правки. */
 const ARCHETYPES: { name: string; gear: PlayerGear }[] = [
@@ -314,6 +315,8 @@ export default function ScaleTab() {
           від {Math.round(draft.doll.buildVit.hybrid * 100)} % — гібрид, від {Math.round(draft.doll.buildVit.con * 100)} % — кон.
         </p>
       </div>
+
+      <DollScoreCard draft={draft} patch={patch} />
 
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>

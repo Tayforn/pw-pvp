@@ -13,10 +13,10 @@ import { errorMessage, reportError } from '../../app/errorMessage';
 import type { PlayerGear, Registration, Tournament } from '../../data/types';
 import { isBalancedRandom } from '../../data/types';
 import { deleteRegistration, fetchRegistrations, setRegistrationStatus, subscribeToTournamentChanges, updateRegistrationAdjust, updateRegistrationGear } from '../../data/tournaments';
-import { CLASS_LABELS, gearSummary, tierFor } from '../../data/gearRules';
+import { CLASS_LABELS, computeGearScore, gearSummary, rulesFor, tierFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
-import { rulesVersionFor, scoreBreakdown, teamRows } from '../../data/teams';
+import { dollScoreOf, rulesVersionFor, scoreBreakdown, teamRows } from '../../data/teams';
 import GearFields, { isGearComplete } from '../../components/GearFields';
 import TierBadge from '../../components/PlayerPopover';
 
@@ -191,6 +191,23 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
               ) : (
                 <span className="badge bad">без анкети</span>
               ))}
+              {balanced && r.gear && r.dollPower && rulesFor(version).dollScore.mode !== 'off' && (() => {
+                const doll = dollScoreOf(r, version, tournament.teamSize);
+                const table = computeGearScore(r.gear, version, tournament.teamSize);
+                const on = rulesFor(version).dollScore.mode === 'on';
+                return (
+                  <span
+                    className={'badge ' + (doll == null ? 'warn' : 'mute')}
+                    title={
+                      doll == null
+                        ? 'Для цього класу ще не задано еталон у «Шкалі балів» — скор з ляльки не рахується.'
+                        : `Скор спорядження з ляльки ${doll} проти ${table} за анкетою${on ? ' — у жеребці йде скор з ляльки' : ' (тіньовий режим: жеребка поки за анкетою)'}. Атака ${r.dollPower!.off}, живучість ${r.dollPower!.def}, ПА ${r.dollPower!.pa}, ПЗ ${r.dollPower!.pz}.`
+                    }
+                  >
+                    {doll == null ? 'лялька: нема еталона' : `з ляльки ${doll} · анкета ${table}`}
+                  </span>
+                );
+              })()}
               {elo && elo.games > 0 && (
                 <span className="badge mute" title={`${elo.wins} перемог`}>Ело {Math.round(elo.rating)} · {elo.games} ігор</span>
               )}

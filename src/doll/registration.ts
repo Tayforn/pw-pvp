@@ -4,13 +4,15 @@
 // вантажиться динамічно (import()), лише коли гравець обрав персонажа.
 // =========================================================
 
-import { currentRulesVersion, rulesFor } from '../data/gearRules';
+import { currentRulesVersion, rulesFor, tableGearPartWith, type DollRef, type GearRules } from '../data/gearRules';
 import { getCharacter, listCharacters, type CharacterRecord, type CharacterSummary } from './api/characters';
 import { ensureCats } from './data/catalog';
 import { ensureRefData } from './data/refLoader';
 import { validateDoc, type CharacterDoc } from './model/doc';
 import { docCats } from './model/hydrate';
-import { dollFacts, gearFromCharacter, type CharacterGear } from './model/sheet';
+import { CLS_CHAR, dollFacts, gearFromCharacter, type CharacterGear } from './model/sheet';
+import { powerOf } from './model/power';
+import type { CharClass, DollPower } from '../data/types';
 
 export type { CharacterSummary };
 
@@ -20,6 +22,8 @@ export interface CharacterForRegistration {
   result: CharacterGear;
   /** Чи йдуть свап-сети в бали (перемикач поточної версії шкали). */
   setsFromDoll: boolean;
+  /** Атака й живучість — для скору з ляльки. */
+  power: DollPower;
 }
 
 export function myCharacters(): Promise<CharacterSummary[]> {
@@ -36,5 +40,27 @@ export async function characterForRegistration(id: string): Promise<CharacterFor
   const rules = rulesFor(currentRulesVersion());
   const setsFromDoll = rules.setsFromDoll;
   const result = gearFromCharacter(doc, dollFacts(doc, rules), { setsFromDoll });
-  return { rec, doc, result, setsFromDoll };
+  const power = powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz });
+  return { rec, doc, result, setsFromDoll, power };
+}
+
+/**
+ * Еталон класу для «Шкали балів» зі збереженого персонажа: атака й живучість
+ * (з типовим суперником чернетки шкали) і бали спорядження за таблицею, якщо
+ * анкета персонажа повна (інакше base = 0 — адмін впише сам).
+ */
+export async function referenceFromCharacter(id: string, rules: GearRules): Promise<{ cls: CharClass; ref: DollRef; note: string | null }> {
+  const rec = await getCharacter(id);
+  const v = validateDoc(rec.doc);
+  const doc = v.ok ? v.doc : v.recoverable;
+  if (!doc) throw new Error('Документ персонажа пошкоджено.');
+  await Promise.all([ensureRefData(), ensureCats(docCats(doc))]);
+  const power = powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz });
+  const result = gearFromCharacter(doc, dollFacts(doc, rules), { setsFromDoll: false });
+  const base = result.gear ? Math.round(tableGearPartWith(result.gear, rules, 3)) : 0;
+  return {
+    cls: CLS_CHAR[doc.cls],
+    ref: { off: power.off, def: power.def, base, label: rec.name },
+    note: result.gear ? null : `Анкета персонажа неповна (${result.missing.join(', ')}) — бали еталона впиши вручну.`,
+  };
 }
