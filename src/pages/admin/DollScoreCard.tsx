@@ -35,6 +35,7 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
   const [pick, setPick] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [sameBase, setSameBase] = useState('');
 
   const loadChars = () => {
     setMsg(null);
@@ -55,6 +56,53 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
       })
       .catch((e) => setMsg('Не вдалося взяти еталон: ' + (e instanceof Error ? e.message : String(e))))
       .finally(() => setBusy(false));
+  };
+
+  // Усі персонажі «Еталон…» разом: кожен стає еталоном свого класу. Два на один
+  // клас — береться перший за списком (найсвіжіший), решта названа в повідомленні.
+  const takeAll = () => {
+    setBusy(true);
+    setMsg(null);
+    import('../../doll/registration')
+      .then(async (m) => {
+        const list = (await m.myCharacters()).filter((c) => c.name.toLowerCase().startsWith('еталон'));
+        if (!list.length) throw new Error('немає персонажів з іменем, що починається на «Еталон».');
+        const refs: Partial<Record<CharClass, DollRef>> = {};
+        const dup: string[] = [];
+        const failed: string[] = [];
+        for (const c of list) {
+          try {
+            const r = await m.referenceFromCharacter(c.id, draft);
+            if (refs[r.cls]) dup.push(c.name);
+            else refs[r.cls] = r.ref;
+          } catch (e) {
+            failed.push(`${c.name} (${e instanceof Error ? e.message : String(e)})`);
+          }
+        }
+        return { refs, dup, failed };
+      })
+      .then(({ refs, dup, failed }) => {
+        set({ refs: { ...ds.refs, ...refs } });
+        const got = CLASS_ORDER.filter((c) => refs[c]);
+        const miss = CLASS_ORDER.filter((c) => !refs[c] && !ds.refs[c]);
+        setMsg(
+          `Взято еталонів: ${got.length} (${got.map((c) => CLASS_LABELS[c]).join(', ') || '—'}).` +
+            (miss.length ? ` Без еталона: ${miss.map((c) => CLASS_LABELS[c]).join(', ')}.` : '') +
+            (dup.length ? ` Пропущено як другий на клас: ${dup.join(', ')}.` : '') +
+            (failed.length ? ` Не вдалося: ${failed.join('; ')}.` : '') +
+            ' Не забудь зберегти версію шкали.',
+        );
+      })
+      .catch((e) => setMsg('Не вдалося взяти еталони: ' + (e instanceof Error ? e.message : String(e))))
+      .finally(() => setBusy(false));
+  };
+  const applySameBase = () => {
+    const v = Number(sameBase);
+    if (!Number.isFinite(v) || sameBase.trim() === '') return;
+    const refs = { ...ds.refs };
+    for (const c of Object.keys(refs) as CharClass[]) refs[c] = { ...refs[c]!, base: Math.round(v) };
+    set({ refs });
+    setMsg(`Бали еталона ${Math.round(v)} — для всіх ${Object.keys(refs).length} класів з еталоном.`);
   };
 
   return (
@@ -157,13 +205,28 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end', marginTop: 10 }}>
+        {me && (
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={takeAll}>
+            {busy ? 'Рахую…' : 'Взяти еталони з усіх моїх «Еталон…»'}
+          </button>
+        )}
+        <label className="field" style={{ width: 150 }}>
+          <span>Бали еталона всім</span>
+          <input type="number" value={sameBase} placeholder="напр. 92" onChange={(e) => setSameBase(e.target.value)} />
+        </label>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={sameBase.trim() === '' || !Object.keys(ds.refs).length} onClick={applySameBase}>
+          Застосувати до всіх
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end', marginTop: 10 }}>
         {!me ? (
           <button type="button" className="btn btn-ghost btn-sm" onClick={login}>
             Увійти через Discord, щоб узяти еталон із персонажа
           </button>
         ) : chars === null ? (
           <button type="button" className="btn btn-ghost btn-sm" onClick={loadChars}>
-            Взяти еталон із мого персонажа…
+            Взяти еталон з одного персонажа…
           </button>
         ) : (
           <>
