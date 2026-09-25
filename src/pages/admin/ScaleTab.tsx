@@ -14,7 +14,7 @@ import {
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
   RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, computeGearScoreWith, maxGearScoreOf, sameForAllSizes, tierForWith,
-  type SizeBucket,
+  RECOMMENDED_SWAP_TOTAL_CAP, type SizeBucket,
 } from '../../data/gearRules';
 import { draftTiersValid, patchDraft, useRulesDraft } from '../../data/rulesDraftStore';
 import { NumInput, NumTable } from './RulesEditor';
@@ -262,6 +262,26 @@ export default function ScaleTab() {
           <b>Спеціальні сети</b>
           <span className="badge mute">max {draft.specialSetsCap}</span>
         </div>
+        <div className="field-row" style={{ gap: 10, alignItems: 'end', marginBottom: 8 }}>
+          <label className="field">
+            <span>Спільна стеля запасного</span>
+            <input
+              type="number"
+              min={0}
+              placeholder="без стелі"
+              value={draft.swapTotalCap ?? ''}
+              onChange={(e) => patch({ swapTotalCap: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+            />
+          </label>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => patch({ swapTotalCap: RECOMMENDED_SWAP_TOTAL_CAP })}>
+            Рекомендована: {RECOMMENDED_SWAP_TOTAL_CAP}
+          </button>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          ПЗ-зброя + свап-сети + камені в них разом — не більше цього числа, щоб запасне спорядження не важило більше за основний круг (сет R8R — {draft.armorSet.r8r}).
+          Зараз повний набір свапів дає {Math.min(draft.swapTotalCap ?? Infinity, draft.weaponPz + draft.specialSetsCap + draft.specialSetGemsCap)}
+          {draft.swapTotalCap == null ? ' (без стелі)' : ''}. Порожнє поле — без спільної стелі.
+        </p>
         <label className="checkbox-row" style={{ marginBottom: 8 }}>
           <input type="checkbox" checked={draft.setsFromDoll} onChange={(e) => patch({ setsFromDoll: e.target.checked })} />
           Рахувати свап-сети з ляльки в заявках персонажем

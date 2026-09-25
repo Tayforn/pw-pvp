@@ -187,6 +187,11 @@ export interface ScoringRules {
   /** бонус за кожен додатковий сет понад найсильніший (гнучкість свапу) */
   specialSetsExtra: number;
   specialSetsCap: number;
+  /** Спільна стеля всього «запасного» спорядження: ПЗ-зброя + свап-сети + камені
+   * в них разом. null — без спільної стелі (так рахуються версії до появи поля).
+   * Навіщо: запасне не має важити більше за основний круг (сет R8R — 22 бали),
+   * а без стелі повний набір свапів давав до 55. */
+  swapTotalCap: number | null;
   tract: Record<Tract, number>;
   genie: Record<Genie, number>;
   /** рівень персонажа; версії до появи поля беруть таблицю вбудованої (анкети
@@ -404,6 +409,7 @@ const BUILTIN: GearRules = {
   specialSets: { pz: 15, pa: 12, aspd: 8 },
   specialSetsExtra: 5,
   specialSetsCap: 20,
+  swapTotalCap: null,
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
   // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
   genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
@@ -597,6 +603,7 @@ export function normalizeRules(raw: unknown): GearRules {
     specialSets: numTable(r.specialSets, BUILTIN.specialSets),
     specialSetsExtra: isNum(r.specialSetsExtra) ? r.specialSetsExtra : BUILTIN.specialSetsExtra,
     specialSetsCap: isNum(r.specialSetsCap) ? r.specialSetsCap : BUILTIN.specialSetsCap,
+    swapTotalCap: isNum(r.swapTotalCap) && r.swapTotalCap >= 0 ? r.swapTotalCap : null,
     tract: numTable(r.tract, BUILTIN.tract),
     genie: numTable(r.genie, BUILTIN.genie),
     level: numTable(r.level, BUILTIN.level),
@@ -647,6 +654,15 @@ export function weaponGradeScore(cls: CharClass, grade: WeaponGrade, r: ScoringR
   return r.weaponGradeByClass[cls]?.[grade] ?? r.weaponGrade[grade];
 }
 
+/** Рекомендована спільна стеля запасного спорядження (порядку сету R8R). */
+export const RECOMMENDED_SWAP_TOTAL_CAP = 25;
+
+/** Усе «запасне» разом: ПЗ-зброя + свап-сети + камені в них, не більше спільної стелі. */
+export function swapScore(g: Pick<PlayerGear, 'weaponPz' | 'specialSets' | 'specialSetGems'>, r: ScoringRules): number {
+  const sum = (g.weaponPz ? r.weaponPz : 0) + specialSetGemsScore(g, r) + specialSetsScore(g.specialSets, r);
+  return r.swapTotalCap == null ? sum : Math.min(r.swapTotalCap, sum);
+}
+
 /** Камені у свап-сетах: factor × таблиця за кожен відмічений сет, разом ≤ cap. */
 export function specialSetGemsScore(g: Pick<PlayerGear, 'specialSets' | 'specialSetGems'>, r: ScoringRules): number {
   const sum = Array.from(new Set(g.specialSets)).reduce((s, set) => s + r.specialSetGemsFactor * r.gems[g.specialSetGems[set] ?? 'g0_9'], 0);
@@ -687,12 +703,10 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
     classPointsFor(r, g.charClass, teamSize) +
     weaponGradeScore(g.charClass, g.weaponGrade, r) +
     r.weaponRefine[g.weaponRefine] +
-    (g.weaponPz ? r.weaponPz : 0) +
+    swapScore(g, r) +
     r.armorSet[g.armorSet] +
     r.armorRefine[g.armorRefine] +
     r.gems[g.gems] +
-    specialSetGemsScore(g, r) +
-    specialSetsScore(g.specialSets, r) +
     r.tract[g.tract] +
     r.genie[g.genie] +
     r.level[g.charLevel ?? 'l90_100'] +
@@ -709,7 +723,8 @@ export function maxGearScoreOf(r: ScoringRules): number {
   const mx = (o: Record<string, number>) => Math.max(...Object.values(o));
   const maxWeapon = Math.max(mx(r.weaponGrade), ...Object.values(r.weaponGradeByClass).map((o) => (Object.keys(o).length ? mx(o as Record<string, number>) : 0)));
   const maxClass = Math.max(...SIZE_BUCKETS.map((s) => mx(r.classPointsBySize[s])));
-  return maxClass + maxWeapon + mx(r.weaponRefine) + r.weaponPz + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + r.specialSetGemsCap + r.specialSetsCap + mx(r.tract) + mx(r.genie) + mx(r.level)
+  const swapMax = r.weaponPz + r.specialSetGemsCap + r.specialSetsCap;
+  return maxClass + maxWeapon + mx(r.weaponRefine) + (r.swapTotalCap == null ? swapMax : Math.min(r.swapTotalCap, swapMax)) + mx(r.armorSet) + mx(r.armorRefine) + mx(r.gems) + mx(r.tract) + mx(r.genie) + mx(r.level)
     + r.shg + r.voznes + r.shgVoznesBonus + ITEM_REFINE_MAX * (r.shgRefinePerLevel + r.voznesRefinePerLevel)
     + 2 * (mx(r.rings) + ITEM_REFINE_MAX * r.ringRefinePerLevel);
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_BUFFS, BUILTIN_RULES_VERSION, CLASS_ORDER, PHYS_CLASSES, RECOMMENDED_BUFFS_PCT, RECOMMENDED_COMPOSITION_WEIGHTS, RECOMMENDED_PAIRS_RULE, SIZE_BUCKETS,
   computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, isPhysClass, maxGearScore,
-  nextRulesVersion, normalizeBuffs, normalizeComposition, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, tierFor, weaponGradeScore,
+  nextRulesVersion, normalizeBuffs, normalizeComposition, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, swapScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { CharClass, PlayerGear } from '../types';
 
@@ -391,5 +391,29 @@ describe('бафи тімейтів і правило 4 для пар у вер�
   it('фізичні класи: Лучник, Сін, Воїн, Танк, Страж; решта — маги', () => {
     expect(PHYS_CLASSES.slice().sort()).toEqual(['archer', 'assassin', 'barbarian', 'blademaster', 'seeker']);
     expect(CLASS_ORDER.filter((c) => !isPhysClass(c)).sort()).toEqual(['cleric', 'mystic', 'psychic', 'venomancer', 'wizard']);
+  });
+});
+
+describe('спільна стеля запасного спорядження', () => {
+  const full = gear({ weaponPz: true, specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' } });
+
+  it('без стелі (старі версії) — як раніше: ПЗ-зброя + сети + камені', () => {
+    const r = normalizeRules({});
+    expect(r.swapTotalCap).toBeNull();
+    expect(swapScore(full, r)).toBe(r.weaponPz + specialSetsScore(full.specialSets, r) + specialSetGemsScore(full, r));
+  });
+
+  it('зі стелею 25 — не більше 25, менші набори не зачіпає', () => {
+    const r = normalizeRules({ swapTotalCap: 25 });
+    expect(swapScore(full, r)).toBe(25);
+    const onlyWeapon = gear({ weaponPz: true });
+    expect(swapScore(onlyWeapon, r)).toBe(r.weaponPz);
+    expect(computeGearScoreWith(full, r, 3) - computeGearScoreWith(base, r, 3)).toBe(25);
+  });
+
+  it('стеля зберігається у версії й зменшує максимум шкали', () => {
+    const r = normalizeRules({ swapTotalCap: 25 });
+    expect(normalizeRules(serializeRules(r)).swapTotalCap).toBe(25);
+    expect(normalizeRules({ swapTotalCap: -3 }).swapTotalCap).toBeNull();
   });
 });
