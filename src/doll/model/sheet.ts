@@ -1,21 +1,26 @@
 // =========================================================
-// ЛЯЛЬКА — анкета для турнірів. Грейди речей (Нірвана / R8R / ЦГД / R9…,
-// кільця, камені) у каталозі не позначені, тож ці поля гравець заповнює
-// сам один раз — у персонажі, і вони їдуть у кожну заявку. Решту бере
-// лялька: клас і рівень, ПЗ-зброю й свап-сети (з характеристик: сет
-// рахується, якщо в ньому показник досягає порогу і вищий, ніж у Головному).
-// Згодом, коли з'явиться таблиця грейдів речей, частина полів анкети
-// заповнюватиметься з ляльки автоматично.
+// ЛЯЛЬКА — анкета заявки з персонажа. Більшість полів лялька визначає сама:
+// клас і рівень; збірку (ДД / гібрид / кон — за часткою очок у Тілобудові);
+// точку зброї, точку броні (середня, округлена вгору), точку кілець R9R1;
+// камені (поштучно, бали за клас каменя з каталогу); ПЗ-зброю й свап-сети
+// (сет рахується, якщо показник у ньому досягає порогу і вищий, ніж у
+// Головному) разом із каменями сетів. Гравець заповнює лише те, чого в
+// каталозі немає: грейд зброї й сету броні, грейди кілець, трактат, джин,
+// ШГ/Вознєс — це поля «Анкети для турнірів» у персонажі (doc.sheet).
+// Згодом, коли скор рахуватиметься прямо з характеристик ляльки, ці грейди
+// стануть непотрібні.
 // =========================================================
 
 import {
   ARMOR_REFINE_ORDER, ARMOR_SET_ORDER, BUILD_ORDER, GEMS_ORDER, GENIE_ORDER, RING_ORDER, SPECIAL_SET_ORDER,
-  TRACT_ORDER, WEAPON_GRADE_ORDER, WEAPON_REFINE_ORDER,
+  TRACT_ORDER, WEAPON_GRADE_ORDER, WEAPON_REFINE_ORDER, type GemClass, type ScoringRules,
 } from '../../data/gearRules';
-import type { CharClass, CharLevel, Gems, PlayerGear, SpecialSet } from '../../data/types';
+import type { ArmorRefine, Build, CharClass, CharLevel, Gems, PlayerGear, SpecialSet, WeaponRefine } from '../../data/types';
+import { ATTR_BASE, gemDop } from '../core/stats';
+import type { Item } from '../core/types';
 import { derivedNumbers, type DerivedNumbers } from '../core/derived';
-import type { CharacterDoc, ClsKey } from './doc';
-import { CFG_MAIN, hydrate, toDollState, type CharacterModel, type ItemLookup } from './hydrate';
+import type { CharacterDoc, ClsKey, SlotKey } from './doc';
+import { CFG_MAIN, effectiveSlots, hydrate, toDollState, type CharacterModel, type ItemLookup } from './hydrate';
 
 /** Клас ляльки → клас сайту (підписи й порядок — як в анкеті турніру). */
 export const CLS_CHAR: Record<ClsKey, CharClass> = {
@@ -23,13 +28,13 @@ export const CLS_CHAR: Record<ClsKey, CharClass> = {
   js: 'archer', fx: 'assassin', sj: 'psychic', ej: 'seeker', rg: 'mystic',
 };
 
-/** Поля, які заповнює гравець (решту дає лялька). */
+/** Поля, які заповнює гравець (решту дає лялька). Старі чернетки могли мати й
+ * інші ключі (точка, камені, збірка) — перевірка їх приймає, мапер ігнорує. */
 export type SheetFields = Pick<
   PlayerGear,
-  | 'build' | 'weaponGrade' | 'weaponRefine' | 'armorSet' | 'armorRefine' | 'gems' | 'tract' | 'genie'
-  | 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine' | 'ring1' | 'ring1Refine' | 'ring2' | 'ring2Refine' | 'specialSetGems'
+  'weaponGrade' | 'armorSet' | 'tract' | 'genie' | 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine' | 'ring1' | 'ring2'
 >;
-export type Sheet = Partial<SheetFields>;
+export type Sheet = Partial<SheetFields> & Partial<Pick<PlayerGear, 'build' | 'weaponRefine' | 'armorRefine' | 'gems' | 'ring1Refine' | 'ring2Refine' | 'specialSetGems'>>;
 
 const REFINE_MAX = 12;
 const enumOk = (order: readonly string[], v: unknown) => typeof v === 'string' && order.includes(v);
@@ -40,7 +45,7 @@ export function sheetErrors(raw: unknown): string[] {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return ['анкета має бути обʼєктом'];
   const s = raw as Record<string, unknown>;
   const errs: string[] = [];
-  const en: Array<[keyof SheetFields, readonly string[]]> = [
+  const en: Array<[string, readonly string[]]> = [
     ['build', BUILD_ORDER], ['weaponGrade', WEAPON_GRADE_ORDER], ['weaponRefine', WEAPON_REFINE_ORDER], ['armorSet', ARMOR_SET_ORDER],
     ['armorRefine', ARMOR_REFINE_ORDER], ['gems', GEMS_ORDER], ['tract', TRACT_ORDER], ['genie', GENIE_ORDER],
   ];
@@ -67,10 +72,100 @@ export function charLevelOf(level: number): CharLevel {
   return 'l90_100';
 }
 
-/** Що лялька знає сама: ПЗ-зброя, свап-сети, показники атаки й захисту Головного. */
+// ── Що лялька рахує сама ──────────────────────────────────────────
+
+/** Броня з гніздами під камені — «камені основного сету» (6 речей × 4 = 24). */
+const ARMOR_SLOTS: SlotKey[] = ['ft', 'rv', 'tg', 'rx', 'wy', 'mj'];
+/** «Круг точки» — броня, біжа й кільця разом (зброя — окремо). */
+const REFINE_SLOTS: SlotKey[] = ['ft', 'vx', 'rv', 'st', 'tg', 'rx', 'wy', 'mj', 'cr', 'cd'];
+
+/** Клас каменя за каталогом: рівень (грейд hf) і що він дає в броні. */
+export function gemClass(gem: Item): GemClass {
+  const grade = Number(gem.hf) || 0;
+  if (grade >= 13) {
+    const dop = gemDop(gem, false)?.[0];
+    if (dop === 'sx') return 'campPz';
+    if (dop === 'ad') return 'topPa';
+    return 'topOther';
+  }
+  if (grade === 12) return 'g12';
+  if (grade === 11) return 'g11';
+  if (grade === 10) return 'g10';
+  return 'low';
+}
+
+/** Бали каменів у броні конфігурації (порожні слоти сету — як у Головному). */
+function gemPointsOf(model: CharacterModel, cfgId: string, rules: ScoringRules): number {
+  const slots = effectiveSlots(model, cfgId, { fillFromMain: true });
+  let sum = 0;
+  for (const slot of ARMOR_SLOTS) {
+    const iid = slots[slot];
+    const h = iid ? model.items.get(iid) : undefined;
+    for (const g of h?.gems ?? []) if (g) sum += rules.doll.gemPoints[gemClass(g)];
+  }
+  return sum;
+}
+
+/** Бали каменів → найближчий знизу рядок таблиці «Камні» (без проміжних значень у базі). */
+export function gemsBucket(points: number, rules: ScoringRules): Gems {
+  let best: Gems = 'g0_9';
+  for (const g of GEMS_ORDER) if (rules.gems[g] <= Math.round(points) && rules.gems[g] >= rules.gems[best]) best = g;
+  return best;
+}
+
+/** Середня точка броні, біжі й кілець конфігурації (надіте), округлена вгору. */
+function avgRefineOf(model: CharacterModel, cfgId: string): number | null {
+  const slots = effectiveSlots(model, cfgId, { fillFromMain: true });
+  const rs: number[] = [];
+  for (const slot of REFINE_SLOTS) {
+    const iid = slots[slot];
+    const h = iid ? model.items.get(iid) : undefined;
+    if (h?.item) rs.push(h.inst.r ?? 0);
+  }
+  return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
+}
+
+export function armorRefineBucket(avg: number): ArmorRefine {
+  const n = Math.min(REFINE_MAX, Math.ceil(avg - 1e-9));
+  return n <= 4 ? 'a0_4' : (`a${n}` as ArmorRefine);
+}
+
+export function weaponRefineBucket(r: number): WeaponRefine {
+  if (r >= 12) return 'w12';
+  if (r === 11) return 'w11';
+  if (r === 10) return 'w10';
+  if (r >= 8) return 'w8_9';
+  if (r >= 6) return 'w6_7';
+  return 'w0_5';
+}
+
+/** Збірка з атрибутів: частка вільних очок, вкладених у Тілобудову. */
+export function buildOf(doc: CharacterDoc, rules: ScoringRules): Build {
+  const { str, dex, vit, mag } = doc.attrs;
+  const free = str + dex + vit + mag - 4 * ATTR_BASE;
+  if (free <= 0) return 'dd';
+  const share = (vit - ATTR_BASE) / free;
+  if (share >= rules.doll.buildVit.con) return 'con';
+  if (share >= rules.doll.buildVit.hybrid) return 'hybrid';
+  return 'dd';
+}
+
+/** Що лялька знає сама. */
 export interface DollFacts {
+  build: Build;
   weaponPz: boolean;
   specialSets: SpecialSet[];
+  /** Камені кожного знайденого сету (з речей сету). */
+  specialSetGems: Partial<Record<SpecialSet, Gems>>;
+  weaponRefine: WeaponRefine | null;
+  armorRefine: ArmorRefine | null;
+  /** Середня точка до округлення (для підказки). */
+  armorRefineAvg: number | null;
+  gems: Gems;
+  gemPoints: number;
+  /** Точка кілець (для R9R1): cr — кільце 1, cd — кільце 2. */
+  ring1Refine: number | null;
+  ring2Refine: number | null;
   /** Показники з вікна персонажа (Головний, без бафів). */
   pa: number;
   pz: number;
@@ -83,23 +178,32 @@ const APS_MIN = 3.33;
 const CHANNEL_MIN = 30;
 
 const numsOf = (model: CharacterModel, cfgId: string): DerivedNumbers => derivedNumbers(toDollState(model, cfgId, { fillFromMain: true }));
+const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 /**
- * Вид сету — за тим, що він реально дає: у сеті (порожні слоти — як у
- * Головному) показник досягає порогу і вищий, ніж у Головному. ПЗ-зброя —
- * інша зброя в сеті, з якою (лише її замінивши) ПЗ Головного зростає.
- * Каталоги й довідники мають бути завантажені (ensureCats/ensureRefData).
+ * Усе, що лялька визначає сама. Каталоги й довідники мають бути завантажені
+ * (ensureCats/ensureRefData). Обсяг (Головний чи всі сети) — rules.doll.scope.
  */
-export function dollFacts(doc: CharacterDoc, lookup?: ItemLookup): DollFacts {
+export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemLookup): DollFacts {
   const model = hydrate(doc, lookup);
   const main = numsOf(model, CFG_MAIN);
   const kinds = new Set<SpecialSet>();
+  const kindGems: Partial<Record<SpecialSet, number>> = {};
   let weaponPz = false;
   for (const set of doc.sets) {
     const n = numsOf(model, set.id);
-    if (n.pz >= PZ_MIN && n.pz > main.pz) kinds.add('pz');
-    if (n.pa >= PA_MIN && n.pa > main.pa) kinds.add('pa');
-    if ((n.aps >= APS_MIN && n.aps > main.aps) || (n.channel >= CHANNEL_MIN && n.channel > main.channel)) kinds.add('aspd');
+    const got: SpecialSet[] = [];
+    if (n.pz >= PZ_MIN && n.pz > main.pz) got.push('pz');
+    if (n.pa >= PA_MIN && n.pa > main.pa) got.push('pa');
+    if ((n.aps >= APS_MIN && n.aps > main.aps) || (n.channel >= CHANNEL_MIN && n.channel > main.channel)) got.push('aspd');
+    if (got.length) {
+      const pts = gemPointsOf(model, set.id, rules);
+      // Кілька сетів одного виду — камені беремо з найкращого.
+      for (const k of got) {
+        kinds.add(k);
+        kindGems[k] = Math.max(kindGems[k] ?? 0, pts);
+      }
+    }
     const ta = set.slots.ta;
     if (!weaponPz && ta && ta !== doc.main.ta) {
       // Лише зброя з сету на Головному — щоб ПЗ-сет з іншою зброєю не рахувався двічі.
@@ -107,18 +211,46 @@ export function dollFacts(doc: CharacterDoc, lookup?: ItemLookup): DollFacts {
       if (numsOf(hydrate(probe, lookup), 'wpnprobe').pz > main.pz) weaponPz = true;
     }
   }
-  return { weaponPz, specialSets: SPECIAL_SET_ORDER.filter((s) => kinds.has(s)), pa: main.pa, pz: main.pz };
+
+  const cfgs = rules.doll.scope === 'all' ? [CFG_MAIN, ...doc.sets.map((s) => s.id)] : [CFG_MAIN];
+  const refines = cfgs.map((c) => avgRefineOf(model, c)).filter((x): x is number => x != null);
+  const armorRefineAvg = refines.length ? avg(refines) : null;
+  const gemPoints = avg(cfgs.map((c) => gemPointsOf(model, c, rules)));
+  const weapon = doc.main.ta ? model.items.get(doc.main.ta) : undefined;
+  const ringR = (slot: 'cr' | 'cd') => {
+    const iid = doc.main[slot];
+    const h = iid ? model.items.get(iid) : undefined;
+    return h?.item ? h.inst.r ?? 0 : null;
+  };
+  const specialSets = SPECIAL_SET_ORDER.filter((s) => kinds.has(s));
+  const specialSetGems: Partial<Record<SpecialSet, Gems>> = {};
+  for (const k of specialSets) specialSetGems[k] = gemsBucket(kindGems[k] ?? 0, rules);
+
+  return {
+    build: buildOf(doc, rules),
+    weaponPz,
+    specialSets,
+    specialSetGems,
+    weaponRefine: weapon?.item ? weaponRefineBucket(weapon.inst.r ?? 0) : null,
+    armorRefine: armorRefineAvg == null ? null : armorRefineBucket(armorRefineAvg),
+    armorRefineAvg,
+    gems: gemsBucket(gemPoints, rules),
+    gemPoints,
+    ring1Refine: ringR('cr'),
+    ring2Refine: ringR('cd'),
+    pa: main.pa,
+    pz: main.pz,
+  };
 }
 
 const SHEET_LABELS: Record<string, string> = {
-  build: 'збірка', weaponGrade: 'зброя', weaponRefine: 'заточка зброї', armorSet: 'сет броні', armorRefine: 'круг точки',
-  gems: 'камені', tract: 'трактат', genie: 'джин', ring1: 'кільце 1', ring2: 'кільце 2',
+  weaponGrade: 'грейд зброї', armorSet: 'сет броні', tract: 'трактат', genie: 'джин', ring1: 'кільце 1', ring2: 'кільце 2',
 };
 
 export interface CharacterGear {
-  /** Повна анкета для заявки; null — у персонажі бракує полів (missing). */
+  /** Повна анкета для заявки; null — бракує полів (missing). */
   gear: PlayerGear | null;
-  /** Чого бракує в анкеті персонажа — простими словами. */
+  /** Чого бракує — простими словами. */
   missing: string[];
   attackLevel: number;
   defenseLevel: number;
@@ -133,32 +265,30 @@ export interface CharacterGear {
 export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { setsFromDoll: boolean }): CharacterGear {
   const s: Sheet = doc.sheet ?? {};
   const missing: string[] = [];
-  for (const k of ['build', 'weaponGrade', 'weaponRefine', 'armorSet', 'armorRefine', 'gems', 'tract', 'genie', 'ring1', 'ring2'] as const) {
+  for (const k of ['weaponGrade', 'armorSet', 'tract', 'genie', 'ring1', 'ring2'] as const) {
     if (s[k] == null) missing.push(SHEET_LABELS[k]);
   }
   if (s.shg && s.shgRefine == null) missing.push('точка ШГ');
   if (s.voznes && s.voznesRefine == null) missing.push('точка Вознєса');
-  if (s.ring1 === 'r9r1' && s.ring1Refine == null) missing.push('точка кільця 1');
-  if (s.ring2 === 'r9r1' && s.ring2Refine == null) missing.push('точка кільця 2');
+  if (!facts.weaponRefine) missing.push('зброя на ляльці');
+  if (!facts.armorRefine) missing.push('броня на ляльці');
+  if (s.ring1 && s.ring1 !== 'moon' && facts.ring1Refine == null) missing.push('кільце 1 на ляльці');
+  if (s.ring2 && s.ring2 !== 'moon' && facts.ring2Refine == null) missing.push('кільце 2 на ляльці');
   const sets = opts.setsFromDoll ? facts.specialSets : [];
-  const setGems: Partial<Record<SpecialSet, Gems>> = {};
-  for (const k of sets) {
-    const g = s.specialSetGems?.[k];
-    if (g) setGems[k] = g;
-    else missing.push(`камені сету «${k === 'pz' ? 'ПЗ' : k === 'pa' ? 'ПА' : 'Спів / Аспд'}»`);
-  }
   const base = { attackLevel: Math.round(facts.pa), defenseLevel: Math.round(facts.pz), facts };
   if (missing.length) return { gear: null, missing, ...base };
+  const setGems: Partial<Record<SpecialSet, Gems>> = {};
+  for (const k of sets) setGems[k] = facts.specialSetGems[k] ?? 'g0_9';
   const gear: PlayerGear = {
     charClass: CLS_CHAR[doc.cls],
     charLevel: charLevelOf(doc.level),
-    build: s.build!,
+    build: facts.build,
     weaponGrade: s.weaponGrade!,
-    weaponRefine: s.weaponRefine!,
+    weaponRefine: facts.weaponRefine!,
     weaponPz: facts.weaponPz,
     armorSet: s.armorSet!,
-    armorRefine: s.armorRefine!,
-    gems: s.gems!,
+    armorRefine: facts.armorRefine!,
+    gems: facts.gems,
     specialSets: sets,
     specialSetGems: setGems,
     tract: s.tract!,
@@ -168,32 +298,37 @@ export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { s
     voznes: !!s.voznes,
     voznesRefine: s.voznes ? s.voznesRefine ?? 0 : null,
     ring1: s.ring1!,
-    ring1Refine: s.ring1 === 'r9r1' ? s.ring1Refine ?? 0 : null,
+    ring1Refine: s.ring1 === 'r9r1' ? facts.ring1Refine ?? 0 : null,
     ring2: s.ring2!,
-    ring2Refine: s.ring2 === 'r9r1' ? s.ring2Refine ?? 0 : null,
+    ring2Refine: s.ring2 === 'r9r1' ? facts.ring2Refine ?? 0 : null,
   };
   return { gear, missing: [], ...base };
 }
 
-/** Анкета → поля анкети сайту для GearFields (клас і рівень — з ляльки). */
+/** Анкета → поля для GearFields: те, що дає лялька, підставлено (їх не редагують). */
 export function sheetAsGear(doc: CharacterDoc, facts: DollFacts | null): Partial<PlayerGear> {
+  const s = doc.sheet ?? {};
   return {
-    ...(doc.sheet ?? {}),
+    weaponGrade: s.weaponGrade, armorSet: s.armorSet, tract: s.tract, genie: s.genie,
+    shg: s.shg, shgRefine: s.shgRefine, voznes: s.voznes, voznesRefine: s.voznesRefine, ring1: s.ring1, ring2: s.ring2,
     charClass: CLS_CHAR[doc.cls],
     charLevel: charLevelOf(doc.level),
+    build: facts?.build,
+    weaponRefine: facts?.weaponRefine ?? undefined,
+    armorRefine: facts?.armorRefine ?? undefined,
+    gems: facts?.gems,
     weaponPz: facts?.weaponPz ?? false,
     specialSets: facts?.specialSets ?? [],
-    specialSetGems: doc.sheet?.specialSetGems ?? {},
+    specialSetGems: facts?.specialSetGems ?? {},
+    ring1Refine: facts?.ring1Refine ?? null,
+    ring2Refine: facts?.ring2Refine ?? null,
   };
 }
 
-/** Зміна з GearFields → лише поля анкети (клас, рівень, ПЗ-зброя, сети — з ляльки, не зберігаємо). */
+/** Зміна з GearFields → лише поля, які заповнює гравець. */
 export function sheetFromGear(g: Partial<PlayerGear>): Sheet {
   const out: Sheet = {};
-  const keys: Array<keyof SheetFields> = [
-    'build', 'weaponGrade', 'weaponRefine', 'armorSet', 'armorRefine', 'gems', 'tract', 'genie',
-    'shg', 'shgRefine', 'voznes', 'voznesRefine', 'ring1', 'ring1Refine', 'ring2', 'ring2Refine', 'specialSetGems',
-  ];
+  const keys: Array<keyof SheetFields> = ['weaponGrade', 'armorSet', 'tract', 'genie', 'shg', 'shgRefine', 'voznes', 'voznesRefine', 'ring1', 'ring2'];
   for (const k of keys) {
     const v = g[k];
     if (v !== undefined) (out as Record<string, unknown>)[k] = v;

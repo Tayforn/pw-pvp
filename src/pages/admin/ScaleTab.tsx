@@ -14,7 +14,7 @@ import {
   GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
   RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
   WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, computeGearScoreWith, maxGearScoreOf, sameForAllSizes, tierForWith,
-  RECOMMENDED_SWAP_TOTAL_CAP, type SizeBucket,
+  RECOMMENDED_SWAP_TOTAL_CAP, GEM_CLASS_LABELS, GEM_CLASS_ORDER, type SizeBucket,
 } from '../../data/gearRules';
 import { draftTiersValid, patchDraft, useRulesDraft } from '../../data/rulesDraftStore';
 import { NumInput, NumTable } from './RulesEditor';
@@ -255,6 +255,64 @@ export default function ScaleTab() {
           <NumInput label="Частка від таблиці, %" value={Math.round(draft.specialSetGemsFactor * 100)} onChange={(v) => patch({ specialSetGemsFactor: Math.min(100, v) / 100 })} width={160} />
           <NumInput label="Стеля" value={draft.specialSetGemsCap} onChange={(v) => patch({ specialSetGemsCap: v })} />
         </div>
+      </div>
+
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <b>Лялька: точка, камені, збірка</b>
+          <span className="badge mute">заявки персонажем</span>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          У заявці персонажем точку, камені й збірку лялька рахує сама. Точка броні — середня по броні, біжі й кільцях, округлена вгору; точка зброї — з самої зброї.
+          Камені — кожен камінь у кожній речі броні (6 речей × 4 гнізда) за таблицею нижче; сума стає рядком таблиці «Камні».
+        </p>
+        <label className="field" style={{ maxWidth: 360, marginBottom: 10 }}>
+          <span>Рахувати по</span>
+          <select value={draft.doll.scope} onChange={(e) => patch({ doll: { ...draft.doll, scope: e.target.value === 'all' ? 'all' : 'main' } })}>
+            <option value="main">Головному комплекту</option>
+            <option value="all">Усіх комплектах (Головний + сети, середнє)</option>
+          </select>
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+          {GEM_CLASS_ORDER.map((k) => (
+            <label key={k} className="field">
+              <span>{GEM_CLASS_LABELS[k]}</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={Math.round(draft.doll.gemPoints[k] * 100) / 100}
+                onChange={(e) => patch({ doll: { ...draft.doll, gemPoints: { ...draft.doll.gemPoints, [k]: Math.max(0, Number(e.target.value) || 0) } } })}
+              />
+            </label>
+          ))}
+        </div>
+        <p className="hint" style={{ margin: '6px 0 12px' }}>
+          Бали за ОДИН камінь. Повна броня (24 камені): ПЗ-камені 13+ — {Math.round(24 * draft.doll.gemPoints.campPz)}, ПА — {Math.round(24 * draft.doll.gemPoints.topPa)},
+          12 рівень — {Math.round(24 * draft.doll.gemPoints.g12)}. Клас каменя лялька бере з каталогу: рівень каменя і що він дає в броні.
+        </p>
+        <div className="field-row" style={{ gap: 10 }}>
+          <label className="field">
+            <span>Гібрид — від, % очок у Тілобудові</span>
+            <input
+              type="number" min={0} max={100}
+              value={Math.round(draft.doll.buildVit.hybrid * 100)}
+              onChange={(e) => patch({ doll: { ...draft.doll, buildVit: { ...draft.doll.buildVit, hybrid: Math.min(1, Math.max(0, (Number(e.target.value) || 0) / 100)) } } })}
+            />
+          </label>
+          <label className="field">
+            <span>Кон — від, % очок у Тілобудові</span>
+            <input
+              type="number" min={0} max={100}
+              value={Math.round(draft.doll.buildVit.con * 100)}
+              onChange={(e) => patch({ doll: { ...draft.doll, buildVit: { ...draft.doll.buildVit, con: Math.min(1, Math.max(0, (Number(e.target.value) || 0) / 100)) } } })}
+            />
+          </label>
+        </div>
+        <p className="hint" style={{ margin: '6px 0 0' }}>
+          Збірка — за тим, яку частку вільних очок атрибутів гравець вклав у Тілобудову: менше {Math.round(draft.doll.buildVit.hybrid * 100)} % — ДД,
+          від {Math.round(draft.doll.buildVit.hybrid * 100)} % — гібрид, від {Math.round(draft.doll.buildVit.con * 100)} % — кон.
+        </p>
       </div>
 
       <div className="card" style={{ padding: 14 }}>

@@ -1,15 +1,14 @@
 // =========================================================
 // ЛЯЛЬКА — «Анкета для турнірів» на сторінці персонажа. Поля, яких лялька
-// не знає (грейди зброї, броні, каменів, кілець, трактат, джин, збірка),
-// гравець заповнює раз — вони їдуть у кожну заявку цим персонажем. Клас,
-// рівень, ПЗ-зброя й свап-сети — з ляльки (model/sheet.ts), їх тут видно
-// лише для довідки. Картка згорнута, коли анкету заповнено.
+// не знає (грейди зброї, сету броні, кілець, трактат, джин, ШГ/Вознєс),
+// гравець заповнює раз — вони їдуть у кожну заявку цим персонажем. Усе інше
+// (збірка, точки, камені, ПЗ-зброя, свап-сети) рахує лялька (model/sheet.ts),
+// тут це видно одним рядком. Картка згорнута, коли анкету заповнено.
 // =========================================================
 
 import { useMemo } from 'react';
 import GearFields from '../../components/GearFields';
-import { gearSummary } from '../../data/gearRules';
-import { rulesFor } from '../../data/gearRules';
+import { ARMOR_REFINE_LABELS, BUILD_LABELS, GEMS_LABELS, WEAPON_REFINE_LABELS, gearSummary, rulesFor } from '../../data/gearRules';
 import { useRules } from '../../data/rulesStore';
 import { useCatalog } from '../data/catalog';
 import { useRefData } from '../data/refLoader';
@@ -26,12 +25,13 @@ export default function SheetCard({ doc, onChange, readOnly }: { doc: CharacterD
   const facts = useMemo(() => {
     if (!ready) return null;
     try {
-      return dollFacts(doc);
+      return dollFacts(doc, rulesFor(null));
     } catch {
       return null;
     }
   }, [doc, ready]);
-  const setsFromDoll = rulesFor(null).setsFromDoll;
+  const rules = rulesFor(null);
+  const setsFromDoll = rules.setsFromDoll;
   const result = facts ? gearFromCharacter(doc, facts, { setsFromDoll: true }) : null;
   const complete = !!result?.gear;
 
@@ -42,9 +42,16 @@ export default function SheetCard({ doc, onChange, readOnly }: { doc: CharacterD
         <span className={'badge ' + (complete ? 'good' : 'mute')}>{complete ? 'заповнено' : 'треба заповнити'}</span>
       </summary>
       <p className="hint">
-        Грейди речей лялька поки не розпізнає — заповни їх тут один раз, і вони підставлятимуться в кожну заявку цим персонажем. Клас, рівень, ПЗ-зброю й свап-сети
-        лялька визначає сама{setsFromDoll ? '' : ' (сети поки не рахуються в балах — це вмикає адмін)'}.
+        Грейди речей (зброя, сет броні, кільця, трактат) лялька поки не розпізнає — вибери їх тут один раз, і вони підставлятимуться в кожну заявку цим персонажем.
+        Решту лялька визначає сама{setsFromDoll ? '' : ' (свап-сети поки не рахуються в балах — це вмикає адмін)'}.
       </p>
+      {facts && (
+        <p className="hint">
+          З ляльки: збірка {BUILD_LABELS[facts.build]} · точка зброї {facts.weaponRefine ? WEAPON_REFINE_LABELS[facts.weaponRefine] : '— (немає зброї)'} · точка броні{' '}
+          {facts.armorRefine ? `${ARMOR_REFINE_LABELS[facts.armorRefine]} (середня ${facts.armorRefineAvg?.toFixed(1)}${rules.doll.scope === 'all' ? ' по всіх сетах' : ' по Головному'})` : '— (немає броні)'} · камені{' '}
+          {GEMS_LABELS[facts.gems]} ({Math.round(facts.gemPoints)} б.)
+        </p>
+      )}
       {!ready && <p className="hint">Завантажую дані ляльки…</p>}
       {ready && (
         <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0 }}>

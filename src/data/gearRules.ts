@@ -176,6 +176,8 @@ export interface ScoringRules {
   /** Заявка персонажем: свап-сети, які знайшла лялька, ідуть у заявку й у бали.
    * Вимкнено — як у публічній анкеті, сети не рахуються (ПЗ-зброя — завжди). */
   setsFromDoll: boolean;
+  /** Точка й камені з ляльки (заявка персонажем). */
+  doll: DollGearRules;
   armorRefine: Record<ArmorRefine, number>;
   /** камені в основному сеті — за вартістю по зростанню; максимум = 24 камені по 2 ПЗ */
   gems: Record<Gems, number>;
@@ -221,6 +223,56 @@ export interface ScoringRules {
 
 export interface GearRules extends ScoringRules {
   balance: BalanceRules;
+}
+
+/** Клас каменя для балів — з каталогу ляльки: рівень (грейд) і що камінь дає в броні. */
+export type GemClass = 'campPz' | 'topPa' | 'topOther' | 'g12' | 'g11' | 'g10' | 'low';
+export const GEM_CLASS_ORDER: GemClass[] = ['campPz', 'topPa', 'topOther', 'g12', 'g11', 'g10', 'low'];
+export const GEM_CLASS_LABELS: Record<GemClass, string> = {
+  campPz: 'ПЗ-камені 13+ рівня (Лагеря, Государя, Цзин Юе…)',
+  topPa: 'ПА-камені 13+ рівня (Світлого духу, Ракшаса…)',
+  topOther: 'Інші камені 13+ рівня (HP, атака, спів…)',
+  g12: 'Камені 12 рівня (Сюаньки, Нюйви, Пань Гу…)',
+  g11: 'Камені 11 рівня',
+  g10: 'Камені 10 рівня',
+  low: 'Камені 9 рівня й нижче',
+};
+
+/** Звідки лялька бере точку броні й камені: лише Головний комплект чи всі
+ * конфігурації (Головний + сети, середнє). */
+export type DollScope = 'main' | 'all';
+
+export interface DollGearRules {
+  scope: DollScope;
+  /** Бали за ОДИН камінь у броні за класом каменя; 24 гнізда броні разом —
+   * це колишні «камені основного сету» (24 Лагеря = 40). */
+  gemPoints: Record<GemClass, number>;
+  /** Збірка з ляльки — за часткою вільних очок у Тілобудові: від hybrid — гібрид,
+   * від con — кон, менше — ДД. */
+  buildVit: { hybrid: number; con: number };
+}
+
+/** Бали за камінь = колишня таблиця «камені» ÷ 24 гнізда: Лагеря 40, ПА 26,
+ * Сюаньки 14, 11 рівень 8, 10 рівень 4 (за повний набір). */
+export const BUILTIN_DOLL_GEAR: DollGearRules = {
+  scope: 'main',
+  gemPoints: { campPz: 40 / 24, topPa: 26 / 24, topOther: 14 / 24, g12: 14 / 24, g11: 8 / 24, g10: 4 / 24, low: 0 },
+  buildVit: { hybrid: 0.25, con: 0.5 },
+};
+
+function normalizeDollGear(raw: unknown): DollGearRules {
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const gp = (d.gemPoints && typeof d.gemPoints === 'object' ? d.gemPoints : {}) as Record<string, unknown>;
+  const gemPoints = {} as Record<GemClass, number>;
+  for (const k of GEM_CLASS_ORDER) {
+    const v = gp[k];
+    gemPoints[k] = typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : BUILTIN_DOLL_GEAR.gemPoints[k];
+  }
+  const bv = (d.buildVit && typeof d.buildVit === 'object' ? d.buildVit : {}) as Record<string, unknown>;
+  const share = (v: unknown, def: number) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : def);
+  const hybrid = share(bv.hybrid, BUILTIN_DOLL_GEAR.buildVit.hybrid);
+  const con = Math.max(hybrid, share(bv.con, BUILTIN_DOLL_GEAR.buildVit.con));
+  return { scope: d.scope === 'all' ? 'all' : 'main', gemPoints, buildVit: { hybrid, con } };
 }
 
 /** Вбудована версія — фолбек і шаблон для нових версій. */
@@ -399,6 +451,7 @@ const BUILTIN: GearRules = {
   armorSet: { other: 0, nirvana: 5, nirvana_r8_mix: 14, r8r: 22, r9: 35 },
   hiddenArmorSets: ['r9'],
   setsFromDoll: false,
+  doll: BUILTIN_DOLL_GEAR,
   armorRefine: { a0_4: 0, a5: 3, a6: 7, a7: 11, a8: 17, a9: 23, a10: 27, a11: 29, a12: 30 },
   // 24 камені; повні Лагеря = 48 ПЗ (≈ різниця між топовим і слабким грейдом зброї) → max 40
   gems: { g0_9: 0, g10: 4, g11: 8, xuan: 14, xuan_pa: 20, pa: 26, xuan_camp: 33, camp: 40 },
@@ -596,6 +649,7 @@ export function normalizeRules(raw: unknown): GearRules {
     armorSet: numTable(r.armorSet, BUILTIN.armorSet),
     hiddenArmorSets: hidden,
     setsFromDoll: r.setsFromDoll === true,
+    doll: normalizeDollGear(r.doll),
     armorRefine: numTable(r.armorRefine, BUILTIN.armorRefine),
     gems: numTable(r.gems, BUILTIN.gems),
     specialSetGemsFactor: isNum(r.specialSetGemsFactor) ? r.specialSetGemsFactor : BUILTIN.specialSetGemsFactor,

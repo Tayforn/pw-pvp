@@ -33,7 +33,8 @@ export async function characterForRegistration(id: string): Promise<CharacterFor
   const doc = v.ok ? v.doc : v.recoverable;
   if (!doc) throw new Error('Документ персонажа пошкоджено — відкрий його на сторінці персонажа й збережи ще раз.');
   await Promise.all([ensureRefData(), ensureCats(docCats(doc))]);
-  const setsFromDoll = rulesFor(currentRulesVersion()).setsFromDoll;
-  const result = gearFromCharacter(doc, dollFacts(doc), { setsFromDoll });
+  const rules = rulesFor(currentRulesVersion());
+  const setsFromDoll = rules.setsFromDoll;
+  const result = gearFromCharacter(doc, dollFacts(doc, rules), { setsFromDoll });
   return { rec, doc, result, setsFromDoll };
 }
