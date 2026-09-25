@@ -121,7 +121,7 @@ export default function RulesPopup({ teamSize, teamMode, initial, drawLocked, co
   };
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true" style={{ width: 'min(920px, 100%)' }}>
         <div className="modal-head">
           <h3>Правила турніру</h3>

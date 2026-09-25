@@ -158,7 +158,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
   };
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true" style={{ width: 'min(640px, 100%)' }}>
         <div className="modal-head">
           <h3>{initial ? 'Редагувати турнір' : 'Новий турнір'}</h3>

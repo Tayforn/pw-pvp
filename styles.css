@@ -701,3 +701,38 @@ html[data-theme="light"] { --trn-accent: var(--accent); --trn-accent-rgb: 176, 1
   background: var(--bg-1); border-color: var(--line-2);
   box-shadow: 0 -12px 28px -16px rgba(0, 0, 0, 0.7);
 }
+
+/* ── Попап «Лялька актуальна?» (заявка персонажем) ── */
+.doll-confirm .modal-body { display: flex; flex-direction: column; gap: 16px; }
+.doll-confirm-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--glow-gold-1), var(--glow-gold-2));
+}
+.doll-confirm-name { font-size: 20px; font-weight: 800; letter-spacing: 0.01em; }
+.doll-confirm-sub { color: var(--text-dim); font-size: 13.5px; margin-top: 2px; }
+.doll-confirm-stats { display: flex; gap: 8px; }
+.doll-confirm-stat {
+  display: flex; flex-direction: column; align-items: center; min-width: 56px; padding: 6px 10px;
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-2);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute);
+}
+.doll-confirm-stat b { font-size: 18px; color: var(--accent-3); letter-spacing: 0; }
+.doll-confirm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.doll-confirm-row { padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); min-width: 0; }
+.doll-confirm-row dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); margin-bottom: 3px; }
+.doll-confirm-row dd { margin: 0; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.doll-confirm-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.doll-confirm-none { color: var(--text-mute); font-weight: 400; }
+.doll-confirm-note { margin: 0; }
+.doll-confirm-ack {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2);
+  font-size: 14px; line-height: 1.45; transition: border-color 0.12s, background 0.12s;
+}
+.doll-confirm-ack input { accent-color: var(--accent); width: 18px; height: 18px; margin-top: 1px; flex: none; cursor: pointer; }
+.doll-confirm-ack:hover { border-color: var(--line-2); }
+.doll-confirm-ack.on { border-color: rgba(var(--good-rgb), 0.5); background: rgba(var(--good-rgb), 0.08); }
+@media (max-width: 360px) {
+  .doll-confirm-grid { grid-template-columns: 1fr; }
+}

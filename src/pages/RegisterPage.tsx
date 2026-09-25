@@ -10,7 +10,7 @@ import RulesList from '../components/RulesList';
 import { parseRulesMd } from '../data/ruleCatalog';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 import { useMe } from '../app/useMe';
-import { CLASS_LABELS, computeGearScore, gearSummary, SPECIAL_SET_LABELS } from '../data/gearRules';
+import { BUILD_LABELS, CLASS_LABELS, computeGearScore, gearParts, gearSummary, SPECIAL_SET_LABELS } from '../data/gearRules';
 import type { CharacterForRegistration, CharacterSummary } from '../doll/registration';
 
 // Модуль ляльки (каталоги, формули) — окремий чанк: вантажимо лише коли
@@ -459,32 +459,76 @@ export default function RegisterPage() {
           </button>
         </form>
       )}
-      {confirmOpen && charData?.result.gear && (
-        <div className="modal-overlay" role="presentation" onClick={() => setConfirmOpen(false)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="confirmDollTitle" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <h3 id="confirmDollTitle" style={{ marginTop: 0 }}>Лялька актуальна?</h3>
-            <p className="hint">
-              Заявку буде подано персонажем «{charData.rec.name}» ({CLASS_LABELS[charData.result.gear.charClass]}). Адмін бачитиме ляльку такою, як зараз, і може перевірити спорядження в грі.
-            </p>
-            <p style={{ fontSize: 14 }}>{gearSummary(charData.result.gear)}</p>
-            <p className="hint">
-              Свап-сети: {charData.result.facts.specialSets.length ? charData.result.facts.specialSets.map((k) => SPECIAL_SET_LABELS[k]).join(', ') : 'немає'}.
-            </p>
-            <label className="checkbox-row">
-              <input type="checkbox" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} />
-              Так, лялька актуальна: саме в цьому спорядженні (Головний і сети) я гратиму на турнірі
-            </label>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setConfirmOpen(false)}>
-                Повернутись
-              </button>
-              <button type="button" className="btn btn-primary" disabled={!confirmChecked || busy} onClick={() => void submit()}>
-                Подати заявку
-              </button>
+      {confirmOpen && charData?.result.gear && (() => {
+        const g = charData.result.gear;
+        const f = charData.result.facts;
+        return (
+          // Закривається лише кнопками й хрестиком — випадковий клік повз вікно не скидає галочку.
+          <div className="modal-overlay" role="presentation">
+            <div className="modal doll-confirm" role="dialog" aria-modal="true" aria-labelledby="confirmDollTitle" style={{ width: 'min(560px, 100%)' }}>
+              <div className="modal-head">
+                <h3 id="confirmDollTitle">Лялька актуальна?</h3>
+                <button type="button" className="modal-close" aria-label="Закрити" onClick={() => setConfirmOpen(false)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div className="doll-confirm-hero">
+                  <div>
+                    <div className="doll-confirm-name">{charData.rec.name}</div>
+                    <div className="doll-confirm-sub">
+                      {CLASS_LABELS[g.charClass]} · рівень {charData.doc.level}
+                      {g.build ? ' · ' + BUILD_LABELS[g.build] : ''}
+                    </div>
+                  </div>
+                  <div className="doll-confirm-stats">
+                    <span className="doll-confirm-stat"><b>{Math.round(f.pa)}</b>ПА</span>
+                    <span className="doll-confirm-stat"><b>{Math.round(f.pz)}</b>ПЗ</span>
+                  </div>
+                </div>
+
+                <dl className="doll-confirm-grid">
+                  {gearParts(g).map((p) => (
+                    <div key={p.key} className="doll-confirm-row">
+                      <dt>{p.label}</dt>
+                      <dd>{p.value}</dd>
+                    </div>
+                  ))}
+                  <div className="doll-confirm-row">
+                    <dt>Свап-сети</dt>
+                    <dd>
+                      {f.specialSets.length ? (
+                        <span className="doll-confirm-sets">
+                          {f.specialSets.map((k) => (
+                            <span key={k} className="badge">{SPECIAL_SET_LABELS[k]}</span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="doll-confirm-none">немає</span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+
+                <p className="hint doll-confirm-note">
+                  Адмін бачитиме ляльку такою, як зараз, і може звірити спорядження в грі. Змінилось щось — повернись і онови персонажа.
+                </p>
+
+                <label className={'doll-confirm-ack' + (confirmChecked ? ' on' : '')}>
+                  <input type="checkbox" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} />
+                  <span>Так, лялька актуальна: саме в цьому спорядженні (Головний і сети) я гратиму на турнірі</span>
+                </label>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setConfirmOpen(false)}>
+                  Повернутись
+                </button>
+                <button type="button" className="btn btn-primary" disabled={!confirmChecked || busy} onClick={() => void submit()}>
+                  {busy ? 'Надсилання…' : 'Подати заявку'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

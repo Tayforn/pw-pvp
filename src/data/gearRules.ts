@@ -961,6 +961,22 @@ const shortGems = (gems: Gems) => GEMS_LABELS[gems].replace(/ \(.*\)$/, '');
 
 /** Компактний рядок для адмінки/публічної сторінки:
  * «ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря), Спів / Аспід (0–9) · Тракт 8 · Джин 100/100». */
+/** Спорядження по полях — для карток (попап «Лялька актуальна?»). Ті самі підписи, що в gearSummary. */
+export function gearParts(g: PlayerGear): Array<{ key: string; label: string; value: string }> {
+  const out: Array<{ key: string; label: string; value: string }> = [
+    { key: 'weapon', label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' + ПЗ-зброя' : ''}` },
+    { key: 'armor', label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
+    { key: 'gems', label: 'Камені', value: shortGems(g.gems) },
+    { key: 'tract', label: 'Трактат', value: TRACT_LABELS[g.tract].replace(/ \(.*\)$/, '').replace(' грейд', '') },
+    { key: 'genie', label: 'Джин', value: GENIE_LABELS[g.genie] },
+  ];
+  const items = shgVoznesLabel(g);
+  if (items) out.push({ key: 'shg', label: 'ШГ / Вознєс', value: items });
+  const rings = ringsLabel(g);
+  if (rings) out.push({ key: 'rings', label: 'Кільця', value: rings });
+  return out;
+}
+
 export function gearSummary(g: PlayerGear, version?: string | null): string {
   void version;
   const parts: string[] = [];
