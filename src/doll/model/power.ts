@@ -56,5 +56,7 @@ export function powerOf(doc: CharacterDoc, opp: PowerOpponent, lookup?: ItemLook
   const ehp = c.hp / Math.sqrt(pass(c.physDefPerc) * pass(c.magDefPerc));
   const def = ehp / atkLevelMult(opp.pa, pz);
 
-  return { off: Math.round(off), def: Math.round(def), pa: Math.round(pa), pz: Math.round(pz), engine: DOLL_ENGINE_VER };
+  const ac = (build.equipped.ta as { ac?: unknown } | undefined)?.ac;
+  const abil = typeof ac === 'string' && ac ? ac : undefined;
+  return { off: Math.round(off), def: Math.round(def), pa: Math.round(pa), pz: Math.round(pz), engine: DOLL_ENGINE_VER, ...(abil ? { abil } : {}) };
 }

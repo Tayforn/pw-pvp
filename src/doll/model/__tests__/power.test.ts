@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { classPointsFor, dollGearScoreWith, normalizeRules, tableGearPartWith } from '../../../data/gearRules';
+import { abilityBonus, classPointsFor, dollGearScoreWith, normalizeRules, tableGearPartWith } from '../../../data/gearRules';
 import type { PlayerGear } from '../../../data/types';
 import { DOLL_ENGINE_VER } from '../../core/version';
 import { powerOf } from '../power';
@@ -69,5 +69,19 @@ describe('скор з ляльки', () => {
 
   it('бали еталона за таблицею — скор без класу, джина й запасного', () => {
     expect(tableGearPartWith(gear, rules, 3)).toBeGreaterThan(0);
+  });
+
+  it('абілка зброї: бали понад абілку еталона; невідома чи відсутня — 0', () => {
+    const r = normalizeRules({ dollScore: { refs: { archer: { ...ref }, assassin: { ...ref, abil: 'zr' } }, abilityPoints: { ka: 15, zr: 3 } } });
+    const base = dollGearScoreWith(gear, power(10000, 20000), r, 3)!;
+    expect(dollGearScoreWith(gear, { ...power(10000, 20000), abil: 'ka' }, r, 3)! - base).toBe(15);
+    expect(dollGearScoreWith(gear, { ...power(10000, 20000), abil: 'nope' }, r, 3)).toBe(base);
+    expect(abilityBonus(r, 'zr', 'zr')).toBe(0); // зброя як у еталона — без бонусу
+    expect(abilityBonus(r, undefined, 'zr')).toBe(-3);
+  });
+
+  it('стартові бали абілок у версіях без поля; криві ключі й значення відкидаються', () => {
+    expect(normalizeRules({}).dollScore.abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 });
+    expect(normalizeRules({ dollScore: { abilityPoints: { ka: 500, 'BAD KEY': 3, zl: 'x', kl: 4.4 } } }).dollScore.abilityPoints).toEqual({ ka: 100, kl: 4 });
   });
 });

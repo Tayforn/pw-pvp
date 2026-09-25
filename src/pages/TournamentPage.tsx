@@ -11,6 +11,7 @@ import { rulesVersionFor, teamMembers, teamRows, teamStrengthFor } from '../data
 import BracketView from '../components/BracketView';
 import RulesList from '../components/RulesList';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
+import { weaponAbilityName } from '../data/weaponAbilities';
 import MemberNotice from '../components/MemberNotice';
 
 /** Підтверджені гравці фул-рандому з анкетою — без анкети (старі/зламані
@@ -37,7 +38,7 @@ function publicInfo(r: Registration, tournament: Tournament, frozenTiers?: Map<s
   if (!r.gear) return null;
   const version = rulesVersionFor(tournament);
   const tier = frozenTiers?.get(r.id) ?? tierFor(computeGearScore(r.gear, version, tournament.teamSize), version);
-  return { nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems) || undefined };
+  return { nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil) };
 }
 
 /** Рядок гравця «як у таблиці» (ті самі колонки, що в адмінці): нік · клас · ранг. */

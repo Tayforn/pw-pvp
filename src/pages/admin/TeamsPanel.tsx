@@ -37,6 +37,7 @@ import { describeSnapshotBuffs, reservePolicyFromFlags, resolveBuffOptions } fro
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import TierBadge, { type PlayerCardInfo } from '../../components/PlayerPopover';
+import { weaponAbilityName } from '../../data/weaponAbilities';
 import {
   applyBalancedTeams,
   clearBalancedTeams,
@@ -186,6 +187,7 @@ function playerInfos(regs: Registration[], version: string, teamSize: number | n
       gear: r.gear,
       tier: tierFor(score, version),
       gemsMix: gemMixLabel(r.dollPower?.gems) || undefined,
+      weaponAbility: weaponAbilityName(r.dollPower?.abil),
       admin: {
         score, gearScore: b.gear, adjust: b.adjust, rating: b.rating, adjustNote: r.scoreAdjustNote,
         elo: ratings ? ratingOf(ratings, r.nickname) : undefined,

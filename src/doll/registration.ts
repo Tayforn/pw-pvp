@@ -62,7 +62,7 @@ export async function referenceFromCharacter(id: string, rules: GearRules): Prom
   const base = result.gear ? Math.round(tableGearPartWith(result.gear, rules, 3)) : 0;
   return {
     cls: CLS_CHAR[doc.cls],
-    ref: { off: power.off, def: power.def, base, label: rec.name },
+    ref: { off: power.off, def: power.def, base, label: rec.name, ...(power.abil ? { abil: power.abil } : {}) },
     note: result.gear ? null : `Анкета персонажа неповна (${result.missing.join(', ')}) — бали еталона впиши вручну.`,
   };
 }

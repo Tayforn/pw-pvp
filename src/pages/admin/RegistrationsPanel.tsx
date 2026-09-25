@@ -19,6 +19,7 @@ import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import { dollScoreOf, rulesVersionFor, scoreBreakdown, teamRows } from '../../data/teams';
 import GearFields, { isGearComplete } from '../../components/GearFields';
 import TierBadge from '../../components/PlayerPopover';
+import { weaponAbilityName } from '../../data/weaponAbilities';
 
 const STATUS_LABEL: Record<Registration['status'], string> = { pending: 'Очікує', confirmed: 'Підтверджено', rejected: 'Відхилено' };
 const STATUS_CLASS: Record<Registration['status'], string> = { pending: 'warn', confirmed: 'good', rejected: 'bad' };
@@ -176,7 +177,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                     <b title={`гір ${bd.gear} · корекція ${signed(bd.adjust)} · рейтинг ${signed(bd.rating)}`}>{bd.total}</b>
                     <TierBadge
                       info={{
-                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version), gemsMix: gemMixLabel(r.dollPower?.gems) || undefined,
+                        nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version), gemsMix: gemMixLabel(r.dollPower?.gems) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil),
                         admin: {
                           score: bd.total, gearScore: bd.gear, adjust: bd.adjust, rating: bd.rating, adjustNote: r.scoreAdjustNote,
                           elo, attackLevel: r.attackLevel, defenseLevel: r.defenseLevel, version,

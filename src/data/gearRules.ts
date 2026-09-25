@@ -311,6 +311,8 @@ export interface DollRef {
   base: number;
   /** Звідки взято — ім'я персонажа (для адміна). */
   label: string;
+  /** Абілка зброї еталона (код ac) — бонус гравця рахується відносно неї. */
+  abil?: string;
 }
 
 /** off — не рахуємо; shadow — рахуємо й показуємо адміну, жеребка по анкеті;
@@ -327,7 +329,13 @@ export interface DollScoreRules {
   oppPa: number;
   oppPz: number;
   refs: Partial<Record<CharClass, DollRef>>;
+  /** Бали за абілку основної зброї (код ac → бали; нема в списку — 0). Лялька
+   * рахує лише стати, а абілки (зняття бафів, подвійний урон…) — ні. */
+  abilityPoints: Record<string, number>;
 }
+
+/** Стартові бали за абілки топової зброї (300к репутації); решта — 0, адмін задає сам. */
+export const RECOMMENDED_ABILITY_POINTS: Record<string, number> = { ka: 15, zl: 8, kl: 8 };
 
 export const BUILTIN_DOLL_SCORE: DollScoreRules = {
   mode: 'off',
@@ -336,7 +344,15 @@ export const BUILTIN_DOLL_SCORE: DollScoreRules = {
   oppPa: 40,
   oppPz: 40,
   refs: {},
+  abilityPoints: RECOMMENDED_ABILITY_POINTS,
 };
+
+const ABIL_CODE = /^[a-z_]{1,32}$/;
+/** Бали за абілку гравця понад абілку еталона його класу. */
+export function abilityBonus(r: ScoringRules, abil: string | undefined, refAbil: string | undefined): number {
+  const pts = r.dollScore.abilityPoints;
+  return (abil ? pts[abil] ?? 0 : 0) - (refAbil ? pts[refAbil] ?? 0 : 0);
+}
 
 function normalizeDollScore(raw: unknown): DollScoreRules {
   const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -351,10 +367,18 @@ function normalizeDollScore(raw: unknown): DollScoreRules {
     if (!x || typeof x !== 'object' || !(cls in BUILTIN_CLASS_PROFILES)) continue;
     const off = num(x.off, 0), def = num(x.def, 0);
     if (off <= 0 || def <= 0) continue;
-    refs[cls as CharClass] = { off, def, base: num(x.base, 0, -1000), label: typeof x.label === 'string' ? x.label.slice(0, 40) : '' };
+    const abil = typeof x.abil === 'string' && ABIL_CODE.test(x.abil) ? x.abil : undefined;
+    refs[cls as CharClass] = { off, def, base: num(x.base, 0, -1000), label: typeof x.label === 'string' ? x.label.slice(0, 40) : '', ...(abil ? { abil } : {}) };
+  }
+  let abilityPoints: Record<string, number> = { ...BUILTIN_DOLL_SCORE.abilityPoints };
+  if (d.abilityPoints && typeof d.abilityPoints === 'object') {
+    abilityPoints = {};
+    for (const [k, v] of Object.entries(d.abilityPoints as Record<string, unknown>)) {
+      if (ABIL_CODE.test(k) && typeof v === 'number' && Number.isFinite(v)) abilityPoints[k] = Math.max(-100, Math.min(100, Math.round(v)));
+    }
   }
   const mode = d.mode === 'shadow' || d.mode === 'on' ? d.mode : 'off';
-  return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs };
+  return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs, abilityPoints };
 }
 
 /** Вбудована версія — фолбек і шаблон для нових версій. */
@@ -855,7 +879,8 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
 
 /**
  * Скор із ляльки: бали класу + бали спорядження з атаки й живучості відносно
- * еталона класу + джин + ШГ/Вознєс + запасне (сети, ПЗ-зброя). Грейди зброї,
+ * еталона класу (+ бонус за абілку зброї понад еталон) + джин + ШГ/Вознєс +
+ * запасне (сети, ПЗ-зброя). Грейди зброї,
  * броні, камені, точки, кільця, трактат і рівень уже сидять у характеристиках.
  * null — немає еталона для класу.
  */
@@ -864,7 +889,7 @@ export function dollGearScoreWith(g: PlayerGear, power: DollPower, r: ScoringRul
   if (!ref || power.off <= 0 || power.def <= 0) return null;
   const alpha = r.dollScore.alphaByBuild[g.build ?? 'dd'];
   const rel = alpha * Math.log2(power.off / ref.off) + (1 - alpha) * Math.log2(power.def / ref.def);
-  const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel);
+  const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel + abilityBonus(r, power.abil, ref.abil));
   return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + shgVoznesScore(g, r) + swapScore(g, r));
 }
 

@@ -24,6 +24,8 @@ export interface PlayerCardInfo {
   tier: Tier;
   /** Склад каменів з ляльки (заявка персонажем) — показується замість рядка таблиці. */
   gemsMix?: string;
+  /** Абілка основної зброї з ляльки (назва). */
+  weaponAbility?: string;
   /** Адмінська частина — публічно не передається. */
   admin?: {
     score: number;
@@ -91,6 +93,7 @@ function Popover({ info, anchor, pinned, onEnter, onLeave }: { info: PlayerCardI
 
   const a = info.admin;
   const rows = gearRows(info.gear, info.gemsMix);
+  if (info.weaponAbility) rows.splice(3, 0, { label: 'Абілка', value: info.weaponAbility });
   const style: CSSProperties = { top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: Math.min(POP_W, window.innerWidth - 16) };
 
   return createPortal(

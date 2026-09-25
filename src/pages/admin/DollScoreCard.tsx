@@ -8,7 +8,8 @@
 // =========================================================
 
 import { useState } from 'react';
-import { BUILD_LABELS, CLASS_LABELS, CLASS_ORDER, type DollRef, type DollScoreMode, type GearRules } from '../../data/gearRules';
+import { BUILD_LABELS, CLASS_LABELS, CLASS_ORDER, RECOMMENDED_ABILITY_POINTS, type DollRef, type DollScoreMode, type GearRules } from '../../data/gearRules';
+import { WEAPON_ABILITIES, WEAPON_ABILITY_BY_CODE, type WeaponAbility } from '../../data/weaponAbilities';
 import type { Build, CharClass } from '../../data/types';
 import { useMe } from '../../app/useMe';
 import type { CharacterSummary } from '../../doll/registration';
@@ -20,6 +21,24 @@ const MODE_LABELS: Record<DollScoreMode, string> = {
 };
 
 const num = (v: string, min = 0) => Math.max(min, Number(v) || 0);
+
+/** Абілки топової зброї (300к репутації) — завжди на виду; решта — під спойлером. */
+const TOP_ABILITIES = new Set(Object.keys(RECOMMENDED_ABILITY_POINTS));
+
+function AbilityRow({ a, value, onChange }: { a: WeaponAbility; value: number; onChange: (v: number) => void }) {
+  return (
+    <tr>
+      <td title={a.desc}>
+        <b>{a.name}</b>
+        <div className="hint" style={{ margin: 0 }}>{a.desc}</div>
+      </td>
+      <td className="hint" style={{ margin: 0 }}>{a.where}</td>
+      <td>
+        <input type="number" style={{ width: 70 }} value={value} onChange={(e) => onChange(Math.max(-100, Math.min(100, Math.round(Number(e.target.value) || 0))))} />
+      </td>
+    </tr>
+  );
+}
 
 export default function DollScoreCard({ draft, patch }: { draft: GearRules; patch: (p: Partial<GearRules>) => void }) {
   const ds = draft.dollScore;
@@ -161,6 +180,41 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
         кон (частка атаки {Math.round(ds.alphaByBuild.con * 100)} %) за те саме — +{Math.round(ds.perDouble * ds.alphaByBuild.con * Math.log2(1.4))}. Збірку визначає лялька.
       </p>
 
+      <b style={{ fontSize: 14 }}>Абілки зброї</b>
+      <p className="hint" style={{ margin: '4px 0 6px' }}>
+        Лялька рахує лише стати, а властивості зброї (зняття бафів, подвійний урон, очищення…) — ні. Бали за абілку основної зброї додаються до скору з ляльки
+        понад абілку зброї еталона класу. Абілку лялька бере сама з каталогу; у старих заявках її немає — треба перезаявитись.
+      </p>
+      {(() => {
+        const setPts = (code: string, v: number) => set({ abilityPoints: { ...ds.abilityPoints, [code]: v } });
+        const table = (list: WeaponAbility[]) => (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="buff-table" style={{ minWidth: 560 }}>
+              <thead>
+                <tr><th>Абілка</th><th>Де трапляється</th><th>Бали</th></tr>
+              </thead>
+              <tbody>
+                {list.map((a) => (
+                  <AbilityRow key={a.code} a={a} value={ds.abilityPoints[a.code] ?? 0} onChange={(v) => setPts(a.code, v)} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        const top = WEAPON_ABILITIES.filter((a) => TOP_ABILITIES.has(a.code));
+        const rest = WEAPON_ABILITIES.filter((a) => !TOP_ABILITIES.has(a.code));
+        const restSet = rest.filter((a) => (ds.abilityPoints[a.code] ?? 0) !== 0).length;
+        return (
+          <>
+            {table(top)}
+            <details style={{ margin: '8px 0 14px' }}>
+              <summary style={{ cursor: 'pointer' }}>Інші абілки ({rest.length}{restSet ? `, з балами ${restSet}` : ''}) — ЦГД/РЦГД 80 рів., старіша зброя</summary>
+              <div style={{ marginTop: 8 }}>{table(rest)}</div>
+            </details>
+          </>
+        );
+      })()}
+
       <b style={{ fontSize: 14 }}>Еталони класів</b>
       <div style={{ overflowX: 'auto', marginTop: 6 }}>
         <table className="buff-table" style={{ minWidth: 560 }}>
@@ -180,7 +234,10 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
               return (
                 <tr key={cls}>
                   <td>{CLASS_LABELS[cls]}</td>
-                  <td>{ref ? ref.label || '—' : <span className="hint">не задано</span>}</td>
+                  <td>
+                    {ref ? ref.label || '—' : <span className="hint">не задано</span>}
+                    {ref?.abil && <div className="hint" style={{ margin: 0 }}>абілка: {WEAPON_ABILITY_BY_CODE[ref.abil]?.name ?? ref.abil}</div>}
+                  </td>
                   <td>{ref?.off ?? '—'}</td>
                   <td>{ref?.def ?? '—'}</td>
                   <td>

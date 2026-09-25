@@ -83,7 +83,8 @@ const validPower = (p: unknown): DollPower | null => {
   const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   if (!(n(o.off) > 0 && n(o.def) > 0)) return null;
   const gems = normalizeGemCounts(o.gems);
-  return { off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine), ...(gems ? { gems } : {}) };
+  const abil = typeof o.abil === 'string' && /^[a-z_]{1,32}$/.test(o.abil) ? o.abil : undefined;
+  return { off: n(o.off), def: n(o.def), pa: n(o.pa), pz: n(o.pz), engine: n(o.engine), ...(gems ? { gems } : {}), ...(abil ? { abil } : {}) };
 };
 const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
   const a = adj?.get(r.id);

@@ -63,6 +63,8 @@ export interface DollPower {
   engine: number;
   /** Склад каменів у броні: клас каменя → кількість (GemCounts з gearRules). */
   gems?: Partial<Record<string, number>>;
+  /** Абілка основної зброї (код ac з каталогу), якщо є. */
+  abil?: string;
 }
 
 export interface PlayerGear {
