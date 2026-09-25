@@ -89,11 +89,11 @@ describe('скор з ляльки', () => {
     const r = normalizeRules({ dollScore: { refs: { archer: { ...ref, wpa: 20 } } } });
     const p0 = { ...power(10000, 20000), wpa: 20 };
     const base = dollGearScoreWith(gear, p0, r, 3)!;
-    // +30 ПА на зброї понад еталон × курс Лагерів (40/24 ÷ 2) = 25: 1 ПА = 1 ПЗ
-    expect(dollGearScoreWith(gear, { ...p0, wpa: 50 }, r, 3)! - base).toBe(Math.round(30 * (40 / 24) / 2));
+    // +30 ПА на зброї понад еталон × курс Лагерів (28/24 ÷ 2 = 0,58) ≈ 18: 1 ПА = 1 ПЗ
+    expect(dollGearScoreWith(gear, { ...p0, wpa: 50 }, r, 3)! - base).toBe(Math.round(30 * (28 / 24) / 2));
     const pz = { ...gear, weaponPz: true };
     const withPz = (pzw: number) => dollGearScoreWith(pz, { ...p0, pzw }, r, 3)! - base;
-    expect(withPz(10)).toBe(Math.round(10 * (40 / 24) / 2)); // ≈ 8
+    expect(withPz(10)).toBe(Math.round(10 * (28 / 24) / 2)); // ≈ 6
     expect(withPz(60)).toBe(25); // стеля
     // стара заявка без pzw — як в анкеті (weaponPz з таблиці)
     expect(dollGearScoreWith(pz, p0, r, 3)! - base).toBe(r.weaponPz);

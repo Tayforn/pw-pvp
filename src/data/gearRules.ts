@@ -283,7 +283,8 @@ export interface DollGearRules {
  * Сюаньки 14, 11 рівень 8, 10 рівень 4 (за повний набір). */
 export const BUILTIN_DOLL_GEAR: DollGearRules = {
   scope: 'main',
-  gemPoints: { campPz: 40 / 24, topPa: 26 / 24, topOther: 14 / 24, g12: 14 / 24, g11: 8 / 24, g10: 4 / 24, low: 0 },
+  // Лагеря = 2 «Каменні броні» (+2 ПЗ проти +1 ПЗ): 1 ПЗ = 1 ПА = бал каменя 12 рів. (власник 25.09.2026).
+  gemPoints: { campPz: 28 / 24, topPa: 26 / 24, topOther: 14 / 24, g12: 14 / 24, g11: 8 / 24, g10: 4 / 24, low: 0 },
   buildVit: { hybrid: 0.25, con: 0.5 },
 };
 

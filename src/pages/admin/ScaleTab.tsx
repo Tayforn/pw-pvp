@@ -288,6 +288,18 @@ export default function ScaleTab() {
             </label>
           ))}
         </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => patch({ doll: { ...draft.doll, gemPoints: { ...draft.doll.gemPoints, campPz: 2 * draft.doll.gemPoints.g12 } } })}
+          >
+            Лагеря = 2 × камінь 12 рів.
+          </button>
+          <span className="hint" style={{ margin: 0 }}>
+            Лагеря дає +2 ПЗ, «Каменная броня» — +1 ПЗ, «Алмазная броня» — +1 ПА: 1 ПЗ = 1 ПА. Від бала Лагеря ÷ 2 рахуються й ПА/ПЗ на зброї.
+          </span>
+        </div>
         <p className="hint" style={{ margin: '6px 0 12px' }}>
           Бали за ОДИН камінь. Повна броня (24 камені): ПЗ-камені 13+ — {Math.round(24 * draft.doll.gemPoints.campPz)}, ПА — {Math.round(24 * draft.doll.gemPoints.topPa)},
           12 рівень — {Math.round(24 * draft.doll.gemPoints.g12)}. Клас каменя лялька бере з каталогу: рівень каменя і що він дає в броні.

@@ -43,11 +43,16 @@ describe('анкета персонажа', () => {
     expect(gemClass(gem(13, ['hp', 200]))).toBe('topOther');
     expect(gemClass(gem(12, ['ed', 1]))).toBe('g12');
     expect(gemClass(gem(9, ['hp', 65]))).toBe('low');
-    expect(gemsBucket(24 * rules.doll.gemPoints.campPz, rules)).toBe('camp');
-    expect(gemsBucket(24 * rules.doll.gemPoints.topPa, rules)).toBe('pa');
+    // Механіка зіставлення — на старих балах за камінь (Лагеря 40/24, ПА 26/24).
+    const old = normalizeRules({ doll: { gemPoints: { campPz: 40 / 24, topPa: 26 / 24, topOther: 14 / 24, g12: 14 / 24, g11: 8 / 24, g10: 4 / 24, low: 0 } } });
+    expect(gemsBucket(24 * old.doll.gemPoints.campPz, old)).toBe('camp');
+    expect(gemsBucket(24 * old.doll.gemPoints.topPa, old)).toBe('pa');
     // половина Лагерів + половина ПА = 33 → «Сюаньки / Лагеря» за балами
-    expect(gemsBucket(12 * rules.doll.gemPoints.campPz + 12 * rules.doll.gemPoints.topPa, rules)).toBe('xuan_camp');
-    expect(gemsBucket(0, rules)).toBe('g0_9');
+    expect(gemsBucket(12 * old.doll.gemPoints.campPz + 12 * old.doll.gemPoints.topPa, old)).toBe('xuan_camp');
+    expect(gemsBucket(0, old)).toBe('g0_9');
+    // Зараз: Лагеря = 2 «Каменні броні» (1 ПЗ = 1 ПА = бал каменя 12 рів.) → повна броня 28 б.
+    expect(rules.doll.gemPoints.campPz).toBeCloseTo(2 * rules.doll.gemPoints.g12, 9);
+    expect(gemsBucket(24 * rules.doll.gemPoints.campPz, rules)).toBe('pa');
   });
 
   it('збірка з атрибутів: частка очок у Тілобудові', () => {
