@@ -14,6 +14,7 @@ import { computeStats } from '../../core/stats';
 import { computeSummary, type SummaryCell, type SummaryResult } from '../../core/summary';
 import type { DollState } from '../../core/types';
 import { toDollState, type CharacterModel } from '../../model/hydrate';
+import { classPassives } from '../../model/passives';
 
 export interface CfgCalc {
   build: DollState;
@@ -21,7 +22,8 @@ export interface CfgCalc {
   ib: Record<string, number>; // ефекти увімкнених станів (порожній = без бафів)
   summary: SummaryResult;
   derived: DerivedNumbers;
-  buffed: boolean; // хоч один стан увімкнено — числа «з бафами»
+  buffed: boolean; // хоч один стан (не пасивка) увімкнено — числа «з бафами»
+  passives: boolean; // хоч одна пасивка класу діє
 }
 
 const cache = new WeakMap<CharacterModel, Map<string, CfgCalc>>();
@@ -47,8 +49,11 @@ export function calcFor(model: CharacterModel, cfgId: string): CfgCalc {
   const ib = deriveIb(build);
   const summary = computeSummary(build, t, ib);
   const derived = derivedNumbers(build, ib, t);
-  const buffed = Object.values(build.buffCfg).some((c) => c.on);
-  const calc: CfgCalc = { build, t, ib, summary, derived, buffed };
+  const passiveIds = new Set(classPassives(build.cls).map((b) => String(b.id)));
+  const on = Object.entries(build.buffCfg).filter(([, c]) => c.on);
+  const buffed = on.some(([k]) => !passiveIds.has(k));
+  const passives = on.some(([k]) => passiveIds.has(k));
+  const calc: CfgCalc = { build, t, ib, summary, derived, buffed, passives };
   byCfg.set(key, calc);
   return calc;
 }

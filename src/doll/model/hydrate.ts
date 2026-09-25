@@ -8,6 +8,7 @@
 
 import { defaultSockets } from '../core/constants';
 import { flattenItemStats } from '../core/stats';
+import { classPassives, passiveCfg } from './passives';
 import { defaultState, type DollState, type Item } from '../core/types';
 import { getItem } from '../data/catalog';
 import {
@@ -144,7 +145,8 @@ export function effectiveSlots(
 }
 
 /** Зібрати DollState для ядра з конфігурації. Бафи — лише при opts.buffs
- * (у скор вони не входять); рюкзак завжди порожній, сервер — noServer. */
+ * (у скор вони не входять), пасивки класу — завжди; рюкзак завжди порожній,
+ * сервер — noServer. */
 export function toDollState(
   model: CharacterModel,
   cfgId: string,
@@ -179,6 +181,8 @@ export function toDollState(
     for (const [k, c] of Object.entries(doc.buffs.cfg)) b.buffCfg[k] = { on: c.on, lvl: c.lvl, side: c.side };
     b.extraBuffs = [...doc.buffs.extra];
   }
+  // Пасивки класу діють завжди — і в скорі, і в числах «без бафів» (model/passives.ts).
+  for (const p of classPassives(doc.cls)) b.buffCfg[String(p.id)] = passiveCfg(doc, p);
   return b;
 }
 

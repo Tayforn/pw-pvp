@@ -9,6 +9,7 @@
 import { buffHasSides, buffMaxLevel, maxSockets } from '../core/constants';
 import { conflictingActive } from '../core/buffs';
 import { getBuffById } from '../core/refdata';
+import { classPassives, passiveDefault } from './passives';
 import { ATTR_BASE } from '../core/stats';
 import { defaultState } from '../core/types';
 import {
@@ -385,9 +386,17 @@ export function deleteInstance(doc: CharacterDoc, iid: string): CharacterDoc {
   };
 }
 
-// ---------- бафи (лише перегляд статів; у скор не входять) ----------
+// ---------- бафи (лише перегляд статів; у скор не входять) і пасивки класу (входять завжди) ----------
 
 const DEFAULT_ROW: BuffCfgRow = { on: false, lvl: 10, side: '' };
+
+/** Поточний рядок бафа; пасивка без налаштування — увімкнена за замовчуванням. */
+function rowOf(doc: CharacterDoc, id: number): BuffCfgRow {
+  const cur = doc.buffs?.cfg[String(id)];
+  if (cur) return cur;
+  const p = classPassives(doc.cls).find((b) => b.id === id);
+  return p ? passiveDefault(doc, p) : DEFAULT_ROW;
+}
 
 function buffsOf(doc: CharacterDoc): { cfg: Record<string, BuffCfgRow>; extra: number[] } {
   return { cfg: { ...(doc.buffs?.cfg || {}) }, extra: [...(doc.buffs?.extra || [])] };
@@ -397,7 +406,7 @@ function buffsOf(doc: CharacterDoc): { cfg: Record<string, BuffCfgRow>; extra: n
 export function toggleBuff(doc: CharacterDoc, id: number): CharacterDoc {
   const b = buffsOf(doc);
   const k = String(id);
-  const cur = b.cfg[k] || DEFAULT_ROW;
+  const cur = rowOf(doc, id);
   const on = !cur.on;
   b.cfg[k] = { ...cur, on };
   if (on) {
@@ -421,7 +430,7 @@ export function setBuffLvl(doc: CharacterDoc, id: number, lvl: number): Characte
   const def = getBuffById(id);
   const max = def ? buffMaxLevel(def) : 99;
   const plainMax = def && buffHasSides(def) ? Math.max(1, max - 1) : max;
-  const cur = b.cfg[k] || DEFAULT_ROW;
+  const cur = rowOf(doc, id);
   b.cfg[k] = { ...cur, lvl: Math.max(1, Math.min(plainMax, Math.floor(lvl) || 1)), side: '' };
   return { ...doc, buffs: b };
 }
@@ -432,7 +441,7 @@ export function setBuffSide(doc: CharacterDoc, id: number, side: string): Charac
   if (!def || !buffHasSides(def)) return doc;
   const b = buffsOf(doc);
   const k = String(id);
-  const cur = b.cfg[k] || DEFAULT_ROW;
+  const cur = rowOf(doc, id);
   const max = buffMaxLevel(def);
   b.cfg[k] = side ? { ...cur, side, lvl: max } : { ...cur, side: '', lvl: Math.min(cur.lvl, Math.max(1, max - 1)) };
   return { ...doc, buffs: b };
@@ -443,7 +452,7 @@ export function addExtraBuff(doc: CharacterDoc, id: number): CharacterDoc {
   const b = buffsOf(doc);
   if (!b.extra.includes(id)) b.extra.push(id);
   const k = String(id);
-  b.cfg[k] = { ...(b.cfg[k] || DEFAULT_ROW), on: true };
+  b.cfg[k] = { ...rowOf(doc, id), on: true };
   return { ...doc, buffs: b };
 }
 

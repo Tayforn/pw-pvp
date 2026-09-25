@@ -48,7 +48,7 @@ const ROWS: RowDef[] = [
 const FOCUS: Record<SetKind, ReadonlyArray<keyof DerivedNumbers>> = {
   pz: ['pz'],
   pa: ['pa'],
-  aspd: ['aps', 'channel'],
+  aspd: ['channel'],
 };
 
 const num = (n: number, r: RowDef): string => (r.digits ? n.toFixed(r.digits) : fmt(n)) + (r.suffix || '');

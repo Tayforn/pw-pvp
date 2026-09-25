@@ -599,7 +599,7 @@ export default function CharacterPage({ id, onNavigate }: { id: string | null; o
       <header className="section-head">
         <span className="eyebrow">Персонаж</span>
         <h2>{id === null ? 'Мої персонажі' : 'Лялька персонажа'}</h2>
-        <p>Одягни Головний комплект і додай сети для свапу (ПЗ, ПА, спів/аспд). Формули — ті самі, що в PW Хелпері.</p>
+        <p>Одягни Головний комплект і додай сети для свапу (ПЗ, ПА, спів). Формули — ті самі, що в PW Хелпері.</p>
       </header>
       {id === null ? (
         <CharactersList onNavigate={onNavigate} />

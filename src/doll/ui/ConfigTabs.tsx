@@ -181,7 +181,7 @@ export default function ConfigTabs() {
           type="button"
           className="doll-tab doll-tab-add"
           aria-disabled={full}
-          title={full ? 'Не більше ' + DOC_LIMITS.sets + ' сетів' : 'Окремий набір речей для свапу: ПЗ, ПА або спів/аспд'}
+          title={full ? 'Не більше ' + DOC_LIMITS.sets + ' сетів' : 'Окремий набір речей для свапу: ПЗ, ПА або спів'}
           onClick={() => api.openAddSet()}
         >
           + Додати сет{full ? ' · ' + DOC_LIMITS.sets + '/' + DOC_LIMITS.sets : ''}

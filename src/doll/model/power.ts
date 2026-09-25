@@ -17,6 +17,7 @@
 
 import { isPhysClass } from '../../data/gearRules';
 import type { DollPower } from '../../data/types';
+import { deriveIb } from '../core/buffs';
 import { atkLevelMult } from '../core/damage';
 import { computeStats } from '../core/stats';
 import { computeSummary } from '../core/summary';
@@ -37,7 +38,7 @@ const MAX_CHANNEL = 80; // скорочення співу понад це — �
 export function powerOf(doc: CharacterDoc, opp: PowerOpponent, lookup?: ItemLookup): DollPower {
   const build = toDollState(hydrate(doc, lookup), CFG_MAIN, { fillFromMain: true });
   const t = computeStats(build).t;
-  const c = computeSummary(build, t, {}).char;
+  const c = computeSummary(build, t, deriveIb(build)).char; // у стані лише пасивки класу
   const g = (...keys: string[]): number => keys.reduce((s, k) => s + (t[k] || 0), 0);
   const pa = g('ad', 'gs_ad');
   const pz = g('sx', 'gs_sx');

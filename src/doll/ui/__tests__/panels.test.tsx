@@ -14,6 +14,7 @@ import type { CharacterDoc } from '../../model/doc';
 import { setDelta, type SetDelta } from '../../model/derivedDelta';
 import { CFG_MAIN, hydrate } from '../../model/hydrate';
 import { createSet, equip, toggleBuff, updateInstance } from '../../model/ops';
+import { isClassPassive } from '../../model/passives';
 import { docFrom, loadRef, lookup } from '../../model/__tests__/testDoc';
 import { EditorProvider } from '../EditorContext';
 import { classSkills, DamageBody, DamageCheck, logEntry } from '../panels/DamageCheck';
@@ -110,9 +111,12 @@ describe('StatsPanel', () => {
 
   it('увімкнений баф позначає числа «з бафами»', () => {
     const doc0 = docFrom('typical-by');
-    const first = shownBuffs(calcFor(hydrate(doc0, lookup), CFG_MAIN).build)[0];
+    const first = shownBuffs(calcFor(hydrate(doc0, lookup), CFG_MAIN).build).find((b) => !isClassPassive('by', b.id));
     expect(first).toBeDefined();
-    const doc = toggleBuff(doc0, first.id);
+    const plain = visible(renderIn(doc0, CFG_MAIN, <StatsPanel cfgId={CFG_MAIN} />));
+    expect(plain).toContain('+ пасивки');
+    expect(plain).not.toContain('з бафами');
+    const doc = toggleBuff(doc0, first!.id);
     const text = visible(renderIn(doc, CFG_MAIN, <StatsPanel cfgId={CFG_MAIN} />));
     expect(text).toContain('з бафами');
   });
@@ -148,8 +152,8 @@ describe('SetDeltaPanel', () => {
     const setId = created.setId!;
     const rows = deltaRows(setDelta(hydrate(created.doc, lookup), setId), 'aspd');
     expect(rows.every((r) => r.delta === 0 && r.deltaText === '0')).toBe(true);
-    // Рядки виду «Спів / Аспд» лишаються, навіть якщо значення нульові.
-    expect(rows.filter((r) => r.focus).map((r) => r.key)).toEqual(['aps', 'channel']);
+    // Рядок виду «Спів» лишається, навіть якщо значення нульове.
+    expect(rows.filter((r) => r.focus).map((r) => r.key)).toEqual(['channel']);
     const text = visible(renderIn(created.doc, setId, <SetDeltaPanel setId={setId} />));
     expect(text).toContain('нічим не відрізняється');
   });
@@ -160,16 +164,18 @@ describe('SetDeltaPanel', () => {
 });
 
 describe('ModsCard', () => {
-  it('рядки бафів і дебафів з підписом «у скор не входить», увімкнений — з позначкою', () => {
+  it('рядки пасивок, бафів і дебафів з підписом «бафи в скор не входять», увімкнений — з позначкою', () => {
     const doc0 = docFrom('typical-by');
-    const buffs = shownBuffs(calcFor(hydrate(doc0, lookup), CFG_MAIN).build);
+    const buffs = shownBuffs(calcFor(hydrate(doc0, lookup), CFG_MAIN).build).filter((b) => !isClassPassive('by', b.id));
     const doc = toggleBuff(doc0, buffs[0].id);
     const html = renderIn(doc, CFG_MAIN, <ModsCard />);
     const text = visible(html);
-    expect(text).toContain('у скор не входить');
-    expect(text).toContain('увімкнено 1');
+    expect(text).toContain('бафи в скор не входять');
+    expect(text).toContain('Пасивки');
+    expect(text).toContain('увімкнено 1'); // пасивки не рахуються як увімкнені стани
     expect(text).toContain('Вимкнути всі');
-    expect(html.match(/class="doll-buff on"/g)).toHaveLength(1);
+    // 4 техніки бою Воїна (діють завжди) + увімкнений баф
+    expect(html.match(/class="doll-buff on"/g)).toHaveLength(5);
     // Іконка — спрайт yo.png через style-обʼєкт, а не рядок розмітки.
     expect(html).toContain('background-image:url');
     expect(html).toContain('aria-label="Додати баф"');

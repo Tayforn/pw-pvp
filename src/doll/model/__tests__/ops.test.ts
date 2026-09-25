@@ -60,7 +60,7 @@ describe('сети', () => {
     expect(d.sets[1].name).toBe('ПЗ 2');
     expect(r2.setId).not.toBe(r1.setId);
     expect(defaultSetName(d, 'pz')).toBe('ПЗ 3');
-    expect(defaultSetName(d, 'aspd')).toBe('Аспд'); // воїн — атаки за секунду
+    expect(defaultSetName(d, 'aspd')).toBe('Спів'); // аспд-сету немає — у всіх класів «Спів»
     expect(defaultSetName({ ...d, cls: 'ga' }, 'aspd')).toBe('Спів'); // маг — час співу
     d = createSet(d, 'pa', '  Моя ПА  ').doc;
     expect(d.sets[2].name).toBe('Моя ПА');

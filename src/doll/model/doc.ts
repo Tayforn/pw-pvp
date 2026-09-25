@@ -67,12 +67,11 @@ export interface ItemInst {
 
 export type SetKind = 'pz' | 'pa' | 'aspd';
 export const SET_KINDS: readonly SetKind[] = ['pz', 'pa', 'aspd'];
-export const SET_KIND_LABELS: Record<SetKind, string> = { pz: 'ПЗ', pa: 'ПА', aspd: 'Спів / Аспд' };
-/** Класи, яким третій вид сету — «Спів» (час співу), решті — «Аспд» (атак/сек). */
-export const CASTER_CLS: ReadonlySet<string> = new Set(['ga', 'rl', 'ij', 'sj', 'rg']);
-/** Короткий підпис виду для конкретного класу: «ПЗ», «ПА», «Спів» або «Аспд». */
-export function setKindShort(kind: SetKind, cls: string): string {
-  if (kind === 'aspd') return CASTER_CLS.has(cls) ? 'Спів' : 'Аспд';
+// Ключ 'aspd' — історичний (так він лежить у базі); сам сет — «Спів»: окремого
+// аспд-сету не буває, для аспдшників швидкість атаки — це їхній Головний.
+export const SET_KIND_LABELS: Record<SetKind, string> = { pz: 'ПЗ', pa: 'ПА', aspd: 'Спів' };
+/** Короткий підпис виду: «ПЗ», «ПА» або «Спів» (однаково для всіх класів). */
+export function setKindShort(kind: SetKind, _cls?: string): string {
   return SET_KIND_LABELS[kind];
 }
 const KIND_SET: ReadonlySet<string> = new Set(SET_KINDS);

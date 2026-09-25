@@ -177,9 +177,9 @@ describe('docSizeBytes і константи', () => {
     expect(SLOT_CAT.cr).toBe('oq');
     expect(SLOT_CAT.cd).toBe('oq');
     expect(Object.keys(SLOT_CAT)).toHaveLength(17);
-    expect(SET_KIND_LABELS).toEqual({ pz: 'ПЗ', pa: 'ПА', aspd: 'Спів / Аспд' });
+    expect(SET_KIND_LABELS).toEqual({ pz: 'ПЗ', pa: 'ПА', aspd: 'Спів' });
     expect(setKindShort('aspd', 'ga')).toBe('Спів');
-    expect(setKindShort('aspd', 'by')).toBe('Аспд');
+    expect(setKindShort('aspd', 'by')).toBe('Спів'); // аспд-сету немає
     expect(setKindShort('pz', 'ga')).toBe('ПЗ');
   });
 });

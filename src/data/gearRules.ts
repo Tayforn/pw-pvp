@@ -914,11 +914,11 @@ export const GEMS_LABELS: Record<Gems, string> = {
 };
 export const GEMS_ORDER: Gems[] = ['g0_9', 'g10', 'g11', 'xuan', 'xuan_pa', 'pa', 'xuan_camp', 'camp'];
 
-export const SPECIAL_SET_LABELS: Record<SpecialSet, string> = { pz: 'ПЗ-сет', pa: 'ПА-сет', aspd: 'Спів / Аспід' };
+export const SPECIAL_SET_LABELS: Record<SpecialSet, string> = { pz: 'ПЗ-сет', pa: 'ПА-сет', aspd: 'Спів-сет' };
 export const SPECIAL_SET_HINTS: Record<SpecialSet, string> = {
   pz: 'сумарний показник захисту у комплекті ≥ 30 (без бафів)',
   pa: 'сумарний показник атаки у комплекті ≥ 30 (без бафів)',
-  aspd: 'швидкість атаки ≥ 3.33 уд/с або −30 % часу активації з предметів (без бафів)',
+  aspd: '−30 % часу співу з предметів (без бафів)',
 };
 export const SPECIAL_SET_ORDER: SpecialSet[] = ['pz', 'pa', 'aspd'];
 

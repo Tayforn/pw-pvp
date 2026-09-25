@@ -61,7 +61,7 @@ export function StatsPanelView({ calc, doc, cfgId }: StatsPanelViewProps) {
         {cfgName && <span className="doll-pn-tag">{cfgName}</span>}
         {calc.buffed && <span className="doll-pn-tag mute">з бафами</span>}
         <span className="doll-pn-note">
-          спорядження + камені + заточка + бонуси комплектів + титули{calc.buffed ? ' + стани' : ''}
+          спорядження + камені + заточка + бонуси комплектів + титули{calc.passives ? ' + пасивки' : ''}{calc.buffed ? ' + стани' : ''}
           {isMain ? '' : '; порожні слоти — як у Головному'}
         </span>
       </header>

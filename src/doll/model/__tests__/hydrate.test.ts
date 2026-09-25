@@ -4,6 +4,7 @@ import { computeStats, flattenItemStats } from '../../core/stats';
 import { computeSummary } from '../../core/summary';
 import { SLOT_KEYS, type CharacterDoc } from '../doc';
 import { CFG_MAIN, dehydrate, docCats, effectiveSlots, hydrate, inventoryOf, newIid, slotKey, toDollState, whereWorn } from '../hydrate';
+import { classPassives } from '../passives';
 import { BY, calcState, fixtures, inst, loadRef, lookup, mkDoc, mkSet, modelFrom } from './testDoc';
 
 beforeAll(() => loadRef());
@@ -45,6 +46,12 @@ describe('round-trip фікстура → документ → ядро', () => 
     for (const fx of [...fixtures('manual'), ...fixtures('random')]) {
       const state = calcState(fx.name);
       const back = toDollState(modelFrom(fx.name), CFG_MAIN, { buffs: true });
+      // Хелпер пасивок сам не вмикає — ті, що гравець не налаштовував, лялька додає; накладаємо їх і на Хелпер.
+      for (const p of classPassives(state.cls)) {
+        const k = String(p.id);
+        if (state.buffCfg[k]) expect(back.buffCfg[k], fx.name + ' пасивка ' + k).toEqual(state.buffCfg[k]);
+        else state.buffCfg[k] = back.buffCfg[k];
+      }
       const ibCalc = deriveIb(state);
       const ibPvp = deriveIb(back);
       expect(ibPvp, fx.name).toEqual(ibCalc);
@@ -129,10 +136,12 @@ describe('effectiveSlots / toDollState по конфігураціях', () => {
   it('бафи — лише при opts.buffs; титули — лише додатні', () => {
     const doc = mkDoc({ buffs: { cfg: { '12': { on: true, lvl: 5, side: 'rs' } }, extra: [12] }, titles: { hp: 100, ld: 0 } });
     const model = hydrate(doc, lookup);
-    expect(toDollState(model, CFG_MAIN).buffCfg).toEqual({});
+    // Без бафів лишаються пасивки класу (Воїн — 4 техніки бою, 10 рівень без шляху).
+    const passive = { on: true, lvl: 10, side: '' };
+    expect(toDollState(model, CFG_MAIN).buffCfg).toEqual({ '17': passive, '18': passive, '19': passive, '20': passive });
     expect(toDollState(model, CFG_MAIN).extraBuffs).toEqual([]);
     const withBuffs = toDollState(model, CFG_MAIN, { buffs: true });
-    expect(withBuffs.buffCfg).toEqual({ '12': { on: true, lvl: 5, side: 'rs' } });
+    expect(withBuffs.buffCfg).toEqual({ '12': { on: true, lvl: 5, side: 'rs' }, '17': passive, '18': passive, '19': passive, '20': passive });
     expect(withBuffs.extraBuffs).toEqual([12]);
     expect(withBuffs.titles).toEqual({ hp: 100 });
     expect(withBuffs.cls).toBe('by');

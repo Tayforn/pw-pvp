@@ -11,6 +11,7 @@
 // стануть непотрібні.
 // =========================================================
 
+import { deriveIb } from '../core/buffs';
 import {
   ARMOR_REFINE_ORDER, ARMOR_SET_ORDER, BUILD_ORDER, GEMS_ORDER, GENIE_ORDER, RING_ORDER, SPECIAL_SET_ORDER,
   TRACT_ORDER, WEAPON_GRADE_ORDER, WEAPON_REFINE_ORDER, type GemClass, type ScoringRules,
@@ -174,10 +175,12 @@ export interface DollFacts {
 /** Пороги свап-сетів — як у підказках анкети (SPECIAL_SET_HINTS). */
 const PZ_MIN = 30;
 const PA_MIN = 30;
-const APS_MIN = 3.33;
 const CHANNEL_MIN = 30;
 
-const numsOf = (model: CharacterModel, cfgId: string): DerivedNumbers => derivedNumbers(toDollState(model, cfgId, { fillFromMain: true }));
+const numsOf = (model: CharacterModel, cfgId: string): DerivedNumbers => {
+  const b = toDollState(model, cfgId, { fillFromMain: true });
+  return derivedNumbers(b, deriveIb(b)); // у стані лише пасивки класу
+};
 const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 /**
@@ -195,7 +198,8 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
     const got: SpecialSet[] = [];
     if (n.pz >= PZ_MIN && n.pz > main.pz) got.push('pz');
     if (n.pa >= PA_MIN && n.pa > main.pa) got.push('pa');
-    if ((n.aps >= APS_MIN && n.aps > main.aps) || (n.channel >= CHANNEL_MIN && n.channel > main.channel)) got.push('aspd');
+    // Лише спів: окремого аспд-сету немає, швидкість атаки — це Головний.
+    if (n.channel >= CHANNEL_MIN && n.channel > main.channel) got.push('aspd');
     if (got.length) {
       const pts = gemPointsOf(model, set.id, rules);
       // Кілька сетів одного виду — камені беремо з найкращого.

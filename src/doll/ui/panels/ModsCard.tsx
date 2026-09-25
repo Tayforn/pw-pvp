@@ -4,6 +4,7 @@
 // іконці — налаштування рівня й сторони (модалка каркаса), чекбокс —
 // увімкнути/вимкнути, «+» — пошук стану. Стани тут лише щоб подивитися стати
 // «в бою»: у скор і в дельти сетів вони не входять — підпис про це нагадує.
+// Окремий рядок — пасивки класу (model/passives.ts): діють завжди й входять у скор.
 // Стани — поле документа, а не конфігурації: однакові на всіх вкладках.
 // =========================================================
 
@@ -14,6 +15,7 @@ import { hasRefData } from '../../core/refdata';
 import type { BuffDef, DollState } from '../../core/types';
 import { buffIconStyle } from '../../data/assets';
 import { toggleBuff } from '../../model/ops';
+import { classPassives } from '../../model/passives';
 import { buildBuffTipModel } from '../../model/tipModel';
 import { useEditor } from '../EditorContext';
 import { useTip, type TipApi, type TipContent } from '../tip/useTip';
@@ -81,7 +83,7 @@ function BuffSlot({ b, build, readOnly, tip, onToggle, onCfg }: SlotProps) {
   );
 }
 
-function BuffRow({ title, list, addLabel, props }: { title: string; list: BuffDef[]; addLabel: string; props: ModsCardViewProps }) {
+function BuffRow({ title, list, addLabel, props }: { title: string; list: BuffDef[]; addLabel: string | null; props: ModsCardViewProps }) {
   return (
     <div className="doll-mods-row">
       <span className="doll-mods-l">{title}</span>
@@ -89,7 +91,7 @@ function BuffRow({ title, list, addLabel, props }: { title: string; list: BuffDe
         {list.map((b) => (
           <BuffSlot key={b.id} b={b} build={props.build} readOnly={props.readOnly} tip={props.tip} onToggle={props.onToggle} onCfg={props.onCfg} />
         ))}
-        {!props.readOnly && (
+        {!props.readOnly && addLabel && (
           <div className="doll-buff">
             <button type="button" className="doll-buff-ic add" title={addLabel} aria-label={addLabel} onClick={props.onAdd}>
               +
@@ -104,16 +106,19 @@ function BuffRow({ title, list, addLabel, props }: { title: string; list: BuffDe
 /** Чиста частина картки — без контексту (для тестів). */
 export function ModsCardView(props: ModsCardViewProps) {
   const ready = hasRefData();
-  const buffs = ready ? shownBuffs(props.build) : [];
+  const passives = ready ? classPassives(props.build.cls) : [];
+  const passiveIds = new Set(passives.map((b) => b.id));
+  const buffs = ready ? shownBuffs(props.build).filter((b) => !passiveIds.has(b.id)) : [];
   const debuffs = ready ? shownDebuffs(props.build) : [];
   const onIds = Object.keys(props.build.buffCfg)
     .filter((k) => props.build.buffCfg[k]?.on)
-    .map(Number);
+    .map(Number)
+    .filter((id) => !passiveIds.has(id));
   return (
     <section className="card doll-pn doll-mods" aria-label="Стани">
       <header className="doll-pn-head">
         <h3>Стани</h3>
-        <span className="doll-pn-tag mute">у скор не входить</span>
+        <span className="doll-pn-tag mute">бафи в скор не входять</span>
         {onIds.length > 0 && <span className="doll-pn-tag good">увімкнено {onIds.length}</span>}
         <span className="doll-pn-note">
           лише щоб побачити стати в бою
@@ -129,6 +134,15 @@ export function ModsCardView(props: ModsCardViewProps) {
         <p className="doll-pn-note">Завантаження станів…</p>
       ) : (
         <>
+          {passives.length > 0 && (
+            <>
+              <BuffRow title="Пасивки" list={passives} addLabel={null} props={props} />
+              <p className="doll-pn-note">
+                Пасивки діють завжди, як у грі, і входять у характеристики та скор. За замовчуванням — 11 рівень зі стороною шляху (без шляху — 10).
+                Іконка — рівень і сторона; галочку зніми, якщо пасивку не вивчено.
+              </p>
+            </>
+          )}
           <BuffRow title="Бафи" list={buffs} addLabel="Додати баф" props={props} />
           <BuffRow title="Дебафи" list={debuffs} addLabel="Додати дебаф" props={props} />
         </>
