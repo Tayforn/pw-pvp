@@ -505,7 +505,8 @@ function FormTeamsModal({ tournament: t, players, infos, bracketExists, onClose,
   const selected = draft && selectedId ? [...draft.teams.flatMap((tm) => tm.members), ...draft.reserve].find((p) => p.id === selectedId) ?? null : null;
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}>
+    // Закривається лише хрестиком і «Скасувати» (обидва — через requestClose із підтвердженням).
+    <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true" style={{ width: 'min(1000px, 100%)' }}>
         <div className="modal-head">
           <h3>Формування команд</h3>
@@ -766,7 +767,8 @@ function SubstituteModal({ tournament: t, team, out, members, reserve, ratings, 
   };
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+    // Закривається лише хрестиком і «Скасувати» — клік повз вікно не скидає обрану причину.
+    <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true" style={{ width: 'min(560px, 100%)' }}>
         <div className="modal-head">
           <h3>Замінити: {out.nickname}</h3>

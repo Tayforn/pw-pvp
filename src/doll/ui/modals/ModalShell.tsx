@@ -1,10 +1,11 @@
 // =========================================================
 // ЛЯЛЬКА — оболонка модалок редактора на класах pvp (.modal-overlay/.modal,
-// z 1000). Спільне для всіх вікон ляльки: Esc і клік по затемненню закривають,
-// role=dialog + aria-modal, мінімальний фокус-трап (Tab по колу всередині
-// вікна), body.modal-open — щоб сторінка під вікном не скролилась (так само
-// робить BracketView). Відкриття вікна ховає тултіп: інакше він лишається
-// висіти над затемненням.
+// z 1000). Спільне для всіх вікон ляльки: закривають лише хрестик, кнопки
+// вікна й Esc — клік по затемненню НЕ закриває (у вікнах форми; випадковий
+// клік повз вікно не має губити введене), role=dialog + aria-modal,
+// мінімальний фокус-трап (Tab по колу всередині вікна), body.modal-open — щоб
+// сторінка під вікном не скролилась (так само робить BracketView). Відкриття
+// вікна ховає тултіп: інакше він лишається висіти над затемненням.
 //
 // Фокус повертається туди, звідки відкрили ПЕРШЕ вікно. Вікна ляльки
 // заміняють одне одне (редактор речі → пікер каменя → знову редактор), і
@@ -41,8 +42,9 @@ export function ModalShell({
   title: ReactNode;
   onClose: () => void;
   children: ReactNode;
-  /** sm ≈ 360 px (налаштування бафа), md ≈ 480 px (редактор/пікер), lg ≈ 580 px (суперник). */
-  size?: 'sm' | 'md' | 'lg';
+  /** sm ≈ 380 px (налаштування бафа), md ≈ 480 px (редактор/пікер), lg ≈ 600 px (суперник),
+   * xl — 960×720 px (вікно з двома панелями; разом із класом doll-modal-split). */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   /** Кнопки в шапці праворуч від заголовка (напр. «Зняти» в пікері). */
   headExtra?: ReactNode;
@@ -67,8 +69,13 @@ export function ModalShell({
     const first = root.querySelector<HTMLElement>('[data-autofocus]');
     (first ?? root).focus({ preventScroll: true });
 
+    // tabIndex < 0 відсіюємо окремо: :not у селекторі стосується лише [tabindex],
+    // тож кнопки з tabindex=-1 (кнопка «i» в пікері, плитки сітки з одним
+    // активним елементом) інакше ставали б межами кола, і Tab ішов під вікно.
     const focusables = () =>
-      Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+      Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.tabIndex >= 0 && !el.hasAttribute('disabled') && el.offsetParent !== null,
+      );
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Закріплений тултіп поверх вікна ковтає Esc сам (TipHost, capture).
@@ -115,12 +122,7 @@ export function ModalShell({
   }, []);
 
   return (
-    <div
-      className="modal-overlay doll-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <div className="modal-overlay doll-overlay" role="presentation">
       <div
         ref={ref}
         className={'modal doll-modal doll-modal-' + size + (className ? ' ' + className : '')}

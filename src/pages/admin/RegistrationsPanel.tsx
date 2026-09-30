@@ -63,7 +63,8 @@ function GearModal({ reg, version, teamSize, onClose, onSaved }: { reg: Registra
   };
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    // Закривається лише хрестиком і «Скасувати» — клік повз вікно не губить правки анкети.
+    <div className="modal-overlay">
       <div className="modal" role="dialog" aria-modal="true" style={{ width: 'min(640px, 100%)' }}>
         <div className="modal-head">
           <h3>Анкета: {reg.nickname}</h3>
