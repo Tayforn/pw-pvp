@@ -8,6 +8,9 @@
 // «Плащ вознесения», SHG_ITEM / VOZNES_ITEM) та їхню точку. Гравець заповнює
 // лише те, чого в каталозі немає: грейд зброї й сету броні, грейди кілець,
 // трактат, джин — це поля «Анкети для турнірів» у персонажі (doc.sheet).
+// Ті самі грейди лялька вже визначає й з надітих речей (model/grades.ts,
+// поля weaponGrade … gradeNotes у DollFacts), але в заявку вони поки йдуть з
+// анкети — перехід на них наступним кроком.
 // Згодом, коли скор рахуватиметься прямо з характеристик ляльки, ці грейди
 // стануть непотрібні.
 // =========================================================
@@ -16,12 +19,17 @@ import { deriveIb } from '../core/buffs';
 import {
   ARMOR_REFINE_ORDER, ARMOR_SET_ORDER, BUILD_ORDER, GEMS_ORDER, GENIE_ORDER, RING_ORDER, SPECIAL_SET_ORDER,
   TRACT_ORDER, WEAPON_GRADE_ORDER, WEAPON_REFINE_ORDER, GEM_CLASS_ORDER, type GemClass, type GemCounts, type ScoringRules,
+  ARMOR_SET_LABELS, RING_LABELS, WEAPON_GRADE_LABELS,
 } from '../../data/gearRules';
-import type { ArmorRefine, Build, CharClass, CharLevel, Gems, PlayerGear, SpecialSet, WeaponRefine } from '../../data/types';
+import type {
+  ArmorRefine, ArmorSet, Build, CharClass, CharLevel, Gems, Genie, PlayerGear, RingGrade, SpecialSet, Tract, WeaponGrade, WeaponRefine,
+} from '../../data/types';
+import { genieBucket, genieScoreLuck } from '../../data/genie';
 import { ATTR_BASE, gemDop } from '../core/stats';
 import type { Item } from '../core/types';
 import { derivedNumbers, type DerivedNumbers } from '../core/derived';
 import type { CharacterDoc, ClsKey, SlotKey } from './doc';
+import { armorSetOf, ringGradeOf, tractOf, weaponGradeOf } from './grades';
 import { CFG_MAIN, effectiveSlots, hydrate, toDollState, type CharacterModel, type ItemLookup } from './hydrate';
 
 /** Клас ляльки → клас сайту (підписи й порядок — як в анкеті турніру). */
@@ -71,6 +79,14 @@ export function sheetErrors(raw: unknown): string[] {
       }
   }
   return errs;
+}
+
+/** Рядок «Джин» шкали для персонажа: з блоку джина (doc.genie, бали — за удачею,
+ * див. genieScoreLuck), інакше зі старої анкети (doc.sheet.genie); null — джина
+ * не заповнено ніде. */
+export function genieOf(doc: CharacterDoc): Genie | null {
+  if (doc.genie) return genieBucket(genieScoreLuck(doc.genie));
+  return doc.sheet?.genie ?? null;
 }
 
 export function charLevelOf(level: number): CharLevel {
@@ -192,6 +208,17 @@ export interface DollFacts {
    * в Головному чи в сеті; null — речі на ляльці немає. */
   shgRefine: number | null;
   voznesRefine: number | null;
+  /** Грейди шкали з надітих речей (model/grades.ts). Зброя — з Головного,
+   * null — зброї немає; сет броні — нагрудник, поножі, взуття, наручі
+   * Головного; кільця — cr і cd Головного (порожній слот — «Луна і нижче»);
+   * трактат — найкращий з Головного й усіх сетів. */
+  weaponGrade: WeaponGrade | null;
+  armorSet: ArmorSet;
+  tract: Tract;
+  ring1: RingGrade;
+  ring2: RingGrade;
+  /** Речі, які лялька могла не розпізнати (зараховано нижчий грейд), — людськими рядками. */
+  gradeNotes: string[];
   /** Показники з вікна персонажа (Головний, без бафів). */
   pa: number;
   pz: number;
@@ -217,6 +244,25 @@ function wornRefine(model: CharacterModel, doc: CharacterDoc, it: { slot: 'ft' |
   }
   return best;
 }
+
+/** Найкращий трактат (qn) з Головного й усіх сетів — як wornRefine: на турнірі
+ * береш найкращий, свап униз дозволений. */
+function bestTract(model: CharacterModel, doc: CharacterDoc): Tract {
+  let best = tractOf(null).grade;
+  for (const iid of [doc.main.qn, ...doc.sets.map((s) => s.slots.qn)]) {
+    const it = iid ? model.items.get(iid)?.item : null;
+    if (!it) continue;
+    const t = tractOf(it).grade;
+    if (TRACT_ORDER.indexOf(t) > TRACT_ORDER.indexOf(best)) best = t;
+  }
+  return best;
+}
+
+/** Сет броні — за цими 4 слотами Головного (шолом і накидка — ШГ/Вознєс або окремі речі). */
+const ARMOR_SET_SLOTS: SlotKey[] = ['rv', 'tg', 'rx', 'mj'];
+
+/** Назва речі для попередження — без хвостових пробілів каталогу. */
+const itemName = (it: Item) => String(it.name).replace(/\s+/g, ' ').trim();
 
 /**
  * Усе, що лялька визначає сама. Каталоги й довідники мають бути завантажені
@@ -273,6 +319,27 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
   const specialSetGems: Partial<Record<SpecialSet, Gems>> = {};
   for (const k of specialSets) specialSetGems[k] = gemsBucket(kindGems[k] ?? 0, rules);
 
+  // Грейди з речей Головного. Нерозпізнане не блокує: нижчий грейд + рядок у gradeNotes.
+  const mainItem = (slot: SlotKey): Item | null => {
+    const iid = doc.main[slot];
+    return (iid ? model.items.get(iid)?.item : null) ?? null;
+  };
+  const gradeNotes: string[] = [];
+  const note = (what: string, it: Item, as: string) => gradeNotes.push(`${what}: лялька не розпізнала «${itemName(it)}» — зараховано як ${as}`);
+  const wg = weapon?.item ? weaponGradeOf(weapon.item) : null;
+  if (weapon?.item && wg?.suspicious) note('Зброя', weapon.item, `«${WEAPON_GRADE_LABELS[wg.grade]}»`);
+  const armor = armorSetOf(ARMOR_SET_SLOTS.map(mainItem));
+  // Річ броні окремо — «нижче Нірвани»; у бали йде сет, тож його теж називаємо.
+  for (const it of armor.suspicious) note('Броня', it, `річ «${ARMOR_SET_LABELS.other}» (сет броні — «${ARMOR_SET_LABELS[armor.grade]}»)`);
+  const ring = (slot: 'cr' | 'cd', what: string): RingGrade => {
+    const it = mainItem(slot);
+    const r = ringGradeOf(it);
+    if (it && r.suspicious) note(what, it, `«${RING_LABELS[r.grade]}»`);
+    return r.grade;
+  };
+  const ring1 = ring('cr', 'Кільце 1');
+  const ring2 = ring('cd', 'Кільце 2');
+
   return {
     build: buildOf(doc, rules),
     weaponPz: weaponPzGain > 0,
@@ -289,6 +356,12 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
     ring2Refine: ringR('cd'),
     shgRefine: wornRefine(model, doc, SHG_ITEM),
     voznesRefine: wornRefine(model, doc, VOZNES_ITEM),
+    weaponGrade: wg?.grade ?? null,
+    armorSet: armor.grade,
+    tract: bestTract(model, doc),
+    ring1,
+    ring2,
+    gradeNotes,
     pa: main.pa,
     pz: main.pz,
   };

@@ -91,12 +91,18 @@ export function ModalShell({
         return;
       }
       const a = document.activeElement;
-      if (e.shiftKey && (a === list[0] || a === root || !root.contains(a))) {
+      const first = list[0];
+      const last = list[list.length - 1];
+      // Елемент із tabindex=-1 (кнопка «i» в пікері) може стояти поза межами списку —
+      // тоді порівнюємо позицію в документі, а не рівність.
+      const before = (el: Element) => !!a && a !== el && root.contains(a) && !!(el.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_PRECEDING);
+      const after = (el: Element) => !!a && a !== el && root.contains(a) && !!(el.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (e.shiftKey && (a === first || a === root || !root.contains(a) || before(first))) {
         e.preventDefault();
-        list[list.length - 1].focus();
-      } else if (!e.shiftKey && (a === list[list.length - 1] || !root.contains(a))) {
+        last.focus();
+      } else if (!e.shiftKey && (a === last || !root.contains(a) || after(last))) {
         e.preventDefault();
-        list[0].focus();
+        first.focus();
       }
     };
     document.addEventListener('keydown', onKey);

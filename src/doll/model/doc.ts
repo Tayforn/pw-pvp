@@ -9,6 +9,7 @@
 
 import { ADDON_CODES, STAT_ALIAS, maxSockets } from '../core/constants';
 import { ATTR_BASE, TITLE_FIELDS } from '../core/stats';
+import { GENIE_MAX_LEVEL, GENIE_MAX_LUCK, GENIE_MAX_SKILLS, type GenieCfg } from '../../data/genie';
 import { sheetErrors, type Sheet } from './sheet';
 
 export type SlotKey = 'ft' | 'vx' | 'rv' | 'st' | 'tg' | 'rx' | 'wy' | 'mj' | 'cr' | 'cd' | 'ta' | 'it' | 'qn' | 'pp' | 'pk' | 'gv' | 'ic';
@@ -108,6 +109,9 @@ export interface CharacterDoc {
   buffs?: { cfg: Record<string, BuffCfgRow>; extra: number[] }; // лише для перегляду статів, у скор не входить
   /** Анкета для турнірів — поля, яких лялька не знає (грейди речей); див. model/sheet.ts. */
   sheet?: Sheet;
+  /** Джин: рівень, удача й вміння (правила — src/data/genie.ts). Ключа немає, доки
+   * гравець нічого не заповнив; «очистити» = прибрати ключ. */
+  genie?: GenieCfg;
 }
 
 export const DOC_LIMITS = { items: 100, rollRows: 400, sets: 5, nameLen: 32, setNameLen: 24, bytes: 32768 } as const;
@@ -223,9 +227,10 @@ const isInt = (v: unknown, min: number, max: number): v is number => typeof v ==
  * «Жорсткі» (add) — зламана форма чи цілісність: чужий JSON, посилання в нікуди;
  * такий документ редактор не відкриє. «Мʼякі» (soft) — ліміти й правила: речей
  * понад 100, рядків ролів понад 400, байти, бюджет атрибутів, довжина й символи
- * назв, величина чисел. Документ цілий — його можна відкрити й виправити, але
- * не зберегти. Мʼякі порушення бувають від звичайної роботи в редакторі
- * (знизили рівень, вставили імʼя з табуляцією), і через них не можна губити чернетку.
+ * назв, величина чисел, невідоме поле верхнього рівня. Документ цілий — його
+ * можна відкрити й виправити, але не зберегти. Мʼякі порушення бувають від
+ * звичайної роботи в редакторі (знизили рівень, вставили імʼя з табуляцією) чи
+ * від новішої версії сайту, і через них не можна губити чернетку.
  */
 class Errs {
   list: string[] = [];
@@ -240,6 +245,19 @@ class Errs {
 
 function checkKeys(o: Obj, allowed: readonly string[], where: string, errs: Errs): void {
   for (const k of Object.keys(o)) if (!allowed.includes(k)) errs.add(`${where}: зайве поле «${k}»`);
+}
+
+/** Джин: жорстко перевіряється лише форма. Ігрові правила (замалий рівень чи
+ * удача, два початкові вміння, чуже для класу, ref поза таблицею) — не помилки
+ * документа: їх показує картка джина (genieWarnings), а персонаж зберігається. */
+function checkGenie(raw: unknown, errs: Errs): void {
+  if (!isObj(raw)) return errs.add('genie має бути обʼєктом');
+  checkKeys(raw, ['level', 'luck', 'skills'], 'genie', errs);
+  if (!isInt(raw.level, 1, GENIE_MAX_LEVEL)) errs.add(`genie.level має бути цілим 1..${GENIE_MAX_LEVEL}`);
+  if (!isInt(raw.luck, 0, GENIE_MAX_LUCK)) errs.add(`genie.luck має бути цілим 0..${GENIE_MAX_LUCK}`);
+  if (!Array.isArray(raw.skills) || raw.skills.some((x) => !isInt(x, 1, MAX_ID))) return errs.add('genie.skills має бути списком id вмінь');
+  if (raw.skills.length > GENIE_MAX_SKILLS) errs.add(`genie.skills: вмінь більше за ${GENIE_MAX_SKILLS}`);
+  if (new Set(raw.skills).size !== raw.skills.length) errs.add('genie.skills: вміння повторюється');
 }
 
 function checkRows(v: unknown, where: string, errs: Errs): StatRow[] | undefined {
@@ -325,7 +343,7 @@ function checkSlots(
   }
 }
 
-const DOC_KEYS = ['v', 'name', 'cls', 'gender', 'level', 'attrs', 'titles', 'path', 'nextIid', 'items', 'main', 'sets', 'buffs', 'sheet'];
+const DOC_KEYS = ['v', 'name', 'cls', 'gender', 'level', 'attrs', 'titles', 'path', 'nextIid', 'items', 'main', 'sets', 'buffs', 'sheet', 'genie'];
 const SET_KEYS = ['id', 'name', 'kind', 'slots'];
 
 export type ValidateResult =
@@ -353,7 +371,12 @@ export function validateDoc(raw: unknown): ValidateResult {
     }
   }
   if (!isObj(data)) return { ok: false, errors: ['документ має бути обʼєктом'] };
-  checkKeys(data, DOC_KEYS, 'документ', errs);
+  // Невідомий ключ верхнього рівня — мʼяко: так виглядає документ, записаний новішою
+  // версією сайту, у вкладці, відкритій до оновлення. Його можна відкрити, але не
+  // зберегти (і не затерти нове поле); «пошкодженим» він не є.
+  for (const k of Object.keys(data)) {
+    if (!DOC_KEYS.includes(k)) errs.soft(`документ: зайве поле «${k}» — сайт оновився, перезавантаж сторінку`);
+  }
   if (data.v !== 2) errs.add(`непідтримувана версія документа: ${String(data.v)}`);
   if (typeof data.name !== 'string') errs.add('імʼя має бути рядком');
   else {
@@ -457,6 +480,7 @@ export function validateDoc(raw: unknown): ValidateResult {
   }
 
   if (data.sheet !== undefined) for (const e of sheetErrors(data.sheet)) errs.add(e);
+  if (data.genie !== undefined) checkGenie(data.genie, errs);
 
   if (errs.list.length) return { ok: false, errors: [...errs.list, ...errs.softList].slice(0, 30) };
   const bytes = docSizeBytes(data);

@@ -4,9 +4,10 @@ import { getBuffById, getBuffs } from '../../core/refdata';
 import { DOC_LIMITS, rollRowCount, validateDoc, type CharacterDoc, type StatRow } from '../doc';
 import { CFG_MAIN, hydrate, inventoryOf, whereWorn } from '../hydrate';
 import {
-  addExtraBuff, addFromCatalog, createSet, defaultSetName, deleteInstance, deleteSet, duplicateInstance, equip, equipAuto,
-  fillEmptyFromMain, isPlainInst, normalizeInst, pickFromCatalog, removeExtraBuff, renameSet, setAttr, setBuffLvl, setBuffSide, setCls,
-  setLevel, setName, setOrphans, setPath, setSetKind, setTitle, toggleBuff, unequip, unequipAll, updateInstance,
+  addExtraBuff, addFromCatalog, clearGenie, clearGenieSkills, createSet, defaultSetName, deleteInstance, deleteSet, duplicateInstance, equip,
+  equipAuto, fillEmptyFromMain, isPlainInst, normalizeInst, pickFromCatalog, removeExtraBuff, renameSet, setAttr, setBuffLvl, setBuffSide,
+  setCls, setGenieLevel, setGenieLuck, setLevel, setName, setOrphans, setPath, setSetKind, setTitle, toggleBuff, toggleGenieSkill, unequip,
+  unequipAll, updateInstance,
 } from '../ops';
 import { inst, loadRef, lookup, mkDoc, mkSet } from './testDoc';
 
@@ -44,6 +45,62 @@ describe('персонаж', () => {
     // клас не знімає надіті речі
     const worn = mkDoc({ items: [inst('a', 'ta', 1900)], main: { ta: 'a' } });
     expect(setCls(worn, 'ga').main).toEqual({ ta: 'a' });
+  });
+});
+
+describe('джин', () => {
+  it('рівень і удача: цілі в межах; перша правка створює поле; без змін — те саме посилання', () => {
+    const d = mkDoc();
+    expect(d).not.toHaveProperty('genie');
+    expect(setGenieLevel(d, 50).genie).toEqual({ level: 50, luck: 0, skills: [] });
+    expect(setGenieLuck(d, 30).genie).toEqual({ level: 1, luck: 30, skills: [] });
+    expect(setGenieLevel(d, 500).genie?.level).toBe(105);
+    expect(setGenieLevel(d, -3).genie?.level).toBe(1);
+    expect(setGenieLevel(d, 99.9).genie?.level).toBe(99);
+    expect(setGenieLevel(d, Number.NaN).genie?.level).toBe(1);
+    expect(setGenieLuck(d, 101).genie?.luck).toBe(100);
+    expect(setGenieLuck(d, -1).genie?.luck).toBe(0);
+    expect(setGenieLuck(d, 55.5).genie?.luck).toBe(55);
+    // Перша правка пише ключ навіть зі значенням за замовчуванням — гравець щось заповнив.
+    expect(setGenieLevel(d, 1).genie).toEqual({ level: 1, luck: 0, skills: [] });
+    const g = setGenieLevel(d, 50);
+    expect(setGenieLevel(g, 50)).toBe(g);
+    expect(setGenieLuck(setGenieLuck(g, 10), 10).genie?.luck).toBe(10);
+    valid(setGenieLuck(setGenieLevel(d, 105), 100));
+  });
+
+  it('toggleGenieSkill: додає, лише якщо правила пускають; прибирає завжди', () => {
+    let d = setGenieLuck(setGenieLevel(mkDoc(), 105), 100);
+    d = toggleGenieSkill(d, 9681);
+    d = toggleGenieSkill(d, 10001);
+    expect(d.genie?.skills).toEqual([9681, 10001]);
+    expect(toggleGenieSkill(d, 10151)).toBe(d); // друге початкове
+    expect(toggleGenieSkill(d, 10451)).toBe(d); // «Хаос душі» — лише друїд, а тут воїн
+    expect(toggleGenieSkill({ ...d, cls: 'rl' }, 10451).genie?.skills).toEqual([9681, 10001, 10451]);
+    expect(toggleGenieSkill(d, 123)).toBe(d); // ref поза таблицею
+    const low = setGenieLevel(d, 10);
+    expect(toggleGenieSkill(low, 10461)).toBe(low); // «Займання» — від 60 рівня
+    // Прибрати можна й те, що вже не проходить правила (рівень знизили після вибору).
+    const hi = toggleGenieSkill(d, 10461);
+    expect(hi.genie?.skills).toEqual([9681, 10001, 10461]);
+    const lowered = setGenieLevel(hi, 10);
+    expect(lowered.genie?.skills).toEqual([9681, 10001, 10461]); // рівень вміння не прибирає
+    expect(toggleGenieSkill(lowered, 10461).genie?.skills).toEqual([9681, 10001]);
+    // Без поля: створюється з рівнем 1 і удачею 0 — пускає лише вміння 1-го рівня.
+    expect(toggleGenieSkill(mkDoc(), 9681).genie).toEqual({ level: 1, luck: 0, skills: [9681] });
+    expect(toggleGenieSkill(mkDoc(), 10461)).toEqual(mkDoc());
+    valid(hi);
+  });
+
+  it('clearGenieSkills лишає рівень і удачу; clearGenie прибирає ключ', () => {
+    const d = toggleGenieSkill(setGenieLuck(setGenieLevel(mkDoc(), 90), 85), 9681);
+    expect(clearGenieSkills(d).genie).toEqual({ level: 90, luck: 85, skills: [] });
+    const empty = clearGenieSkills(d);
+    expect(clearGenieSkills(empty)).toBe(empty);
+    expect(clearGenie(d)).not.toHaveProperty('genie');
+    const none = mkDoc();
+    expect(clearGenie(none)).toBe(none);
+    expect(clearGenieSkills(none)).toBe(none);
   });
 });
 

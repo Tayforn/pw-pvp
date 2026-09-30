@@ -164,6 +164,67 @@ describe('validateDoc: жорсткі й мʼякі порушення', () => {
   });
 });
 
+describe('validateDoc: джин і невідомі поля', () => {
+  const res = (raw: unknown) => {
+    const v = validateDoc(raw);
+    return v.ok ? null : { errors: v.errors.join(' | '), recoverable: !!v.recoverable };
+  };
+  const g = (genie: unknown) => res({ ...emptyDoc(), genie });
+
+  it('валідний джин і документ без джина — ok; поле доходить до документа як є', () => {
+    expect(g({ level: 105, luck: 100, skills: [9681, 9751] })).toBeNull();
+    expect(g({ level: 1, luck: 0, skills: [] })).toBeNull();
+    expect(res(emptyDoc())).toBeNull();
+    const doc = { ...emptyDoc(), genie: { level: 100, luck: 91, skills: [9681] } };
+    const v = validateDoc(JSON.stringify(doc));
+    expect(v.ok && v.doc.genie).toEqual({ level: 100, luck: 91, skills: [9681] });
+  });
+
+  it('зламана форма — жорстко: не обʼєкт, зайвий ключ, межі й цілі, skills, понад 8, повтор', () => {
+    const hard = (genie: unknown, re: RegExp) => {
+      const r = g(genie);
+      expect(r?.recoverable).toBe(false);
+      expect(r?.errors).toMatch(re);
+    };
+    hard(null, /genie має бути обʼєктом/);
+    hard([], /genie має бути обʼєктом/);
+    hard('g100', /genie має бути обʼєктом/);
+    hard({ level: 1, luck: 0, skills: [], kind: 1 }, /genie: зайве поле «kind»/);
+    hard({ level: 0, luck: 0, skills: [] }, /genie\.level/);
+    hard({ level: 106, luck: 0, skills: [] }, /genie\.level/);
+    hard({ level: 1.5, luck: 0, skills: [] }, /genie\.level/);
+    hard({ luck: 0, skills: [] }, /genie\.level/);
+    hard({ level: 1, luck: -1, skills: [] }, /genie\.luck/);
+    hard({ level: 1, luck: 101, skills: [] }, /genie\.luck/);
+    hard({ level: 1, luck: '5', skills: [] }, /genie\.luck/);
+    hard({ level: 1, luck: 0, skills: 'x' }, /genie\.skills/);
+    hard({ level: 1, luck: 0 }, /genie\.skills/);
+    hard({ level: 1, luck: 0, skills: [9681.5] }, /genie\.skills/);
+    hard({ level: 1, luck: 0, skills: ['9681'] }, /genie\.skills/);
+    hard({ level: 105, luck: 100, skills: [1, 2, 3, 4, 5, 6, 7, 8, 9] }, /більше за 8/);
+    hard({ level: 105, luck: 100, skills: [9681, 9681] }, /повторюється/);
+  });
+
+  it('ігрові правила — не помилки документа: замалий рівень чи удача, два початкові, чуже для класу, невідомий ref', () => {
+    expect(g({ level: 1, luck: 0, skills: [10461, 10401, 10411, 10421, 10431, 10441, 10451, 10471] })).toBeNull();
+    expect(g({ level: 50, luck: 50, skills: [10001, 10151] })).toBeNull();
+    expect(res({ ...emptyDoc('by'), genie: { level: 105, luck: 100, skills: [10451] } })).toBeNull(); // «Хаос душі» — лише друїд
+    expect(g({ level: 105, luck: 100, skills: [123456] })).toBeNull();
+  });
+
+  it('невідоме поле верхнього рівня — мʼяко: документ відкривається, але не зберігається', () => {
+    const r = res({ ...emptyDoc(), future: { a: 1 } });
+    expect(r?.recoverable).toBe(true);
+    expect(r?.errors).toMatch(/зайве поле «future» — сайт оновився, перезавантаж сторінку/);
+    const v = validateDoc({ ...emptyDoc(), future: 1 });
+    expect(!v.ok && v.recoverable).toHaveProperty('future', 1); // нове поле не губиться
+    // Разом із жорсткою помилкою — не відкривається, але причину видно.
+    const both = res({ ...emptyDoc(), cls: 'uf', future: 1 });
+    expect(both?.recoverable).toBe(false);
+    expect(both?.errors).toMatch(/зайве поле/);
+  });
+});
+
 describe('docSizeBytes і константи', () => {
   it('рахує UTF-8 + по байту на кожну кому/двокрапку поза рядками (як jsonb::text)', () => {
     expect(docSizeBytes({ a: 1 })).toBe(JSON.stringify({ a: 1 }).length + 1);

@@ -147,3 +147,14 @@ export function fromCalcDollState(state: DollState): CharacterDoc {
   if (v.recoverable) return v.recoverable;
   throw new Error('білд Хелпера не проходить перевірку: ' + v.errors.slice(0, 3).join('; '));
 }
+
+/** Імпорт поверх поточного персонажа: речі, атрибути й бафи — з білда Хелпера;
+ * те, чого в Хелпері немає, лишається з поточного документа — імʼя (якщо в білді
+ * порожнє), стара анкета (sheet) і джин (genie). */
+export function mergeImported(cur: CharacterDoc, next: CharacterDoc): CharacterDoc {
+  const out: CharacterDoc = { ...next, name: next.name || cur.name };
+  // Зі старої анкети — лише джин: грейди в ній описували речі, які імпорт замінює.
+  if (cur.sheet?.genie !== undefined) out.sheet = { genie: cur.sheet.genie };
+  if (cur.genie !== undefined) out.genie = cur.genie;
+  return out;
+}

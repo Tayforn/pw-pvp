@@ -17,6 +17,7 @@ import {
   type BuffCfgRow, type Cat, type CharacterDoc, type ClsKey, type ItemInst, type SetCfg, type SetKind, type SlotKey, type StatRow,
 } from './doc';
 import { CFG_MAIN, findSet, mainFill, newIid, whereWorn } from './hydrate';
+import { GENIE_MAX_LEVEL, GENIE_MAX_LUCK, clsBit, whyBlocked, type GenieCfg } from '../../data/genie';
 
 // ---------- ліміти ----------
 
@@ -80,6 +81,43 @@ function withoutKey<K extends keyof CharacterDoc>(doc: CharacterDoc, key: K): Ch
   const copy = { ...doc };
   delete copy[key];
   return copy;
+}
+
+// ---------- джин (правила — src/data/genie.ts) ----------
+
+/** Ключ genie зʼявляється з першою правкою гравця: рівень 1, удача 0, без вмінь. */
+function genieOr(doc: CharacterDoc): GenieCfg {
+  return doc.genie ?? { level: 1, luck: 0, skills: [] };
+}
+
+/** Рівень джина: ціле 1..105. Уміння, яким рівня тепер замало, не прибираються —
+ * їх покаже genieWarnings (як атрибути при зниженні рівня персонажа). */
+export function setGenieLevel(doc: CharacterDoc, level: number): CharacterDoc {
+  const g = genieOr(doc);
+  const v = Math.max(1, Math.min(GENIE_MAX_LEVEL, Math.floor(level) || 1));
+  return doc.genie && v === g.level ? doc : { ...doc, genie: { ...g, level: v } };
+}
+/** Удача джина: ціле 0..100. Верхню межу за рівнем (maxLuckAtLevel) лише показуємо. */
+export function setGenieLuck(doc: CharacterDoc, luck: number): CharacterDoc {
+  const g = genieOr(doc);
+  const v = Math.max(0, Math.min(GENIE_MAX_LUCK, Math.floor(luck) || 0));
+  return doc.genie && v === g.luck ? doc : { ...doc, genie: { ...g, luck: v } };
+}
+/** Вміння в наборі — прибрати (завжди); немає — додати в кінець, якщо правила
+ * пускають (whyBlocked === null), інакше doc без змін (причину UI бере з whyBlocked). */
+export function toggleGenieSkill(doc: CharacterDoc, ref: number): CharacterDoc {
+  const g = genieOr(doc);
+  if (g.skills.includes(ref)) return { ...doc, genie: { ...g, skills: g.skills.filter((r) => r !== ref) } };
+  if (whyBlocked(ref, g, clsBit(doc.cls))) return doc;
+  return { ...doc, genie: { ...g, skills: [...g.skills, ref] } };
+}
+/** Прибрати всі вміння; рівень і удача лишаються. */
+export function clearGenieSkills(doc: CharacterDoc): CharacterDoc {
+  return doc.genie?.skills.length ? { ...doc, genie: { ...doc.genie, skills: [] } } : doc;
+}
+/** «Очистити джина»: ключ зникає з документа. */
+export function clearGenie(doc: CharacterDoc): CharacterDoc {
+  return withoutKey(doc, 'genie');
 }
 
 // ---------- сети ----------

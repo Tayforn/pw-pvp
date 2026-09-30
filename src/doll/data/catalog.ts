@@ -48,14 +48,20 @@ export function isStaleDataError(msg: string | null | undefined): boolean {
   return msg === STALE_DATA_ERROR;
 }
 
-/** Завантажити файл даних. Спільне для каталогу й довідників (refLoader). */
-export async function fetchJsonFile<T = unknown>(name: string): Promise<T> {
-  const url = jsonUrl(name);
-  if (!url) throw new Error('немає файла даних «' + name + '»');
+/** Завантажити JSON за готовим (хешованим) URL; 404 = файла вже нема на сервері,
+ * тобто сайт оновився. name — лише для тексту помилки. */
+export async function fetchJsonUrl<T = unknown>(url: string, name: string): Promise<T> {
   const res = await fetch(url);
   if (res.status === 404) throw new Error(STALE_DATA_ERROR);
   if (!res.ok) throw new Error('не вдалося завантажити «' + name + '»: HTTP ' + res.status);
   return (await res.json()) as T;
+}
+
+/** Завантажити файл даних. Спільне для каталогу й довідників (refLoader). */
+export async function fetchJsonFile<T = unknown>(name: string): Promise<T> {
+  const url = jsonUrl(name);
+  if (!url) throw new Error('немає файла даних «' + name + '»');
+  return fetchJsonUrl<T>(url, name);
 }
 
 interface CatEntry {

@@ -4,7 +4,7 @@ import type { Item } from '../../core/types';
 import { validateDoc } from '../doc';
 import { createSet, equip, updateInstance } from '../ops';
 import {
-  armorRefineBucket, buildOf, charLevelOf, dollFacts, gearFromCharacter, gemClass, gemsBucket, sheetErrors, sheetFromGear, weaponRefineBucket,
+  armorRefineBucket, buildOf, charLevelOf, dollFacts, gearFromCharacter, gemClass, gemsBucket, genieOf, sheetErrors, sheetFromGear, weaponRefineBucket,
   SHG_ITEM, VOZNES_ITEM, type DollFacts, type Sheet,
 } from '../sheet';
 import { docFrom, inst, loadRef, lookup, mkDoc, mkSet } from './testDoc';
@@ -15,7 +15,8 @@ const rules = normalizeRules({});
 const SHEET: Sheet = { weaponGrade: 'r8r', armorSet: 'r8r', tract: 't7', genie: 'g100', shg: false, voznes: false, ring1: 'r9', ring2: 'r9r1' };
 const FACTS: DollFacts = {
   build: 'dd', weaponPz: false, weaponPzGain: 0, specialSets: [], specialSetGems: {}, weaponRefine: 'w10', armorRefine: 'a8', armorRefineAvg: 7.4,
-  gems: 'pa', gemPoints: 26, gemCounts: { topPa: 24 }, ring1Refine: 0, ring2Refine: 3, shgRefine: null, voznesRefine: null, pa: 12.4, pz: 7.6,
+  gems: 'pa', gemPoints: 26, gemCounts: { topPa: 24 }, ring1Refine: 0, ring2Refine: 3, shgRefine: null, voznesRefine: null,
+  weaponGrade: 'r9', armorSet: 'r9', tract: 'emperor', ring1: 'moon', ring2: 'moon', gradeNotes: [], pa: 12.4, pz: 7.6,
 };
 const gem = (hf: number, dop: [string, number]): Item => ({ id: 1, hf, obDops: [dop, dop], name: 'g' } as unknown as Item);
 
@@ -161,6 +162,22 @@ describe('анкета персонажа', () => {
     // два екземпляри: у Головному +5, у сеті +11 — береться більша точка
     const two = [inst('h5', 'ft', SHG_ITEM.id, { r: 5 }), inst('h11', 'ft', SHG_ITEM.id, { r: 11 })];
     expect(dollFacts(mkDoc({ items: two, main: { ft: 'h5' }, sets: [mkSet('s1', { ft: 'h11' })] }), rules, lookup).shgRefine).toBe(11);
+  });
+
+  it('джин: з блоку джина за удачею, інакше зі старої анкети, інакше null', () => {
+    const base = mkDoc();
+    expect(genieOf(base)).toBeNull();
+    expect(genieOf({ ...base, sheet: { genie: 'g81_90' } })).toBe('g81_90');
+    expect(genieOf({ ...base, genie: { level: 100, luck: 95, skills: [] } })).toBe('g91_99');
+    expect(genieOf({ ...base, genie: { level: 105, luck: 100, skills: [] } })).toBe('g100');
+    expect(genieOf({ ...base, genie: { level: 40, luck: 0, skills: [] } })).toBe('g60');
+    // Блок джина має пріоритет над старою анкетою.
+    expect(genieOf({ ...base, sheet: { genie: 'g100' }, genie: { level: 70, luck: 65, skills: [] } })).toBe('g61_70');
+    // Занижена удача балів не знижує: 8 вмінь без удачі 91 не буває.
+    const eight = [10001, 9681, 9751, 9791, 9941, 9601, 9581, 9741];
+    expect(genieOf({ ...base, genie: { level: 100, luck: 0, skills: eight } })).toBe('g91_99');
+    expect(genieOf({ ...base, genie: { level: 60, luck: 0, skills: eight.slice(0, 5) } })).toBe('g60');
+    expect(genieOf({ ...base, genie: { level: 80, luck: 0, skills: eight.slice(0, 6) } })).toBe('g71_80');
   });
 
   it('зміна з анкети зберігає лише грейди', () => {

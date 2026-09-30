@@ -60,7 +60,7 @@ describe('round-trip фікстура → документ → ядро', () => 
   });
 
   it('dehydrate(hydrate(doc)) — той самий документ', () => {
-    const doc = twoCfgDoc();
+    const doc: CharacterDoc = { ...twoCfgDoc(), genie: { level: 100, luck: 95, skills: [9681, 10001] } };
     const model = hydrate(doc, lookup);
     expect(dehydrate(model)).toBe(doc);
     expect(JSON.parse(JSON.stringify(dehydrate(model)))).toEqual(JSON.parse(JSON.stringify(doc)));

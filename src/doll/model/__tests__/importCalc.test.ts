@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { computeStats, flattenItemStats } from '../../core/stats';
 import type { BackpackEntry, DollState } from '../../core/types';
-import { validateDoc } from '../doc';
+import { emptyDoc, validateDoc } from '../doc';
 import { CFG_MAIN, hydrate, inventoryOf, toDollState } from '../hydrate';
-import { fromCalcDollState, splitAddons } from '../importCalc';
+import { fromCalcDollState, mergeImported, splitAddons } from '../importCalc';
 import { calcState, loadRef, lookup } from './testDoc';
 
 beforeAll(() => loadRef());
@@ -125,5 +125,30 @@ describe('fromCalcDollState', () => {
       expect(v.recoverable).toBe(doc);
       expect(v.errors.join()).toMatch(/більше, ніж дає 10-й рівень/);
     }
+  });
+});
+
+describe('mergeImported: імпорт поверх поточного персонажа', () => {
+  it('речі й атрибути — з білда; імʼя й джин — з поточного документа, грейди старої анкети — ні', () => {
+    const next = fromCalcDollState(calcState('typical-by'));
+    const cur = {
+      ...emptyDoc('ga'),
+      name: 'Тайфорн',
+      sheet: { weaponGrade: 'r8r' as const, genie: 'g100' as const },
+      genie: { level: 100, luck: 95, skills: [9681] },
+    };
+    const out = mergeImported(cur, next);
+    expect(out.name).toBe('Тайфорн');
+    expect(out.sheet).toEqual({ genie: 'g100' }); // грейд r8r описував старі речі — не переносимо
+    expect(out.genie).toEqual(cur.genie);
+    expect(out.cls).toBe('by');
+    expect(out.items).toBe(next.items);
+    expect(out.main).toBe(next.main);
+    expect(validateDoc(out).ok).toBe(true);
+    // Нема чого переносити — ключів не додає; імʼя з білда (якщо є) важливіше.
+    const plain = mergeImported(emptyDoc(), { ...next, name: 'Білд' });
+    expect(plain).not.toHaveProperty('sheet');
+    expect(plain).not.toHaveProperty('genie');
+    expect(plain.name).toBe('Білд');
   });
 });

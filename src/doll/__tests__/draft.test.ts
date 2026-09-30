@@ -68,6 +68,24 @@ describe('loadDraft', () => {
     expect(r.doc).toEqual(doc);
   });
 
+  it('чернетка з джином читається як є', () => {
+    const doc: CharacterDoc = { ...docWith('Тайфорн'), genie: { level: 100, luck: 95, skills: [9681, 10001] } };
+    const r = loadDraft(KEY, memStorage({ [KEY]: JSON.stringify(doc) }));
+    expect(r.error).toBeNull();
+    expect(r.warning).toBeUndefined();
+    expect(r.doc).toEqual(doc);
+  });
+
+  it('невідоме поле верхнього рівня (новіша версія сайту) — відкривається з попередженням, поле не губиться', () => {
+    const raw = JSON.stringify({ ...docWith('Тайфорн'), future: [1] });
+    const st = memStorage({ [KEY]: raw });
+    const r = loadDraft(KEY, st);
+    expect(r.error).toBeNull();
+    expect(r.warning).toMatch(/зайве поле «future»/);
+    expect(r.doc).toHaveProperty('future', [1]);
+    expect(st.data.has(brokenKey(KEY))).toBe(false);
+  });
+
   it('зламаний JSON — помилка, сирий текст відкладено в :broken', () => {
     const st = memStorage({ [KEY]: '{"v":2,"name":' });
     const r = loadDraft(KEY, st);

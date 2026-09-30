@@ -21,6 +21,7 @@ import {
 import { browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, useDraft, type SaveState } from '../doll/api/draft';
 import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
+import { mergeImported } from '../doll/model/importCalc';
 import DollEditor from '../doll/ui/DollEditor';
 import SheetCard from '../doll/ui/SheetCard';
 import { clsLabel } from '../doll/ui/DollHeader';
@@ -174,7 +175,7 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   };
 
   const importDoc = (next: CharacterDoc) => {
-    const merged = { ...next, name: next.name || doc.name };
+    const merged = mergeImported(doc, next);
     reset(merged);
     setActiveCfg(CFG_MAIN);
     setImportOpen(false);
