@@ -12,5 +12,6 @@ export const DOLL_ENGINE_HASHES: Readonly<Record<number, string>> = {
   1: '722bd66a7e40323b978ced6d356042c5f17bb6a83a9fb4109a59f4b094bb28e3',
 };
 
-// Коміт pw-calc, з якого портовано ядро (golden-еталони згенеровано з нього).
-export const CALC_SYNC_COMMIT = 'e0a79ed';
+// Коміт pw-calc, з яким звірено ядро (golden-еталони згенеровано з нього). Ядро портовано
+// з e0a79ed; 1c6e09b — ті самі формули, але каталог зброї із серверним ПА (ЦГД, РЦГД, R9R2).
+export const CALC_SYNC_COMMIT = '1c6e09b';

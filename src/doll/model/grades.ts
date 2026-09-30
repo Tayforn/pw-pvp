@@ -28,10 +28,11 @@ const TV_N3 = 21;
 const WEAPON_R9_HF = 16;
 /** Зброя R8R: 200 000, ранг 15. */
 const WEAPON_R8R_HF = 15;
-/** ЦГД / РЦГД: зброя 80 рівня, ранг 16, фіксований ПА (сума nw.wu 'ad') ≥ 50.
- * РЦГД — три зірки або ПА ≥ 65 (у каталозі новіша версія гри: ЦГД 50, РЦГД 65;
- * на сервері 30 і 50 — власник 30.09.2026). */
-const CGD = { oj: 80, hf: 16, minPa: 50, rcgdPa: 65 } as const;
+/** ЦГД / РЦГД: зброя 80 рівня, ранг 16, фіксований ПА (сума nw.wu 'ad'): 30 — ЦГД,
+ * від 50 — РЦГД. Це серверні числа (власник 30.09.2026): у каталозі новішої версії
+ * гри було 50 / 65 і більше, їх замінено скриптом pw-calc/scripts/server-weapon-pa.mjs
+ * (явні списки id) — тож родину тут розрізняємо вже за серверним ПА. */
+const CGD = { oj: 80, hf: 16, minPa: 30, rcgdPa: 50 } as const;
 /** Нірвана — рівень 100 без репутації. Перший каст — ранг 13 і pw_id із
  * діапазону чи списку; другий — ранг 15 з двома зірками; третій — ранг 16, tv 21. */
 const NIRVANA_OJ = 100;
@@ -101,7 +102,7 @@ function weaponRule(it: Item): WeaponGrade {
     if (tv(it) === TV_THREE) return it.ps != null ? 'r9r1' : 'r9r2';
   }
   if (rep(it) === REP_R8 && hf(it) === WEAPON_R8R_HF) return 'r8r';
-  if (oj(it) === CGD.oj && hf(it) === CGD.hf && pa >= CGD.minPa) return tv(it) === TV_THREE || pa >= CGD.rcgdPa ? 'rcgd' : 'cgd';
+  if (oj(it) === CGD.oj && hf(it) === CGD.hf && pa >= CGD.minPa) return pa >= CGD.rcgdPa ? 'rcgd' : 'cgd';
   if (oj(it) === NIRVANA_OJ && !rep(it)) {
     const pw = num(it.pw_id);
     const first = hf(it) === NIRVANA_1_HF && ((pw >= NIRVANA_1_PW.from && pw <= NIRVANA_1_PW.to) || NIRVANA_1_PW_EXTRA.has(pw));
