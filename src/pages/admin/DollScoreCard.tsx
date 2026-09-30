@@ -132,6 +132,10 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
         <b>Скор з ляльки</b>
         <span className="badge mute">заявки персонажем</span>
       </div>
+      <p className="hint" style={{ margin: '0 0 8px', color: 'var(--warn)' }}>
+        Картка застаріла: скор переходить на модель «від речей» (v2). Режим, еталони й суперник у нову версію шкали БІЛЬШЕ НЕ ЗБЕРІГАЮТЬСЯ — після
+        збереження версії вони зникнуть. Зберігаються лише абілки зброї та стеля ПЗ-зброї (поля нижче).
+      </p>
       <p className="hint" style={{ margin: '0 0 8px' }}>
         Замість грейдів (зброя, броня, точка, камені, кільця, трактат, рівень) скор спорядження рахується з характеристик ляльки: <b>атака</b> (середня атака × крит × швидкість
         × ПА проти ПЗ типового суперника) і <b>живучість</b> (HP із фіз./маг. захистом × ПЗ проти ПА суперника). Кожен клас порівнюється зі своїм еталоном: персонаж,
@@ -188,17 +192,18 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
         понад абілку зброї еталона класу. Абілку лялька бере сама з каталогу; у старих заявках її немає — треба перезаявитись.
       </p>
       {(() => {
-        const setPts = (code: string, v: number) => set({ abilityPoints: { ...ds.abilityPoints, [code]: v } });
+        // Абілки — поле верхнього рівня шкали (їх бере й скор v2 «від речей»); dollScore лише дзеркалить.
+        const setPts = (code: string, v: number) => patch({ abilityPoints: { ...draft.abilityPoints, [code]: v } });
         const table = (list: WeaponAbility[]) => (
           <div className="abil-list">
             {list.map((a) => (
-              <AbilityRow key={a.code} a={a} value={ds.abilityPoints[a.code] ?? 0} onChange={(v) => setPts(a.code, v)} />
+              <AbilityRow key={a.code} a={a} value={draft.abilityPoints[a.code] ?? 0} onChange={(v) => setPts(a.code, v)} />
             ))}
           </div>
         );
         const top = WEAPON_ABILITIES.filter((a) => TOP_ABILITIES.has(a.code));
         const rest = WEAPON_ABILITIES.filter((a) => !TOP_ABILITIES.has(a.code));
-        const restSet = rest.filter((a) => (ds.abilityPoints[a.code] ?? 0) !== 0).length;
+        const restSet = rest.filter((a) => (draft.abilityPoints[a.code] ?? 0) !== 0).length;
         return (
           <>
             {table(top)}
@@ -219,7 +224,7 @@ export default function DollScoreCard({ draft, patch }: { draft: GearRules; patc
       <div className="field-row" style={{ gap: 10, marginBottom: 14 }}>
         <label className="field">
           <span>Стеля за ПЗ-зброю</span>
-          <input type="number" min={0} max={100} value={ds.weaponPzCap} onChange={(e) => set({ weaponPzCap: Math.min(100, num(e.target.value)) })} />
+          <input type="number" min={0} max={100} value={draft.weaponPzCap} onChange={(e) => patch({ weaponPzCap: Math.min(100, num(e.target.value)) })} />
         </label>
       </div>
 

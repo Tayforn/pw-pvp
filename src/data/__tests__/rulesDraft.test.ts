@@ -109,9 +109,13 @@ describe('golden: чернетка з balance-v1.13 серіалізується
     expect(r.balance.buffs.enabled).toBe(false);
     expect(r.balance.composition.pairsRule).toBe('legacy');
     expect(r.balance.composition.weights.topSupport).toBe(40); // не переписано на рекомендовані 100
-    // і жодних зайвих полів: збережений JSON = запис + рівно три нові поля (setsFromDoll, buffs, pairsRule)
+    // і жодних зайвих полів: збережений JSON = запис + нові поля верхнього рівня (setsFromDoll, swapTotalCap,
+    // doll, abilityPoints, weaponPzCap); dollScore (скор з еталонів) у версію не пишеться
     const keys = (o: unknown) => Object.keys(o as object).sort();
-    expect(keys(out)).toEqual([...keys(V113_RAW), 'setsFromDoll', 'swapTotalCap', 'doll', 'dollScore'].sort());
+    expect(keys(out)).toEqual([...keys(V113_RAW), 'setsFromDoll', 'swapTotalCap', 'doll', 'abilityPoints', 'weaponPzCap'].sort());
+    expect(out).not.toHaveProperty('dollScore');
+    expect(r.abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 }); // рекомендовані абілки, поки адмін не задав свої
+    expect(r.weaponPzCap).toBe(25);
     expect(r.swapTotalCap).toBeNull(); // старі версії — без спільної стелі запасного
     expect(r.doll.scope).toBe('main'); // точка й камені з ляльки — за замовчуванням по Головному
     expect(r.setsFromDoll).toBe(false); // сети з ляльки — лише коли адмін увімкне

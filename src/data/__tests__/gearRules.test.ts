@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_BUFFS, BUILTIN_RULES_VERSION, CLASS_ORDER, PHYS_CLASSES, RECOMMENDED_BUFFS_PCT, RECOMMENDED_COMPOSITION_WEIGHTS, RECOMMENDED_PAIRS_RULE, SIZE_BUCKETS,
-  computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, isPhysClass, maxGearScore,
-  nextRulesVersion, normalizeBuffs, normalizeComposition, normalizeRules, registerRules, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, swapScore, tierFor, weaponGradeScore,
+  cloneRules, computeGearScore, computeGearScoreWith, currentRulesVersion, gearSummary, hasRulesVersion, isPhysClass, maxGearScore, maxGearScoreOf,
+  nextRulesVersion, normalizeBuffs, normalizeComposition, normalizeRules, registerRules, registrationScore, rulesFor, sameForAllSizes, serializeRules, playerProfile, ringsScore, shgVoznesScore, sizeBucket, specialSetGemsScore, specialSetsScore, swapScore, tierFor, weaponGradeScore,
 } from '../gearRules';
 import type { CharClass, PlayerGear } from '../types';
 
@@ -18,10 +18,49 @@ const base: PlayerGear = {
 const gear = (over: Partial<PlayerGear>): PlayerGear => ({ ...base, ...over });
 
 describe('balance-v1.0: шкала', () => {
-  it('максимум 397 (285 + ШГ/Вознєс 54 + рівень 10 + кільця 48), реалістичний (без R9-броні) 384', () => {
-    expect(maxGearScore()).toBe(397);
+  it('максимум за скором v2 «від речей»: 422; зі стелею свап-сетів 25 — 447', () => {
+    // Найдорожчий камінь — 3u (Цзин Юэ / Ракшаса). Клас 10 + зброя (60 + w12 25 + 2 камені 6 + ka 15 = 106)
+    // + 4 речі броні (R9 35 + 4 × a12/6 20 + 16 каменів 48 = 103) + ШГ (15 + 12 + 12) 39 + Вознєс (10 + 12 + 12) 34
+    // + бонус 5 + збірник 4 камені 12 + 2 кільця R9R1 +12 48 + трактат 20 + джин 10 + рівень 10
+    // + свап-сети 0 (стелі немає) + свап-зброя 25 = 422
+    expect(maxGearScore()).toBe(422);
+    expect(maxGearScoreOf(normalizeRules({ swapTotalCap: 25 }))).toBe(447);
+    // абілки й стеля ПЗ — з верхнього рівня; без абілок максимум менший на 15
+    expect(maxGearScoreOf(normalizeRules({ abilityPoints: {}, weaponPzCap: 0 }))).toBe(422 - 15 - 25);
+  });
+
+  it('registrationScore: клас + itemPoints + рівень + джин; без itemPoints — таблиця; без анкети — null', () => {
+    const g = gear({ charClass: 'archer', charLevel: 'l104', genie: 'g100' });
+    expect(registrationScore({ gear: g, itemPoints: 268.68 }, rulesFor(), 3)).toBe(Math.round(8 + 268.68 + 7 + 10));
+    expect(registrationScore({ gear: g, itemPoints: 0 }, rulesFor(), 3)).toBe(25);
+    expect(registrationScore({ gear: g, itemPoints: null }, rulesFor(), 3)).toBe(score(g));
+    expect(registrationScore({ gear: gear({ charLevel: null }), itemPoints: 100 }, rulesFor(), 3)).toBe(107); // без рівня — як 90–100, прист 7
+    expect(registrationScore({ gear: null, itemPoints: 100 }, rulesFor(), 3)).toBeNull();
+  });
+
+  it('abilityPoints і weaponPzCap — на верхньому рівні; старі версії з dollScore читаються; у JSON dollScore не пишеться', () => {
     const r = rulesFor();
-    expect(maxGearScore() - (r.armorSet.r9 - r.armorSet.r8r)).toBe(384);
+    expect(r.abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 });
+    expect(r.weaponPzCap).toBe(25);
+    expect(r.dollScore.abilityPoints).toEqual(r.abilityPoints); // дзеркало для старих викликів
+    const legacy = normalizeRules({ dollScore: { mode: 'shadow', abilityPoints: { ka: 20, zr: 3 }, weaponPzCap: 30 } });
+    expect(legacy.abilityPoints).toEqual({ ka: 20, zr: 3 });
+    expect(legacy.weaponPzCap).toBe(30);
+    expect(legacy.dollScore.mode).toBe('shadow');
+    expect(legacy.dollScore.weaponPzCap).toBe(30);
+    // верхній рівень головніший за dollScore; зламані значення → вбудовані
+    const top = normalizeRules({ abilityPoints: { ka: 500, 'BAD KEY': 3, zl: 'x', kl: 4.4 }, weaponPzCap: 200, dollScore: { abilityPoints: { ka: 1 }, weaponPzCap: 5 } });
+    expect(top.abilityPoints).toEqual({ ka: 100, kl: 4 });
+    expect(top.weaponPzCap).toBe(100);
+    expect(normalizeRules({ weaponPzCap: -1 }).weaponPzCap).toBe(25);
+    const json = serializeRules(legacy) as Record<string, unknown>;
+    expect(json).not.toHaveProperty('dollScore');
+    expect(json.abilityPoints).toEqual({ ka: 20, zr: 3 });
+    expect(json.weaponPzCap).toBe(30);
+    expect(normalizeRules(json).dollScore.mode).toBe('off'); // еталони в нову версію не переходять
+    // чернетка редактора копію dollScore ще тримає (картка «Скор з ляльки» до коміту E)
+    expect(cloneRules(legacy).dollScore.mode).toBe('shadow');
+    expect(cloneRules(legacy).abilityPoints).toEqual({ ka: 20, zr: 3 });
   });
 
   it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі (з балами класу)', () => {
