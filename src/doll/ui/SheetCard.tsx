@@ -1,8 +1,8 @@
 // =========================================================
 // ЛЯЛЬКА — «Анкета для турнірів» на сторінці персонажа. Поля, яких лялька
-// не знає (грейди зброї, сету броні, кілець, трактат, джин, ШГ/Вознєс),
-// гравець заповнює раз — вони їдуть у кожну заявку цим персонажем. Усе інше
-// (збірка, точки, камені, ПЗ-зброя, свап-сети) рахує лялька (model/sheet.ts),
+// не знає (грейди зброї, сету броні, кілець, трактат, джин), гравець
+// заповнює раз — вони їдуть у кожну заявку цим персонажем. Усе інше (збірка,
+// точки, камені, ПЗ-зброя, свап-сети, ШГ і Вознєс) рахує лялька (model/sheet.ts),
 // тут це видно одним рядком. Картка згорнута, коли анкету заповнено.
 // =========================================================
 
@@ -34,22 +34,36 @@ export default function SheetCard({ doc, onChange, readOnly }: { doc: CharacterD
   const setsFromDoll = rules.setsFromDoll;
   const result = facts ? gearFromCharacter(doc, facts, { setsFromDoll: true }) : null;
   const complete = !!result?.gear;
+  // Стара анкета мала галочки «Є ШГ / Є Вознєс». Якщо галочка стояла, а речі на ляльці немає, заявка
+  // тепер піде без неї — кажемо про це прямо, поки гравець не надіне річ або не змінить анкету.
+  const lostItems = facts
+    ? [doc.sheet?.shg && facts.shgRefine == null ? '«Шлема героя» (ШГ)' : '', doc.sheet?.voznes && facts.voznesRefine == null ? '«Плаща вознесения» (Вознєс)' : ''].filter(Boolean)
+    : [];
 
   return (
-    <details className="card doll-sheet" open={!complete}>
+    <details className="card doll-sheet" open={!complete || lostItems.length > 0}>
       <summary>
         <b>Анкета для турнірів</b>
         <span className={'badge ' + (complete ? 'good' : 'mute')}>{complete ? 'заповнено' : 'треба заповнити'}</span>
+        {lostItems.length > 0 && <span className="badge warn">ШГ / Вознєс: перевір ляльку</span>}
       </summary>
       <p className="hint">
         Грейди речей (зброя, сет броні, кільця, трактат) лялька поки не розпізнає — вибери їх тут один раз, і вони підставлятимуться в кожну заявку цим персонажем.
-        Решту лялька визначає сама{setsFromDoll ? '' : ' (свап-сети поки не рахуються в балах — це вмикає адмін)'}.
+        Решту лялька визначає сама{setsFromDoll ? '' : ' (свап-сети поки не рахуються в балах — це вмикає адмін)'}. ШГ і Вознєс — це «Шлем героя» і
+        «Плащ вознесения», надіті в Головному або в сеті: окремо позначати їх не треба.
       </p>
+      {lostItems.length > 0 && (
+        <p className="hint" style={{ color: 'var(--warn)' }}>
+          Раніше в анкеті стояла позначка, але на ляльці немає {lostItems.join(' і ')}. Надінь річ у Головному або в сеті й вистав її точку — інакше заявка
+          піде без неї.
+        </p>
+      )}
       {facts && (
         <p className="hint">
           З ляльки: збірка {BUILD_LABELS[facts.build]} · точка зброї {facts.weaponRefine ? WEAPON_REFINE_LABELS[facts.weaponRefine] : '— (немає зброї)'} · точка броні{' '}
           {facts.armorRefine ? `${ARMOR_REFINE_LABELS[facts.armorRefine]} (середня ${facts.armorRefineAvg?.toFixed(1)}${rules.doll.scope === 'all' ? ' по всіх сетах' : ' по Головному'})` : '— (немає броні)'} · камені{' '}
-          {GEMS_LABELS[facts.gems]} ({Math.round(facts.gemPoints)} б.)
+          {GEMS_LABELS[facts.gems]} ({Math.round(facts.gemPoints)} б.) · ШГ — {facts.shgRefine != null ? `+${facts.shgRefine}` : 'немає'} · Вознєс —{' '}
+          {facts.voznesRefine != null ? `+${facts.voznesRefine}` : 'немає'}
         </p>
       )}
       {!ready && <p className="hint">Завантажую дані ляльки…</p>}

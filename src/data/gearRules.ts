@@ -347,6 +347,10 @@ export interface DollScoreRules {
   abilityPoints: Record<string, number>;
   /** Стеля балів за свап ПЗ-зброю (бали — за курсом каменів Лагеря). */
   weaponPzCap: number;
+  /** Чи додавати до скору з ляльки окремі бали за ШГ і Вознєс. Їхні стати (HP,
+   * ПА, ПЗ, бонус комплекту) вже входять в атаку й живучість ляльки, тож ці
+   * бали — доплата понад стати. true — як було досі. */
+  shgVoznesPoints: boolean;
 }
 
 /** Курс «бали за 1 ПЗ» = бали за камінь на +1 ПЗ («Каменная броня», doll.gemPoints.pz1).
@@ -375,6 +379,7 @@ export const BUILTIN_DOLL_SCORE: DollScoreRules = {
   refs: {},
   abilityPoints: RECOMMENDED_ABILITY_POINTS,
   weaponPzCap: 25,
+  shgVoznesPoints: true,
 };
 
 const ABIL_CODE = /^[a-z_]{1,32}$/;
@@ -414,6 +419,7 @@ function normalizeDollScore(raw: unknown): DollScoreRules {
   const mode = d.mode === 'shadow' || d.mode === 'on' ? d.mode : 'off';
   return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs, abilityPoints,
     weaponPzCap: Math.min(100, num(d.weaponPzCap, BUILTIN_DOLL_SCORE.weaponPzCap)),
+    shgVoznesPoints: typeof d.shgVoznesPoints === 'boolean' ? d.shgVoznesPoints : BUILTIN_DOLL_SCORE.shgVoznesPoints,
   };
 }
 
@@ -916,8 +922,8 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
 
 /**
  * Скор із ляльки: бали класу + бали спорядження з атаки й живучості відносно
- * еталона класу (+ бонус за абілку зброї понад еталон) + джин + ШГ/Вознєс +
- * запасне (сети, ПЗ-зброя). Грейди зброї,
+ * еталона класу (+ бонус за абілку зброї понад еталон) + джин + запасне (сети,
+ * ПЗ-зброя) + бали за ШГ/Вознєс, якщо їх увімкнено (dollScore.shgVoznesPoints). Грейди зброї,
  * броні, камені, точки, кільця, трактат і рівень уже сидять у характеристиках.
  * null — немає еталона для класу.
  */
@@ -931,12 +937,16 @@ export function dollGearScoreWith(g: PlayerGear, power: DollPower, r: ScoringRul
   const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel + abilityBonus(r, power.abil, ref.abil) + wpaBonus);
   // ПЗ-зброя — за тим, скільки ПЗ вона дає (курс Лагерів, до стелі); старі заявки — як в анкеті.
   const wpz = power.pzw !== undefined ? weaponPzPointsFromDoll(power.pzw, r) : undefined;
-  return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + shgVoznesScore(g, r) + swapScore(g, r, wpz));
+  const items = r.dollScore.shgVoznesPoints ? shgVoznesScore(g, r) : 0;
+  return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + items + swapScore(g, r, wpz));
 }
 
-/** Бали спорядження еталона за таблицею — те, що скор з ляльки замінює (без класу, джина, ШГ/Вознєса, запасного). */
+/** Бали спорядження еталона за таблицею — те, що скор з ляльки замінює: без класу, джина й запасного,
+ * а також без ШГ/Вознєса, якщо їхні бали додаються окремо (dollScore.shgVoznesPoints). Коли окремих балів
+ * немає, ШГ і Вознєс еталона лишаються в його балах — інакше гравець, рівний еталону, втратив би їх. */
 export function tableGearPartWith(g: PlayerGear, r: ScoringRules, teamSize: number | null | undefined): number {
-  return computeGearScoreWith(g, r, teamSize) - classPointsFor(r, g.charClass, teamSize) - r.genie[g.genie] - shgVoznesScore(g, r) - swapScore(g, r);
+  const items = r.dollScore.shgVoznesPoints ? shgVoznesScore(g, r) : 0;
+  return computeGearScoreWith(g, r, teamSize) - classPointsFor(r, g.charClass, teamSize) - r.genie[g.genie] - items - swapScore(g, r);
 }
 
 export function computeGearScore(g: PlayerGear, version: string | null | undefined, teamSize: number | null | undefined): number {
@@ -1060,8 +1070,8 @@ export function gearParts(g: PlayerGear, gemsMix?: string): Array<{ key: string;
     { key: 'tract', label: 'Трактат', value: TRACT_LABELS[g.tract].replace(/ \(.*\)$/, '').replace(' грейд', '') },
     { key: 'genie', label: 'Джин', value: GENIE_LABELS[g.genie] },
   ];
-  const items = shgVoznesLabel(g);
-  if (items) out.push({ key: 'shg', label: 'ШГ / Вознєс', value: items });
+  // Завжди рядком: ШГ і Вознєс лялька бачить сама, тож «немає» — теж відповідь, яку гравець має побачити.
+  out.push({ key: 'shg', label: 'ШГ / Вознєс', value: shgVoznesLabel(g) || 'немає' });
   const rings = ringsLabel(g);
   if (rings) out.push({ key: 'rings', label: 'Кільця', value: rings });
   return out;

@@ -5,9 +5,9 @@ import { validateDoc } from '../doc';
 import { createSet, equip, updateInstance } from '../ops';
 import {
   armorRefineBucket, buildOf, charLevelOf, dollFacts, gearFromCharacter, gemClass, gemsBucket, sheetErrors, sheetFromGear, weaponRefineBucket,
-  type DollFacts, type Sheet,
+  SHG_ITEM, VOZNES_ITEM, type DollFacts, type Sheet,
 } from '../sheet';
-import { docFrom, loadRef, lookup } from './testDoc';
+import { docFrom, inst, loadRef, lookup, mkDoc, mkSet } from './testDoc';
 
 beforeAll(() => loadRef());
 
@@ -15,7 +15,7 @@ const rules = normalizeRules({});
 const SHEET: Sheet = { weaponGrade: 'r8r', armorSet: 'r8r', tract: 't7', genie: 'g100', shg: false, voznes: false, ring1: 'r9', ring2: 'r9r1' };
 const FACTS: DollFacts = {
   build: 'dd', weaponPz: false, weaponPzGain: 0, specialSets: [], specialSetGems: {}, weaponRefine: 'w10', armorRefine: 'a8', armorRefineAvg: 7.4,
-  gems: 'pa', gemPoints: 26, gemCounts: { topPa: 24 }, ring1Refine: 0, ring2Refine: 3, pa: 12.4, pz: 7.6,
+  gems: 'pa', gemPoints: 26, gemCounts: { topPa: 24 }, ring1Refine: 0, ring2Refine: 3, shgRefine: null, voznesRefine: null, pa: 12.4, pz: 7.6,
 };
 const gem = (hf: number, dop: [string, number]): Item => ({ id: 1, hf, obDops: [dop, dop], name: 'g' } as unknown as Item);
 
@@ -73,6 +73,10 @@ describe('анкета персонажа', () => {
     expect(sheetErrors({ gems: 'pa', build: 'dd' })).toEqual([]); // старі чернетки з полями, які тепер рахує лялька
     const doc = { ...docFrom('typical-js'), sheet: SHEET };
     expect(validateDoc(doc).ok).toBe(true);
+    // старі галочки ШГ/Вознєс у збережених персонажах і далі проходять перевірку
+    const legacy: Sheet = { ...SHEET, shg: true, shgRefine: 11, voznes: true, voznesRefine: null };
+    expect(sheetErrors(legacy)).toEqual([]);
+    expect(validateDoc({ ...doc, sheet: legacy }).ok).toBe(true);
     expect(validateDoc({ ...doc, sheet: { weaponGrade: 'r99' } }).ok).toBe(false);
   });
 
@@ -139,8 +143,31 @@ describe('анкета персонажа', () => {
     expect(normalizeGemCounts('x')).toBeNull();
   });
 
+  it('ШГ і Вознєс — з ляльки: «Шлем героя» і «Плащ вознесения» в Головному чи в сеті, точка з речі', () => {
+    const items = [inst('h', 'ft', SHG_ITEM.id, { r: 11 }), inst('c', 'wy', VOZNES_ITEM.id, { r: 7 }), inst('x', 'ft', 179)];
+    const none = dollFacts(mkDoc({ items, main: { ft: 'x' } }), rules, lookup);
+    expect([none.shgRefine, none.voznesRefine]).toEqual([null, null]); // «Шлем генерала» — не ШГ; плащ лише в інвентарі
+    const main = dollFacts(mkDoc({ items, main: { ft: 'h', wy: 'c' } }), rules, lookup);
+    expect([main.shgRefine, main.voznesRefine]).toEqual([11, 7]);
+    const inSet = dollFacts(mkDoc({ items, main: { ft: 'x' }, sets: [mkSet('s1', { ft: 'h', wy: 'c' })] }), rules, lookup);
+    expect([inSet.shgRefine, inSet.voznesRefine]).toEqual([11, 7]);
+    // В анкеті заявки — з ляльки, а старі галочки в документі ігноруються
+    const doc = { ...docFrom('typical-js'), sheet: { ...SHEET, shg: true, shgRefine: 12 } };
+    const g = gearFromCharacter(doc, { ...FACTS, shgRefine: null, voznesRefine: 9 }, { setsFromDoll: false }).gear!;
+    expect([g.shg, g.shgRefine, g.voznes, g.voznesRefine]).toEqual([false, null, true, 9]);
+    // стара галочка без точки більше не робить анкету неповною
+    const noRefine = gearFromCharacter({ ...doc, sheet: { ...SHEET, shg: true } }, FACTS, { setsFromDoll: false });
+    expect(noRefine.missing).toEqual([]);
+    // два екземпляри: у Головному +5, у сеті +11 — береться більша точка
+    const two = [inst('h5', 'ft', SHG_ITEM.id, { r: 5 }), inst('h11', 'ft', SHG_ITEM.id, { r: 11 })];
+    expect(dollFacts(mkDoc({ items: two, main: { ft: 'h5' }, sets: [mkSet('s1', { ft: 'h11' })] }), rules, lookup).shgRefine).toBe(11);
+  });
+
   it('зміна з анкети зберігає лише грейди', () => {
-    const out = sheetFromGear({ charClass: 'archer', weaponPz: true, specialSets: ['pz'], weaponGrade: 'r9', gems: 'camp', armorRefine: 'a10', ring1: 'moon' });
+    const out = sheetFromGear({
+      charClass: 'archer', weaponPz: true, specialSets: ['pz'], weaponGrade: 'r9', gems: 'camp', armorRefine: 'a10', ring1: 'moon',
+      shg: true, shgRefine: 5, voznes: true, voznesRefine: 7, // підставлені з ляльки — у документ не пишуться
+    });
     expect(out).toEqual({ weaponGrade: 'r9', ring1: 'moon' });
   });
 });

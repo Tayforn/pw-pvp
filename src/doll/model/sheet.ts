@@ -4,9 +4,10 @@
 // точку зброї, точку броні (середня, округлена вгору), точку кілець R9R1;
 // камені (поштучно, бали за клас каменя з каталогу); ПЗ-зброю й свап-сети
 // (сет рахується, якщо показник у ньому досягає порогу і вищий, ніж у
-// Головному) разом із каменями сетів. Гравець заповнює лише те, чого в
-// каталозі немає: грейд зброї й сету броні, грейди кілець, трактат, джин,
-// ШГ/Вознєс — це поля «Анкети для турнірів» у персонажі (doc.sheet).
+// Головному) разом із каменями сетів; ШГ і Вознєс (надіті «Шлем героя» і
+// «Плащ вознесения», SHG_ITEM / VOZNES_ITEM) та їхню точку. Гравець заповнює
+// лише те, чого в каталозі немає: грейд зброї й сету броні, грейди кілець,
+// трактат, джин — це поля «Анкети для турнірів» у персонажі (doc.sheet).
 // Згодом, коли скор рахуватиметься прямо з характеристик ляльки, ці грейди
 // стануть непотрібні.
 // =========================================================
@@ -30,12 +31,17 @@ export const CLS_CHAR: Record<ClsKey, CharClass> = {
 };
 
 /** Поля, які заповнює гравець (решту дає лялька). Старі чернетки могли мати й
- * інші ключі (точка, камені, збірка) — перевірка їх приймає, мапер ігнорує. */
-export type SheetFields = Pick<
-  PlayerGear,
-  'weaponGrade' | 'armorSet' | 'tract' | 'genie' | 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine' | 'ring1' | 'ring2'
->;
-export type Sheet = Partial<SheetFields> & Partial<Pick<PlayerGear, 'build' | 'weaponRefine' | 'armorRefine' | 'gems' | 'ring1Refine' | 'ring2Refine' | 'specialSetGems'>>;
+ * інші ключі (точка, камені, збірка, ШГ/Вознєс) — перевірка їх приймає, мапер
+ * ігнорує. ШГ і Вознєс лялька бачить сама (SHG_ITEM / VOZNES_ITEM). */
+export type SheetFields = Pick<PlayerGear, 'weaponGrade' | 'armorSet' | 'tract' | 'genie' | 'ring1' | 'ring2'>;
+
+/** ШГ — «Шлем героя», Вознєс — «Плащ вознесения» (разом — комплект «Артефакт
+ * белого владыки»). Наявність і точку беремо з ляльки: річ надіта в Головному
+ * або в будь-якому сеті (рішення власника 30.09.2026 — окремо не питаємо). */
+export const SHG_ITEM = { slot: 'ft', id: 83 } as const;
+export const VOZNES_ITEM = { slot: 'wy', id: 40 } as const;
+export type Sheet = Partial<SheetFields> &
+  Partial<Pick<PlayerGear, 'build' | 'weaponRefine' | 'armorRefine' | 'gems' | 'ring1Refine' | 'ring2Refine' | 'specialSetGems' | 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine'>>;
 
 const REFINE_MAX = 12;
 const enumOk = (order: readonly string[], v: unknown) => typeof v === 'string' && order.includes(v);
@@ -182,6 +188,10 @@ export interface DollFacts {
   /** Точка кілець (для R9R1): cr — кільце 1, cd — кільце 2. */
   ring1Refine: number | null;
   ring2Refine: number | null;
+  /** Точка «Шлема героя» (ШГ) і «Плаща вознесения» (Вознєс), якщо річ надіта
+   * в Головному чи в сеті; null — речі на ляльці немає. */
+  shgRefine: number | null;
+  voznesRefine: number | null;
   /** Показники з вікна персонажа (Головний, без бафів). */
   pa: number;
   pz: number;
@@ -197,6 +207,16 @@ const numsOf = (model: CharacterModel, cfgId: string): DerivedNumbers => {
   return derivedNumbers(b, deriveIb(b)); // у стані лише пасивки класу
 };
 const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+/** Найбільша точка речі каталогу, надітої в цьому слоті Головного або будь-якого сету; null — не надіта ніде. */
+function wornRefine(model: CharacterModel, doc: CharacterDoc, it: { slot: 'ft' | 'wy'; id: number }): number | null {
+  let best: number | null = null;
+  for (const iid of [doc.main[it.slot], ...doc.sets.map((s) => s.slots[it.slot])]) {
+    const h = iid ? model.items.get(iid) : undefined;
+    if (h?.item && h.inst.cat === it.slot && h.inst.id === it.id) best = Math.max(best ?? 0, h.inst.r ?? 0);
+  }
+  return best;
+}
 
 /**
  * Усе, що лялька визначає сама. Каталоги й довідники мають бути завантажені
@@ -267,6 +287,8 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
     gemCounts,
     ring1Refine: ringR('cr'),
     ring2Refine: ringR('cd'),
+    shgRefine: wornRefine(model, doc, SHG_ITEM),
+    voznesRefine: wornRefine(model, doc, VOZNES_ITEM),
     pa: main.pa,
     pz: main.pz,
   };
@@ -297,8 +319,6 @@ export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { s
   for (const k of ['weaponGrade', 'armorSet', 'tract', 'genie', 'ring1', 'ring2'] as const) {
     if (s[k] == null) missing.push(SHEET_LABELS[k]);
   }
-  if (s.shg && s.shgRefine == null) missing.push('точка ШГ');
-  if (s.voznes && s.voznesRefine == null) missing.push('точка Вознєса');
   if (!facts.weaponRefine) missing.push('зброя на ляльці');
   if (!facts.armorRefine) missing.push('броня на ляльці');
   if (s.ring1 && s.ring1 !== 'moon' && facts.ring1Refine == null) missing.push('кільце 1 на ляльці');
@@ -322,10 +342,10 @@ export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { s
     specialSetGems: setGems,
     tract: s.tract!,
     genie: s.genie!,
-    shg: !!s.shg,
-    shgRefine: s.shg ? s.shgRefine ?? 0 : null,
-    voznes: !!s.voznes,
-    voznesRefine: s.voznes ? s.voznesRefine ?? 0 : null,
+    shg: facts.shgRefine != null,
+    shgRefine: facts.shgRefine,
+    voznes: facts.voznesRefine != null,
+    voznesRefine: facts.voznesRefine,
     ring1: s.ring1!,
     ring1Refine: s.ring1 === 'r9r1' ? facts.ring1Refine ?? 0 : null,
     ring2: s.ring2!,
@@ -338,8 +358,9 @@ export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { s
 export function sheetAsGear(doc: CharacterDoc, facts: DollFacts | null): Partial<PlayerGear> {
   const s = doc.sheet ?? {};
   return {
-    weaponGrade: s.weaponGrade, armorSet: s.armorSet, tract: s.tract, genie: s.genie,
-    shg: s.shg, shgRefine: s.shgRefine, voznes: s.voznes, voznesRefine: s.voznesRefine, ring1: s.ring1, ring2: s.ring2,
+    weaponGrade: s.weaponGrade, armorSet: s.armorSet, tract: s.tract, genie: s.genie, ring1: s.ring1, ring2: s.ring2,
+    shg: facts ? facts.shgRefine != null : false, shgRefine: facts?.shgRefine ?? null,
+    voznes: facts ? facts.voznesRefine != null : false, voznesRefine: facts?.voznesRefine ?? null,
     charClass: CLS_CHAR[doc.cls],
     charLevel: charLevelOf(doc.level),
     build: facts?.build,
@@ -357,7 +378,7 @@ export function sheetAsGear(doc: CharacterDoc, facts: DollFacts | null): Partial
 /** Зміна з GearFields → лише поля, які заповнює гравець. */
 export function sheetFromGear(g: Partial<PlayerGear>): Sheet {
   const out: Sheet = {};
-  const keys: Array<keyof SheetFields> = ['weaponGrade', 'armorSet', 'tract', 'genie', 'shg', 'shgRefine', 'voznes', 'voznesRefine', 'ring1', 'ring2'];
+  const keys: Array<keyof SheetFields> = ['weaponGrade', 'armorSet', 'tract', 'genie', 'ring1', 'ring2'];
   for (const k of keys) {
     const v = g[k];
     if (v !== undefined) (out as Record<string, unknown>)[k] = v;

@@ -105,4 +105,17 @@ describe('скор з ляльки', () => {
     expect(p.wpa).toBeGreaterThanOrEqual(0);
     expect(normalizeRules({}).dollScore.weaponPzCap).toBe(25);
   });
+
+  it('ШГ і Вознєс: окремі бали додаються лише коли їх увімкнено у шкалі', () => {
+    const g = { ...gear, shg: true, shgRefine: 11, voznes: true, voznesRefine: 11 };
+    const on = normalizeRules({ dollScore: { refs: { archer: { ...ref } } } });
+    const off = normalizeRules({ dollScore: { refs: { archer: { ...ref } }, shgVoznesPoints: false } });
+    expect(on.dollScore.shgVoznesPoints).toBe(true); // старі версії шкали рахують як раніше
+    const base = dollGearScoreWith(gear, power(10000, 20000), on, 3)!;
+    expect(dollGearScoreWith(g, power(10000, 20000), on, 3)! - base).toBe(15 + 10 + 5 + 11 + 11);
+    expect(dollGearScoreWith(g, power(10000, 20000), off, 3)).toBe(base);
+    // Бали еталона: ШГ/Вознєс віднімаються лише коли додаються окремо — інакше лишаються в еталоні
+    expect(tableGearPartWith(g, on, 3)).toBe(tableGearPartWith(gear, on, 3));
+    expect(tableGearPartWith(g, off, 3) - tableGearPartWith(gear, off, 3)).toBe(15 + 10 + 5 + 11 + 11);
+  });
 });

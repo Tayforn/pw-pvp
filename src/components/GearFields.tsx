@@ -42,8 +42,8 @@ interface Props {
    * Адмінка показує їх і далі (можна прибрати в старих заявках). */
   hideSpecialSets?: boolean;
   /** Анкета персонажа: усе, що знає лялька (клас, рівень, збірка, точки, камені,
-   * ПЗ-зброя, свап-сети), вона рахує сама — тут лише грейди, яких у каталозі
-   * немає: зброя, сет броні, кільця, трактат, джин, ШГ/Вознєс. */
+   * ПЗ-зброя, свап-сети, ШГ і Вознєс), вона рахує сама — тут лише грейди, яких
+   * у каталозі немає: зброя, сет броні, кільця, трактат, джин. */
   fromDoll?: boolean;
 }
 
@@ -183,7 +183,6 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
           <OptionSelect label="Трактат" value={value.tract} options={TRACT_ORDER} labels={TRACT_LABELS} onChange={(v) => patch({ tract: v })} />
           <OptionSelect label="Джин" value={value.genie} options={GENIE_ORDER} labels={GENIE_LABELS} onChange={(v) => patch({ genie: v })} />
         </div>
-        {shgVoznes}
       </div>
     );
   }

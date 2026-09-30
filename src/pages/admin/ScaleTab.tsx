@@ -204,11 +204,16 @@ export default function ScaleTab() {
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
           <b>ШГ і Вознєс</b>
-          <span className="badge mute">max {draft.shg + draft.voznes + draft.shgVoznesBonus + 12 * (draft.shgRefinePerLevel + draft.voznesRefinePerLevel)}</span>
+          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {!draft.dollScore.shgVoznesPoints && <span className="badge warn">для ляльки вимкнено</span>}
+            <span className="badge mute">max {draft.shg + draft.voznes + draft.shgVoznesBonus + 12 * (draft.shgRefinePerLevel + draft.voznesRefinePerLevel)}</span>
+          </span>
         </div>
         <p className="hint" style={{ margin: '0 0 8px' }}>
           Бали за наявність кожної шмотки, бонус, якщо є обидві, і бали за кожен рівень точки (0–12) кожної.
           Зараз: ШГ +12 — {draft.shg + 12 * draft.shgRefinePerLevel}, Вознєс +12 — {draft.voznes + 12 * draft.voznesRefinePerLevel}, обидві +12 — {draft.shg + draft.voznes + draft.shgVoznesBonus + 12 * (draft.shgRefinePerLevel + draft.voznesRefinePerLevel)}.
+          Наявність і точку лялька бачить сама («Шлем героя», «Плащ вознесения»); у скорі з ляльки ці бали діють, лише якщо ввімкнено перемикач у картці
+          «Скор з ляльки».
         </p>
         <div className="field-row" style={{ gap: 10 }}>
           <NumInput label="Є ШГ" value={draft.shg} onChange={(v) => patch({ shg: v })} />
