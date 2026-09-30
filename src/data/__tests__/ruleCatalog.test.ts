@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import seedSql from '../../../supabase/migrations/0027_rule_catalog.sql?raw';
 import spivSql from '../../../supabase/migrations/0030_rule_spiv_set.sql?raw';
 import dollOnlySql from '../../../supabase/migrations/0031_rule_doll_only.sql?raw';
+import itemPointsSql from '../../../supabase/migrations/0032_item_points.sql?raw';
 
-// Тексти сіду 0027 з поправками пізніших міграцій (0030 — Спів-сет, 0031 — заявка лише лялькою).
-const migrationSql = [seedSql, spivSql, dollOnlySql].join(String.fromCharCode(10));
+// Тексти сіду 0027 з поправками пізніших міграцій (0030 — Спів-сет, 0031 — заявка лише лялькою,
+// 0032 — скор v2: бали з речей, трактат у кожному сеті).
+const migrationSql = [seedSql, spivSql, dollOnlySql, itemPointsSql].join(String.fromCharCode(10));
 import {
   BUILTIN_RULE_ITEMS, REG_BLOCK_LINES, blankRuleItem, catalogTextFor, defaultFlagsFor, drawEffectHint, drawSummary, flagsFromLegacyText, formatLabel, formatOf,
   itemsForFormat, mergeCatalog, newCustomKey, normalizeRuleItem, parseRulesMd, renderRulesMd, renderRulesPoints, stripBullet, textOfItem, type RuleItem,
@@ -77,6 +79,28 @@ describe('контракт системних ключів (ruleFlags ↔ дов
       }
       expect(sql, i.key).toContain(`'{${i.visibleFor.join(',')}}', ${i.affects ? `'${i.affects}'` : 'null'}, true, ${i.sort})`);
     }
+  });
+
+  it('0032 замінює рядки 4 і 5 блоку реєстрації: старі тексти — ті, що в БД після 0030/0031, нові — дослівно REG_BLOCK_LINES', () => {
+    expect(REG_BLOCK_LINES).toHaveLength(5);
+    // replace у 0032 шукає рядок 4 у вигляді після 0030 і рядок 5 із сіду 0027 — інакше в БД нічого не зміниться
+    const old4 = 'ПЗ-сет / ПА-сет / Спів-сет рахуються від порогів: сумарний ПЗ ≥ 30, ПА ≥ 30, −30 % часу співу — усе без бафів. Окремого аспд-сету немає: швидкість атаки — це Головний сет.';
+    const old5 = 'Трактат: в анкеті вказується найкращий, який береш на турнір; свап униз дозволений, угору — ні.';
+    expect(spivSql).toContain(`'${old4}'`);
+    expect(seedSql).toContain(`'${old5}'`);
+    expect(dollOnlySql).not.toContain(old4);
+    expect(itemPointsSql).toContain(`'${old4}'`);
+    expect(itemPointsSql).toContain(`'${old5}'`);
+    // нові рядки є лише в 0032 (перші три — у 0027/0031, як і раніше)
+    const before = [seedSql, spivSql, dollOnlySql].join(String.fromCharCode(10));
+    for (const line of REG_BLOCK_LINES.slice(3)) {
+      expect(itemPointsSql).toContain(`'${line}'`);
+      expect(before).not.toContain(line);
+    }
+    for (const line of REG_BLOCK_LINES.slice(0, 3)) expect(before).toContain(line);
+    expect(itemPointsSql).toContain("where key = 'reg_block'");
+    // у нових рядках немає апострофа — інакше в SQL він мав би бути подвоєний, а esc() у тесті вище це приховав би
+    for (const line of REG_BLOCK_LINES) expect(line).not.toContain("'");
   });
 });
 

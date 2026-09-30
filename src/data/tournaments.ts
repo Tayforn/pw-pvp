@@ -6,7 +6,7 @@
 import { supabase } from '../app/supabaseClient';
 import {
   isRegistrationOpen,
-  type ArmorRefine, type ArmorSet, type BalanceStats, type DollPower, type Build, type CharClass, type CharLevel, type Gems, type RingGrade, type Genie, type PlayerGear, type Registration,
+  type ArmorRefine, type ArmorSet, type BalanceStats, type DollPower, type Build, type CharClass, type CharLevel, type Gems, type ItemBreakdown, type ItemBreakdownRow, type RingGrade, type Genie, type PlayerGear, type Registration,
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
@@ -25,7 +25,7 @@ interface TournamentRow {
   // 0027 — правила рядками; до міграції колонок немає
   rule_flags?: unknown; rule_flags_updated_at?: string | null;
 }
-interface RegistrationRow {
+export interface RegistrationRow {
   id: string; tournament_id: string; nickname: string; rules_ack: boolean; status: RegistrationStatus; created_at: string;
   member_nicknames: string[] | null;
   // 0017
@@ -46,6 +46,8 @@ interface RegistrationRow {
   character_id?: string | null; character_rev?: number | null; character_snapshot?: unknown; doll_confirmed_at?: string | null;
   // 0029
   doll_power?: DollPower | null;
+  // 0032 — numeric PostgREST віддає числом, але страхуємось і від рядка
+  item_points?: number | string | null; item_breakdown?: unknown;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -92,7 +94,42 @@ const validPower = (p: unknown): DollPower | null => {
     ...(gems ? { gems } : {}), ...(abil ? { abil } : {}), ...(wpa !== undefined ? { wpa } : {}), ...(pzw !== undefined ? { pzw } : {}),
   };
 };
-const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
+/** Бали за речі (0032, numeric(7,2)): число або рядок з числом; до міграції колонки
+ * немає (undefined), зламане чи від'ємне — null: скор тоді табличний. */
+const itemPointsOf = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+/** Розклад лише коли форма ціла (v 1, версія шкали, складові-числа, рядки-кортежі) —
+ * інакше null, як validPower: itemPoints від цього не залежить. */
+const validBreakdown = (b: unknown): ItemBreakdown | null => {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return null;
+  const o = b as Record<string, unknown>;
+  if (o.v !== 1 || typeof o.ver !== 'string' || !o.sum || typeof o.sum !== 'object' || !Array.isArray(o.rows)) return null;
+  const s = o.sum as Record<string, unknown>;
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const optNum = (v: unknown) => v === undefined || num(v);
+  if (!num(s.main) || !num(s.sets) || !num(s.setsRaw) || !num(s.pair) || !optNum(s.cls) || !optNum(s.lvl) || !optNum(s.genie)) return null;
+  const rows: ItemBreakdownRow[] = [];
+  for (const raw of o.rows as unknown[]) {
+    if (!Array.isArray(raw) || raw.length < 4 || raw.length > 5) return null;
+    const [cfg, slot, catId, points, why] = raw as unknown[];
+    if (!num(cfg) || typeof slot !== 'string' || !num(catId) || !num(points) || (why !== undefined && typeof why !== 'string')) return null;
+    rows.push(why === undefined ? [cfg, slot, catId, points] : [cfg, slot, catId, points, why]);
+  }
+  const warn = Array.isArray(o.warn) ? (o.warn as unknown[]).filter((w): w is string => typeof w === 'string') : undefined;
+  return {
+    v: 1, ver: o.ver,
+    sum: {
+      ...(num(s.cls) ? { cls: s.cls } : {}), ...(num(s.lvl) ? { lvl: s.lvl } : {}), ...(num(s.genie) ? { genie: s.genie } : {}),
+      main: s.main, sets: s.sets, setsRaw: s.setsRaw, pair: s.pair,
+    },
+    rows,
+    ...(warn ? { warn } : {}),
+  };
+};
+/** Експортовано для тесту маппінгу (колонок 0032 до міграції немає → null). */
+export const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registration => {
   const a = adj?.get(r.id);
   return {
     id: r.id, tournamentId: r.tournament_id, nickname: r.nickname, rulesAck: r.rules_ack, status: r.status, createdAt: r.created_at,
@@ -103,6 +140,7 @@ const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Registratio
     characterId: r.character_id ?? null, characterRev: r.character_rev ?? null,
     characterSnapshot: r.character_snapshot ?? null, dollConfirmedAt: r.doll_confirmed_at ?? null,
     dollPower: validPower(r.doll_power),
+    itemPoints: itemPointsOf(r.item_points), itemBreakdown: validBreakdown(r.item_breakdown),
   };
 };
 const gearToRow = (g: PlayerGear) => ({
@@ -172,8 +210,10 @@ export async function submitRegistration(input: {
   tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[];
   /** Балансний фул-рандом: анкета обов'язкова (RLS відхилить заявку без char_class). */
   gear?: PlayerGear; attackLevel?: number | null; defenseLevel?: number | null;
-  /** Заявка персонажем із ляльки: хто, яка ревізія, знімок документа (0028). */
-  character?: { id: string; revision: number; snapshot: unknown; power: DollPower | null };
+  /** Заявка персонажем із ляльки: хто, яка ревізія, знімок документа (0028).
+   * itemPoints/itemBreakdown (0032, скор v2) — undefined = колонки не чіпати (до
+   * міграції їх немає, insert із ними впав би); null — явно порожньо. */
+  character?: { id: string; revision: number; snapshot: unknown; power: DollPower | null; itemPoints?: number | null; itemBreakdown?: ItemBreakdown | null };
 }): Promise<void> {
   // Свіжа перевірка прямо перед вставкою — стан на сторінці міг застаріти
   // (вкладка відкрита довго, адмін тим часом закрив реєстрацію чи турнір
@@ -195,9 +235,20 @@ export async function submitRegistration(input: {
           character_id: input.character.id, character_rev: input.character.revision, character_snapshot: input.character.snapshot,
           doll_confirmed_at: new Date().toISOString(),
           ...(input.character.power ? { doll_power: input.character.power } : {}),
+          // 0032 — лише коли передано: заявка, що ще не рахує скор v2, працює й до міграції.
+          ...(input.character.itemPoints !== undefined ? { item_points: input.character.itemPoints } : {}),
+          ...(input.character.itemBreakdown !== undefined ? { item_breakdown: input.character.itemBreakdown } : {}),
         }
       : {}),
   });
+  if (error) throw error;
+}
+
+/** Перерахунок скору v2 зі знімка в адмінці (0032): update-політика 0006 пропускає
+ * власника турніру/суперадміна й колонки не обмежує. null — стерти обидва (скор
+ * знову табличний, з анкети). Викликів поки немає — підключає крок C. */
+export async function updateRegistrationItemPoints(id: string, itemPoints: number | null, itemBreakdown: ItemBreakdown | null): Promise<void> {
+  const { error } = await supabase.from('registrations').update({ item_points: itemPoints, item_breakdown: itemBreakdown }).eq('id', id);
   if (error) throw error;
 }
 

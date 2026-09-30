@@ -179,6 +179,26 @@ export interface Tournament {
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
 
+/** Рядок розкладу скору v2: [cfg (0 — Головний, n — індекс сету + 1), слот,
+ * id каталогу, бали, «чому» ≤ 40 символів — прибирається, коли не вміщається]. */
+export type ItemBreakdownRow = [cfg: number, slot: string, catId: number, points: number, why?: string];
+/** Розклад скору v2 «від речей» (0032, registrations.item_breakdown, ≤ 2 КБ) —
+ * його складає лялька в мить заявки (src/doll/model/itemScore.ts → itemBreakdown;
+ * тип там вужчий — слот SlotKey — і сюди присвоюється без приведення).
+ * v — версія форми; ver — версія шкали, якою рахували; sum — складові: клас,
+ * рівень і джин (за розміром команди турніру), main — Головний, sets — свап-сети
+ * після стелі, setsRaw — до стелі, pair — бонус ШГ+Вознєс; rows — лише
+ * зараховані екземпляри; warn — до 2 приміток по 80 символів (скорочені
+ * gradeNotes). Назв речей тут немає: адмінка й сторінка персонажа підставляють їх
+ * з каталогу, публічний попап показує слот і бали. */
+export interface ItemBreakdown {
+  v: 1;
+  ver: string;
+  sum: { cls?: number; lvl?: number; genie?: number; main: number; sets: number; setsRaw: number; pair: number };
+  rows: ItemBreakdownRow[];
+  warn?: string[];
+}
+
 export interface Registration {
   id: string;
   tournamentId: string;
@@ -210,6 +230,11 @@ export interface Registration {
   dollConfirmedAt: string | null;
   /** Атака й живучість із ляльки на момент заявки (0029); null — анкета без персонажа. */
   dollPower: DollPower | null;
+  /** Скор v2 «від речей» (0032): бали за речі ляльки, які клієнт порахував у мить
+   * заявки (адмін перераховує зі знімка), і розклад по речах. null — заявка до
+   * 0032 або звичайна анкета: скор тоді табличний, з gear (registrationScore). */
+  itemPoints: number | null;
+  itemBreakdown: ItemBreakdown | null;
 }
 
 /** Балансний фул-рандом = командний турнір з індивідуальною реєстрацією. */
