@@ -37,6 +37,8 @@ import DevBracketPage from '../pages/DevBracketPage';
 import BracketSharePage from '../pages/BracketSharePage';
 
 const CharacterPage = lazy(() => import('../pages/CharacterPage'));
+// Лише dev-збірка: у проді import.meta.env.DEV = false, і гілка з чанком зникає з бандла.
+const DevDollPage = import.meta.env.DEV ? lazy(() => import('../pages/DevDollPage')) : null;
 
 /** Помилка саме завантаження чанка (JS чи його CSS), а не збій усередині сторінки.
  * Тексти — з Chrome, Firefox, Safari і прелоадера Vite. */
@@ -106,6 +108,14 @@ export default function Layout() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [route]);
 
+  // Редактор персонажа — три колонки: на його сторінці оболонка ширша (styles.css,
+  // html.wide-shell). Клас знімається при виході зі сторінки.
+  const wideShell = route.name === 'character' || route.name === 'dev-doll';
+  useEffect(() => {
+    document.documentElement.classList.toggle('wide-shell', wideShell);
+    return () => document.documentElement.classList.remove('wide-shell');
+  }, [wideShell]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isMobile() && document.documentElement.classList.contains('nav-open')) setOpen(false);
@@ -139,6 +149,15 @@ export default function Layout() {
   else if (route.name === 'tournament') page = <TournamentPage id={route.id} guest={!insider} onLogin={login} />;
   else if (route.name === 'admin') page = <AdminPage series={series} tab={route.tab} onTab={(tab) => go({ name: 'admin', tab })} />;
   else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
+  else if (route.name === 'dev-doll' && DevDollPage) {
+    page = (
+      <LazyPageBoundary key="dev-doll">
+        <Suspense fallback={lazyFallback}>
+          <DevDollPage />
+        </Suspense>
+      </LazyPageBoundary>
+    );
+  }
   else if (route.name === 'characters' || route.name === 'character') {
     const id = route.name === 'character' ? route.id : null;
     page = (

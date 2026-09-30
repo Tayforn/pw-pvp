@@ -35,6 +35,7 @@ export const ROUTE_ACCESS: Record<Route['name'], AccessLevel> = {
   series: 'member',
   admin: 'admin',
   'dev-bracket': 'public',
+  'dev-doll': 'public',
   characters: 'public',
   character: 'public',
 };

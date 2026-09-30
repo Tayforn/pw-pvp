@@ -11,7 +11,7 @@ import { conflictingActive } from '../core/buffs';
 import { getBuffById } from '../core/refdata';
 import { classPassives, passiveDefault } from './passives';
 import { ATTR_BASE } from '../core/stats';
-import { defaultState } from '../core/types';
+import { defaultState, type BuffDef } from '../core/types';
 import {
   DOC_LIMITS, MAX_LEVEL, SET_SLOT_KEYS, SLOT_CAT, SLOT_KEYS, clampRollValue, cleanText, isSetSlotKey, isSlotKey, rollRowCount, setKindShort,
   type BuffCfgRow, type Cat, type CharacterDoc, type ClsKey, type ItemInst, type SetCfg, type SetKind, type SlotKey, type StatRow,
@@ -58,10 +58,16 @@ export function setLevel(doc: CharacterDoc, level: number): CharacterDoc {
   const v = Math.max(1, Math.min(MAX_LEVEL, Math.floor(level) || 1));
   return v === doc.level ? doc : { ...doc, level: v };
 }
-/** Атрибут не нижче базових 5 (як у грі); бюджет рівня тримає UI (DollHeader clampAttr). */
+/** Атрибут не нижче базових 5 (як у грі); бюджет рівня тримає UI (panels/AttrsCard clampAttr). */
 export function setAttr(doc: CharacterDoc, k: 'str' | 'dex' | 'vit' | 'mag', v: number): CharacterDoc {
   const n = Math.max(ATTR_BASE, Math.min(9999, Math.floor(v) || 0));
   return n === doc.attrs[k] ? doc : { ...doc, attrs: { ...doc.attrs, [k]: n } };
+}
+/** «Скинути» атрибути: усі чотири — базові 5, тож усі очки рівня знову вільні. */
+export function resetAttrs(doc: CharacterDoc): CharacterDoc {
+  const { str, dex, vit, mag } = doc.attrs;
+  if (str === ATTR_BASE && dex === ATTR_BASE && vit === ATTR_BASE && mag === ATTR_BASE) return doc;
+  return { ...doc, attrs: { str: ATTR_BASE, dex: ATTR_BASE, vit: ATTR_BASE, mag: ATTR_BASE } };
 }
 /** «Титули»: 0 або порожнє значення прибирає поле. */
 export function setTitle(doc: CharacterDoc, code: string, v: number | null | undefined): CharacterDoc {
@@ -434,6 +440,33 @@ function rowOf(doc: CharacterDoc, id: number): BuffCfgRow {
   if (cur) return cur;
   const p = classPassives(doc.cls).find((b) => b.id === id);
   return p ? passiveDefault(doc, p) : DEFAULT_ROW;
+}
+
+/** Рядок бафа так, як він діє: збережений; пасивка без налаштування — типовий
+ * (увімкнена, рівень і сторона за шляхом); інакше — вимкнений 10 рівня. */
+export function buffRow(doc: CharacterDoc, id: number): BuffCfgRow {
+  return rowOf(doc, id);
+}
+
+/** Рівень, який реально діє: зі стороною — максимальний, без неї — не вище «звичайного» максимуму. */
+export function effectiveBuffLvl(b: BuffDef, row: BuffCfgRow): number {
+  const max = buffMaxLevel(b);
+  const plainMax = buffHasSides(b) ? Math.max(1, max - 1) : max;
+  if (buffHasSides(b) && row.side) return max;
+  return Math.max(1, Math.min(plainMax, row.lvl));
+}
+
+/** Кнопки рівня як у Хелпері: «−1» зі стороною знімає сторону (стає звичайний
+ * максимум), «+1» зі стороною нічого не робить. Для вікна бафа й картки пасивок. */
+export function stepBuffLvl(doc: CharacterDoc, b: BuffDef, spec: '1' | '-1' | '+1' | 'max'): CharacterDoc {
+  const row = buffRow(doc, b.id);
+  const max = buffMaxLevel(b);
+  const plainMax = buffHasSides(b) ? Math.max(1, max - 1) : max;
+  const lvl = effectiveBuffLvl(b, row);
+  if (spec === '1') return setBuffLvl(doc, b.id, 1);
+  if (spec === 'max') return setBuffLvl(doc, b.id, plainMax);
+  if (row.side) return spec === '-1' ? setBuffLvl(doc, b.id, plainMax) : doc;
+  return setBuffLvl(doc, b.id, spec === '+1' ? Math.min(plainMax, lvl + 1) : Math.max(1, lvl - 1));
 }
 
 function buffsOf(doc: CharacterDoc): { cfg: Record<string, BuffCfgRow>; extra: number[] } {

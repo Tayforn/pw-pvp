@@ -2,17 +2,16 @@
 // ЛЯЛЬКА — смуга комплектів: «Головний | сети | + Додати сет». Перемикання
 // нічого не переносить: фігура й інвентар просто перемальовуються з того
 // самого пулу речей. Меню сету (⋯): перейменувати, змінити вид, видалити.
-// Видалення питає окремим вікном, бо там є вибір — прибрати й речі, які
-// після цього ніде не будуть надіті (інакше вони просто лишаться в інвентарі).
+// Видалення питає окремим вікном (modals/DeleteSetModal через ModalHost), бо
+// там є вибір — прибрати й речі, які після цього ніде не будуть надіті.
 // =========================================================
 
 import { useState, type KeyboardEvent } from 'react';
 import { DOC_LIMITS, SET_KINDS, setKindShort, type SetCfg, type SetKind } from '../model/doc';
 import { CFG_MAIN, findSet } from '../model/hydrate';
-import { deleteSet, renameSet, setOrphans, setSetKind } from '../model/ops';
+import { renameSet, setSetKind } from '../model/ops';
 import CellMenu, { type MenuItem } from './CellMenu';
 import { useEditor } from './EditorContext';
-import { ModalShell } from './modals/ModalShell';
 
 /** «1 річ», «3 речі», «5 речей», «21 річ» — українська множина. */
 export function itemsWord(n: number): string {
@@ -65,55 +64,11 @@ function RenameInput({ set, onDone }: { set: SetCfg; onDone(): void }) {
   );
 }
 
-function DeleteSetDialog({ setId, onClose }: { setId: string; onClose(): void }) {
-  const api = useEditor();
-  const set = findSet(api.doc, setId);
-  const orphans = set ? setOrphans(api.doc, setId).length : 0;
-  const [alsoItems, setAlsoItems] = useState(false);
-  if (!set) return null;
-  const confirm = () => {
-    if (api.activeCfg === setId) api.setActiveCfg(CFG_MAIN);
-    api.apply((d) => deleteSet(d, setId, alsoItems));
-    onClose();
-  };
-  return (
-    <ModalShell
-      title={'Видалити сет «' + set.name + '»?'}
-      size="sm"
-      onClose={onClose}
-      foot={
-        <>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-            Скасувати
-          </button>
-          <button type="button" className="btn btn-bad btn-sm" onClick={confirm}>
-            Видалити
-          </button>
-        </>
-      }
-    >
-      <p className="doll-dlg-text">Речі сету залишаться в інвентарі.</p>
-      {orphans > 0 && (
-        <>
-          <p className="doll-dlg-text">
-            {itemsWord(orphans)} після цього не буде надіто ніде — ні в Головному, ні в іншому сеті.
-          </p>
-          <label className="checkbox-row doll-dlg-check">
-            <input type="checkbox" checked={alsoItems} onChange={(e) => setAlsoItems(e.target.checked)} />
-            Видалити й ці речі ({orphans})
-          </label>
-        </>
-      )}
-    </ModalShell>
-  );
-}
-
 export default function ConfigTabs() {
   const api = useEditor();
   const { doc, activeCfg, readOnly } = api;
   const [menu, setMenu] = useState<{ setId: string; rect: DOMRect } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
   const full = doc.sets.length >= DOC_LIMITS.sets;
   const menuSet = menu ? findSet(doc, menu.setId) : undefined;
 
@@ -123,7 +78,7 @@ export default function ConfigTabs() {
       label: 'Змінити вид на «' + kindShort(k, doc.cls) + '»',
       onClick: () => api.apply((d) => setSetKind(d, set.id, k)),
     })),
-    { label: 'Видалити сет…', danger: true, onClick: () => setDeleting(set.id) },
+    { label: 'Видалити сет…', danger: true, onClick: () => api.openDeleteSet(set.id) },
   ];
 
   return (
@@ -189,7 +144,6 @@ export default function ConfigTabs() {
       )}
 
       {menu && menuSet && <CellMenu anchor={menu.rect} title={menuSet.name} items={menuItems(menuSet)} onClose={() => setMenu(null)} />}
-      {deleting && <DeleteSetDialog setId={deleting} onClose={() => setDeleting(null)} />}
     </div>
   );
 }

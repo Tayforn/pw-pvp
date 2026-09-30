@@ -10,36 +10,9 @@ import { buffDesc, buffDisplayName, buffEffects, buffHasSides, buffMaxLevel, buf
 import { getBuffById } from '../../core/refdata';
 import type { BuffDef } from '../../core/types';
 import { buffIconStyle } from '../../data/assets';
-import type { BuffCfgRow, CharacterDoc } from '../../model/doc';
-import { removeExtraBuff, setBuffLvl, setBuffSide, toggleBuff } from '../../model/ops';
+import { buffRow, effectiveBuffLvl, removeExtraBuff, setBuffSide, stepBuffLvl, toggleBuff } from '../../model/ops';
 import { useEditor } from '../EditorContext';
 import { ModalShell } from './ModalShell';
-
-const DEFAULT_ROW: BuffCfgRow = { on: false, lvl: 10, side: '' };
-
-export function buffRow(doc: CharacterDoc, id: number): BuffCfgRow {
-  return doc.buffs?.cfg[String(id)] ?? DEFAULT_ROW;
-}
-
-/** Рівень, який реально діє: зі стороною — максимальний, без неї — не вище «звичайного» максимуму. */
-export function effectiveBuffLvl(b: BuffDef, row: BuffCfgRow): number {
-  const max = buffMaxLevel(b);
-  const plainMax = buffHasSides(b) ? Math.max(1, max - 1) : max;
-  if (buffHasSides(b) && row.side) return max;
-  return Math.max(1, Math.min(plainMax, row.lvl));
-}
-
-/** Кнопки рівня як у Хелпері: «−1» зі стороною знімає сторону (стає звичайний максимум), «+1» зі стороною нічого не робить. */
-export function stepBuffLvl(doc: CharacterDoc, b: BuffDef, spec: '1' | '-1' | '+1' | 'max'): CharacterDoc {
-  const row = buffRow(doc, b.id);
-  const max = buffMaxLevel(b);
-  const plainMax = buffHasSides(b) ? Math.max(1, max - 1) : max;
-  const lvl = effectiveBuffLvl(b, row);
-  if (spec === '1') return setBuffLvl(doc, b.id, 1);
-  if (spec === 'max') return setBuffLvl(doc, b.id, plainMax);
-  if (row.side) return spec === '-1' ? setBuffLvl(doc, b.id, plainMax) : doc;
-  return setBuffLvl(doc, b.id, spec === '+1' ? Math.min(plainMax, lvl + 1) : Math.max(1, lvl - 1));
-}
 
 /** Параметри бафа на рівні/стороні — ті самі поля й підписи, що в Хелпері. */
 export function buffParams(b: BuffDef, lvl: number, side: string): Array<[string, string]> {

@@ -1,11 +1,14 @@
 /* =========================================================
-   ЛЯЛЬКА — каркас редактора: шапка персонажа, вкладки комплектів, фігура,
-   слоти, інвентар, лічильники, меню клітинки й сторінка персонажа.
+   ЛЯЛЬКА — каркас редактора: смужка персонажа, три колонки (B3), картки,
+   вкладки комплектів, фігура, слоти, інвентар, лічильники, меню клітинки й
+   сторінка персонажа.
    Кольори — лише токени pvp (--bg-*, --text*, --line*, --accent*, --good/--bad),
    тож світла тема працює сама. Жодних filter: приглушення — через opacity.
    Клітинки речей — завжди на темній «ігровій» поверхні (--doll-tip-bg): спрайти
    гри темні, на світлому тлі вони виглядали б латками.
-   Модалки й тултіп — у doll-modals.css, панелі праворуч — у doll-panels.css.
+   Модалки й тултіп — у doll-modals.css, вміст карток середньої й правої
+   колонок (характеристики, стани, готовність, атрибути, пасивки, плашка
+   стану, урон, дельти сету) — у doll-panels.css.
    ========================================================= */
 
 .doll {
@@ -17,7 +20,7 @@
   --doll-acc-rgb: 255, 187, 5;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 html[data-theme='light'] .doll { --doll-acc-rgb: 176, 127, 35; }
@@ -30,24 +33,85 @@ html[data-theme='light'] .doll { --doll-acc-rgb: 176, 127, 35; }
   .doll { --doll-cell: 42px; }
 }
 
-.doll .card.doll-header,
-.doll .card.doll-eq,
-.doll .card.doll-inv { padding: 18px 20px; }
-@media (max-width: 560px) {
-  .doll .card.doll-header,
-  .doll .card.doll-eq,
-  .doll .card.doll-inv { padding: 14px; }
+/* ── Картки B3: шапка-смужка 32 px (заголовок капсом кольору акценту) + тіло 12 px ── */
+.doll-card {
+  min-width: 0; box-sizing: border-box;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line-2); border-radius: var(--radius-lg);
 }
+.doll-card-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+  min-height: 32px; box-sizing: border-box; padding: 4px 12px;
+  background: rgba(var(--doll-acc-rgb), 0.08); border-bottom: 1px solid var(--line-2);
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+}
+.doll-card-head h3 {
+  flex: 1 1 auto; min-width: 0; margin: 0;
+  font-family: 'Grunt Grotesk', system-ui, sans-serif; font-size: 11.5px; font-weight: 700; line-height: 1.3;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent);
+}
+.doll-card-body { padding: 12px; min-width: 0; }
+/* Пігулка в шапці картки: «вільних 0», «входять у скор», «готовий». */
+.doll-card-pill {
+  display: inline-flex; align-items: center; padding: 1px 8px; border-radius: var(--radius-pill);
+  font-size: 11.5px; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums;
+  color: var(--text-mute); border: 1px solid var(--line-2);
+}
+.doll-card-pill.good { color: var(--good); border-color: rgba(var(--good-rgb), 0.4); background: rgba(var(--good-rgb), 0.1); }
+.doll-card-pill.warn { color: var(--warn); border-color: rgba(var(--warn-rgb), 0.4); background: rgba(var(--warn-rgb), 0.1); }
+.doll-card-pill.bad { color: var(--bad); border-color: rgba(var(--bad-rgb), 0.45); background: rgba(var(--bad-rgb), 0.1); }
+/* Тиха дія в шапці картки («скинути»): текст без рамки, як у макеті. */
+.doll-card-act {
+  padding: 2px 4px; border: 0; border-radius: var(--radius); background: none;
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--text-dim); cursor: pointer; white-space: nowrap;
+}
+.doll-card-act:hover:not(:disabled) { color: var(--accent); }
+.doll-card-act:disabled { opacity: 0.45; cursor: default; }
+.doll-card-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ── Розкладка: два стовпці на широкому екрані, один — на телефоні ───── */
-.doll-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-.doll-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-@media (min-width: 900px) {
-  .doll-layout { grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); }
+/* ── Розкладка B3: три колонки → дві → одна ─────────────────────────────
+   Сходинки — за шириною САМОГО редактора (контейнер .doll-cq), а не вікна:
+   сайдбар сайту відкритий чи закритий, оболонка 1300 чи 1480 — колонки
+   рахуються від того, що справді лишилось. Вікна (ModalHost), тултіп і тост
+   живуть поза .doll-cq, тож контейнер їм не заважає.
+   • ≥ 1000 px: 320 | решта | 328 (як у макеті; на 1280 з відкритим сайдбаром
+     редактор ≈ 1014 px — три колонки, середня ≈ 340 px: плитки там уже у 2 колонки);
+   • 700–999 px: 320 | решта; бічні картки — сіткою під «Характеристиками»;
+   • < 700 px: одна колонка. Обгортки колонок зникають (display: contents),
+     порядок карток — через order: Спорядження → Готовність → Інвентар →
+     Характеристики (і все середньої колонки) → Атрибути → Пасивки → Джин →
+     плашка стану. Нова картка без свого класу стає в кінець своєї колонки. */
+.doll-cq { container: doll / inline-size; min-width: 0; }
+.doll-layout { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.doll-col { display: contents; }
+.doll-col-eq > * { order: 1; }
+.doll-col-stats > * { order: 4; }
+.doll-col-side > * { order: 5; }
+.doll-layout .doll-ready { order: 2; }
+.doll-layout .doll-inv { order: 3; }
+.doll-layout .doll-attrs-card { order: 5; }
+.doll-layout .doll-passives { order: 6; }
+.doll-layout .doll-genie { order: 7; }
+.doll-layout .doll-status { order: 8; }
+@container doll (min-width: 700px) {
+  .doll-layout {
+    display: grid; grid-template-columns: 320px minmax(0, 1fr);
+    /* Висока ліва колонка не розсуває «Характеристики» й бічні картки: її зайва висота йде в другий рядок. */
+    grid-template-rows: auto 1fr; align-items: start;
+  }
+  .doll-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .doll-col-eq { grid-column: 1; grid-row: 1 / span 2; }
+  .doll-col-stats { grid-column: 2; grid-row: 1; }
+  .doll-col-side {
+    grid-column: 2; grid-row: 2; display: grid; align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+  .doll-col > * { order: 0; }
 }
-/* Відкритий сайдбар (≥ 881 px) з'їдає ~230 px — на середніх екранах два стовпці не влазять. */
-@media (min-width: 900px) and (max-width: 1099px) {
-  html.nav-open .doll-layout { grid-template-columns: minmax(0, 1fr); }
+@container doll (min-width: 1000px) {
+  .doll-layout { grid-template-columns: 320px minmax(0, 1fr) 328px; grid-template-rows: auto; }
+  .doll-col-eq { grid-row: 1; }
+  .doll-col-side { grid-column: 3; grid-row: 1; display: flex; }
 }
 
 .doll-alert {
@@ -55,29 +119,49 @@ html[data-theme='light'] .doll { --doll-acc-rgb: 176, 127, 35; }
   padding: 10px 14px; font-size: 14px; color: var(--text);
   border: 1px solid rgba(var(--bad-rgb), 0.45); border-radius: var(--radius-lg); background: rgba(var(--bad-rgb), 0.1);
 }
-.doll-status { margin: 0; font-size: 12.5px; color: var(--text-mute); }
+.doll-loadnote { margin: 0; font-size: 12.5px; color: var(--text-mute); }
 .doll-loading { padding: 28px 20px; text-align: center; color: var(--text-dim); }
 .doll-loading p { margin: 0 0 12px; }
 .doll-loading p:last-child { margin-bottom: 0; }
 
-/* ── Шапка персонажа ────────────────────────────────────── */
-.doll-header-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px 14px; align-items: start; }
-.doll-header-grid + .doll-header-grid { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
-.doll-hf { gap: 6px; }
-.doll-hf-name { grid-column: span 2; }
-@media (max-width: 300px) { .doll-hf-name { grid-column: auto; } }
-.doll-hf > label { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; white-space: nowrap; min-width: 0; }
-.doll-hf > label > span { overflow: hidden; text-overflow: ellipsis; }
-.doll-hf-l { font-size: 13px; color: var(--text-dim); font-weight: 500; }
-.doll-header .field input[type='text'],
-.doll-header .field input[type='number'],
-.doll-header .field select { padding: 9px 11px; font-size: 14px; }
-.doll-header .field select { padding-right: 32px; background-position: right 11px center; }
-.doll-header .field input:disabled,
-.doll-header .field select:disabled { opacity: 0.7; cursor: default; }
-.doll-attr-plus { color: var(--good); font-weight: 600; font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.doll-avail-v { display: block; padding: 6px 0 4px; font-size: 20px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
-.doll-avail-v.is-over { color: var(--bad); }
+/* ── Смужка персонажа (CharBar): поля в рядок, підпис ліворуч, кнопки сторінки праворуч ── */
+.doll-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 14px; background: var(--bg-1);
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+}
+.doll-bar-start, .doll-bar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.doll-bar-end { margin-left: auto; justify-content: flex-end; }
+.doll-bar-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-width: 0; }
+.doll-bar .doll-bar-f { flex-direction: row; align-items: center; gap: 6px; }
+.doll-bar .doll-bar-f > label,
+.doll-bar-l { font-size: 12px; font-weight: 500; color: var(--text-mute); white-space: nowrap; }
+.doll-bar .field input[type='text'],
+.doll-bar .field input[type='number'],
+.doll-bar .field select { height: 34px; padding: 0 10px; font-size: 14px; }
+.doll-bar .field select { width: auto; min-width: 104px; padding-right: 30px; background-position: right 10px center; }
+.doll-bar-name input[type='text'] { width: 170px; }
+.doll-bar-lvl input[type='number'] { width: 72px; }
+.doll-bar .field input:disabled,
+.doll-bar .field select:disabled { opacity: 0.7; cursor: default; }
+.doll-bar .doll-seg { padding: 2px; }
+/* «← Мої персонажі» — тихе посилання, як у макеті */
+.doll-bar-back {
+  padding: 4px 2px; border: 0; background: none; font: inherit; font-size: 13px;
+  color: var(--text-mute); cursor: pointer; white-space: nowrap;
+}
+.doll-bar-back:hover { color: var(--accent); }
+.doll-bar-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
+/* Дрібний рядок під смужкою: підказка про чернетку, що заважає збереженню. */
+.doll-bar-note { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: -4px; padding: 0 4px; font-size: 12px; line-height: 1.45; color: var(--text-mute); }
+.doll-bar-note .doll-page-blockers { flex: 1 1 100%; }
+@media (max-width: 560px) {
+  .doll-bar { padding: 10px 12px; }
+  .doll-bar-fields { flex: 1 1 100%; }
+  .doll-bar-name { flex: 1 1 100%; }
+  .doll-bar-name input[type='text'] { width: 100%; }
+  .doll-bar-end { margin-left: 0; justify-content: flex-start; }
+}
 
 /* Сегментний перемикач (стать, фільтр інвентаря) — кнопки, а не приховані радіо. */
 .doll-seg {
@@ -94,6 +178,9 @@ html[data-theme='light'] .doll-seg { background: rgba(255, 255, 255, 0.35); }
 .doll-seg button:disabled { cursor: default; opacity: 0.7; }
 .doll-seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .doll-seg-sm button { padding: 5px 9px; font-size: 12.5px; }
+/* Найменший — у шапці картки й рядку пасивки («Чисті / У бою», «Світла / Темна»). */
+.doll-seg.doll-seg-xs { padding: 2px; border-radius: var(--radius-lg); }
+.doll-seg-xs button { padding: 3px 9px; font-size: 12px; line-height: 1.35; }
 .doll-seg-n { font-weight: 500; opacity: 0.7; font-variant-numeric: tabular-nums; }
 
 /* Титули — згорнуті: заповнюють рідко. */
@@ -131,7 +218,7 @@ html[data-theme='light'] .doll-tab-rename { color-scheme: light; background-colo
 /* ── Вкладки комплектів ─────────────────────────────────── */
 /* Вкладок щонайбільше 7 (Головний, 5 сетів, «+») — переносимо рядками, а не
    ховаємо за горизонтальним скролом: на телефоні так видно всі сети одразу. */
-.doll-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 16px; }
+.doll-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
 .doll-tab {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-pill);
@@ -274,8 +361,7 @@ html[data-theme='light'] .doll-tab-rename { color-scheme: light; background-colo
 }
 
 /* ── Інвентар ───────────────────────────────────────────── */
-.doll-inv-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
-.doll-inv-head h3 { margin: 0; font-size: 16px; }
+.doll-inv-filter { margin: 0; }
 .doll-inv-hint { margin: 8px 0 10px; font-size: 12.5px; color: var(--text-mute); }
 .doll-inv-grid {
   display: grid; grid-template-columns: repeat(auto-fill, var(--doll-cell)); gap: calc(var(--doll-gap) + 4px) var(--doll-gap);
@@ -384,12 +470,6 @@ html[data-theme='light'] .doll-menu-title[class*='gx-'] { color: var(--text); }
 .doll-inv-marks b.is-set.doll-kind-pa { color: var(--bad); border-color: rgba(var(--bad-rgb), 0.55); }
 .doll-inv-marks b.is-set.doll-kind-aspd { color: var(--accent); border-color: rgba(var(--doll-acc-rgb), 0.55); }
 .doll-tab-add[aria-disabled='true'] { opacity: 0.55; }
-
-/* Атрибути згортаються (на телефоні — згорнуті від початку); підсумок видно й у згорнутому. */
-.doll-attrs-box .doll-attrs { margin-top: 12px; }
-.doll-attrs-box > summary .hint { font-variant-numeric: tabular-nums; }
-.doll-attrs-box > summary .doll-attrs-over { color: var(--bad); }
-.doll-avail-over { display: block; font-size: 11.5px; line-height: 1.35; color: var(--bad); }
 
 .doll-loading-err { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 

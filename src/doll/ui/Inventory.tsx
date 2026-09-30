@@ -11,6 +11,7 @@ import { computeStats, meetsReq } from '../core/stats';
 import { CFG_MAIN, inventoryOf, whereWorn, type HydratedInst } from '../model/hydrate';
 import { COARSE_PTR } from './CellMenu';
 import Counters from './Counters';
+import { DollCard } from './DollCard';
 import { useEditor } from './EditorContext';
 import { INV_DROP_KEY, type DnD } from './hooks/useDnD';
 import InventoryCell, { type SetMark } from './InventoryCell';
@@ -71,16 +72,13 @@ export default function Inventory({ dnd }: { dnd: DnD }) {
   const dropProps = readOnly ? {} : dnd.invDrop(cfgId);
 
   return (
-    <section className="card doll-inv" aria-label="Інвентар">
-      <div className="doll-inv-head">
-        <h3>Інвентар</h3>
-        <div className="doll-seg doll-seg-sm" role="radiogroup" aria-label="Які речі показати">
-          {filters.map((f) => (
-            <button key={f.k} type="button" role="radio" aria-checked={eff === f.k} className={eff === f.k ? 'is-on' : ''} onClick={() => setFilter(f.k)}>
-              {f.label} <span className="doll-seg-n">{f.n}</span>
-            </button>
-          ))}
-        </div>
+    <DollCard title="Інвентар" className="doll-inv">
+      <div className="doll-seg doll-seg-sm doll-inv-filter" role="radiogroup" aria-label="Які речі показати">
+        {filters.map((f) => (
+          <button key={f.k} type="button" role="radio" aria-checked={eff === f.k} className={eff === f.k ? 'is-on' : ''} onClick={() => setFilter(f.k)}>
+            {f.label} <span className="doll-seg-n">{f.n}</span>
+          </button>
+        ))}
       </div>
       <p className="doll-inv-hint">{hint}</p>
       <div className={'doll-inv-grid' + (dnd.overKey === INV_DROP_KEY ? ' drop-ok' : '')} {...dropProps}>
@@ -98,6 +96,6 @@ export default function Inventory({ dnd }: { dnd: DnD }) {
         {shown.length === 0 && <p className="doll-inv-empty">{empty}</p>}
       </div>
       <Counters />
-    </section>
+    </DollCard>
   );
 }

@@ -13,7 +13,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Анкета персонажа тягне шкалу балів (rulesStore → Supabase) — у тестах без мережі.
+// Анкета персонажа й картки «Готовність до турніру» / «Атрибути» тягнуть шкалу балів
+// (rulesStore → Supabase) — у тестах без мережі: лишається вбудована шкала без еталонів.
 vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) } }));
 import { readJson } from '../core/__tests__/testData';
 import { ensureCats } from '../data/catalog';
@@ -93,15 +94,28 @@ function expectEditor(html: string): void {
   // фігура: силует SVG і сітка слотів
   expect(html).toContain('class="doll-fig-svg"');
   expect(count(html, /data-slot="/g)).toBe(17);
-  // інвентар, hero-рядок статів, бафи, урон
-  expect(html).toContain('class="card doll-inv"');
+  // інвентар (картка B3), плитки характеристик, стани, урон
+  expect(html).toContain('class="doll-card doll-inv"');
   expect(html).toContain('class="doll-hero"');
   for (const label of ['Здоровʼя', 'ПА', 'ПЗ', 'Крит']) expect(heroValue(html, label), label).toMatch(/^[0-9]/);
   expect(html).toContain('у скор не входить');
+  // розкладка B3: смужка персонажа і три колонки
+  expect(html).toContain('class="doll-bar"');
+  for (const col of ['doll-col-eq', 'doll-col-stats', 'doll-col-side']) expect(html, col).toContain('class="doll-col ' + col + '"');
+  // середня: «Характеристики» з перемикачем (типово «Чисті» — як скор) і смужкою станів
+  expect(html).toMatch(/class="doll-col doll-col-stats"(?:(?!doll-col-).)*Характеристики(?:(?!doll-col-).)*aria-checked="true"[^>]*>Чисті<(?:(?!doll-col-).)*aria-label="Стани"/);
+  expect(html).toContain('Бафи вимкнено з розрахунку — так рахує скор');
+  // права: «Готовність» → «Атрибути» (титули — унизу картки) → «Пасивки класу» → плашка стану
+  expect(html).toMatch(
+    /class="doll-col doll-col-side"(?:(?!doll-col-).)*Готовність до турніру(?:(?!doll-col-).)*Атрибути(?:(?!doll-col-).)*Титули(?:(?!doll-col-).)*Пасивки класу(?:(?!doll-col-).)*class="doll-status (?:good|warn)"/,
+  );
   // сторінка без входу (у тестах /api/me недоступний): замість збереження — вхід, чернетка в браузері
   const text = visible(html);
+  expect(text).toContain('← Мої персонажі');
   expect(text).toContain('Увійти через Discord, щоб зберегти');
   expect(text).toContain('чернетка в цьому браузері');
+  // заголовок розділу над редактором прибрано (лишився лише у списку «Мої персонажі»)
+  expect(text).not.toContain('Лялька персонажа');
   expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
 }
 
@@ -110,6 +124,11 @@ describe('CharacterPage — перший рендер без винятків', 
     const html = await renderPage(null);
     expectEditor(html);
     expect(visible(html)).toContain('речей 0/' + DOC_LIMITS.items);
+    // права колонка на порожній чернетці: скору немає («—»), плашка каже, чого бракує
+    expect(html).toMatch(/class="doll-ready-ring"[^>]*><b>—<\/b>/);
+    expect(html).toContain('class="doll-status warn"');
+    expect(visible(html)).toContain('вільних 520');
+    expect(visible(html)).toContain('у Тілобудові 0 % очок');
     // жодної іконки речі (спрайт) — порожні слоти лишаються порожніми
     expect(html).not.toMatch(/-hii\.png/);
     expect(store.getItem(KEY)).toBeNull();
@@ -127,8 +146,10 @@ describe('CharacterPage — перший рендер без винятків', 
       // (інвентар Головного порожній: усі речі фікстури надіті)
       expect(count(html, /class="doll-icon" style="background-image:url\(&quot;[^&]*-hii\.png&quot;\)/g)).toBe(worn);
       expect(count(html, /class="doll-slot is-filled/g)).toBe(worn);
-      // hero-рядок: у кастерів маг. атака і спів, в інших — фіз. атака й атаки/сек
+      // плитки: у кастерів маг. атака і спів, в інших — фіз. атака й атаки/сек
       expect(html).toContain(CASTERS.has(cls) ? 'Маг. атака' : 'Фіз. атака');
+      // пасивки зброї є лише в некастерів (Воїн — 4, решта — по 1); кастерам — один рядок
+      expect(visible(html)).toContain(CASTERS.has(cls) ? 'У цього класу пасивок зброї немає' : 'входять у скор');
     });
   }
 

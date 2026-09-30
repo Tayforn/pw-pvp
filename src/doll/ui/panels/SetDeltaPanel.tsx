@@ -10,6 +10,7 @@ import type { DerivedNumbers } from '../../core/derived';
 import { SET_KIND_LABELS, type SetKind } from '../../model/doc';
 import { setDelta, type SetDelta } from '../../model/derivedDelta';
 import { findSet } from '../../model/hydrate';
+import { DollCard } from '../DollCard';
 import { useEditor } from '../EditorContext';
 import { fmt, signed } from './summaryGroups';
 import '../doll-panels.css';
@@ -84,13 +85,18 @@ export function SetDeltaView({ d, name, kind }: { d: SetDelta; name?: string; ki
   const rows = deltaRows(d, kind);
   const any = rows.some((r) => r.delta !== 0);
   return (
-    <section className="card doll-pn doll-delta" aria-label="Відмінності від Головного">
-      <header className="doll-pn-head">
-        <h3>Проти Головного</h3>
-        {name && <span className="doll-pn-tag">{name}</span>}
-        {kind && SET_KIND_LABELS[kind] !== name && <span className="doll-pn-tag mute">{SET_KIND_LABELS[kind]}</span>}
-        <span className="doll-pn-note">порожні слоти рахуються як у Головному; без бафів</span>
-      </header>
+    <DollCard
+      title="Проти Головного"
+      className="doll-pn doll-delta"
+      label="Відмінності від Головного"
+      extra={
+        <>
+          {name && <span className="doll-pn-tag">{name}</span>}
+          {kind && SET_KIND_LABELS[kind] !== name && <span className="doll-pn-tag mute">{SET_KIND_LABELS[kind]}</span>}
+        </>
+      }
+    >
+      <p className="doll-pn-note">Порожні слоти рахуються як у Головному; без бафів.</p>
       {!any && <p className="doll-pn-note">Поки що сет нічим не відрізняється від Головного — надінь у нього інші речі.</p>}
       <div className="doll-delta-rows" role="table" aria-label="Головний, сет і різниця">
         <div className="doll-delta-row head" role="row">
@@ -114,7 +120,7 @@ export function SetDeltaView({ d, name, kind }: { d: SetDelta; name?: string; ki
           </div>
         ))}
       </div>
-    </section>
+    </DollCard>
   );
 }
 

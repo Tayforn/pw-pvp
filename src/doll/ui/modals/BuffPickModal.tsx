@@ -3,8 +3,9 @@
 // BuffPickModal Хелпера: фільтр за назвою і за класами-джерелами (за
 // замовчуванням Воїн + Оборотень + Жрець — їхні пати-бафи потрібні найчастіше),
 // загальні стани показуються завжди. Бафи й дебафи — вкладками одного вікна:
-// контекст редактора відкриває пошук без виду, тож вид обирається тут і
-// запамʼятовується до наступного відкриття.
+// кнопка «+ баф» / «+ дебаф» відкриває потрібну (initialTab), без неї — ту,
+// що була востаннє. Доданий стан одразу діє, тож характеристики
+// перемикаються на «У бою» — інакше гравець не побачив би його ефекту.
 // =========================================================
 
 import { useMemo, useState } from 'react';
@@ -15,11 +16,11 @@ import type { BuffDef } from '../../core/types';
 import { buffIconStyle } from '../../data/assets';
 import { addExtraBuff } from '../../model/ops';
 import { buildBuffTipModel } from '../../model/tipModel';
-import { useEditor } from '../EditorContext';
+import { useEditor, type BuffPickTab } from '../EditorContext';
 import { isCoarsePointer, useTip } from '../tip/useTip';
 import { ModalShell } from './ModalShell';
 
-type Kind = 'buff' | 'debuff';
+type Kind = BuffPickTab;
 
 /** Класи pvp-сервера (sm 1..10); призрак/жнець/паладин/стрілок сюди не входять. */
 export const PICK_CLASSES: number[] = Object.keys(CLASS_BY_SM)
@@ -50,10 +51,10 @@ export function buffPickRows(data: Record<string, BuffDef[]> | null, classes: Re
   return out;
 }
 
-export function BuffPickModal() {
+export function BuffPickModal({ initialTab }: { initialTab?: BuffPickTab } = {}) {
   const api = useEditor();
   const tip = useTip();
-  const [kind, setKindState] = useState<Kind>(lastKind);
+  const [kind, setKindState] = useState<Kind>(initialTab ?? lastKind);
   const [classes, setClasses] = useState<ReadonlySet<number>>(() => new Set(DEFAULT_CLASSES));
   const [q, setQ] = useState('');
   const coarse = isCoarsePointer();
@@ -76,6 +77,7 @@ export function BuffPickModal() {
   const add = (id: number) => {
     tip.hideAll();
     api.apply((d) => addExtraBuff(d, id));
+    api.setStatsMode('battle');
     close();
   };
   const toggleClass = (sm: number, on: boolean) => {

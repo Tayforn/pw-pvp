@@ -127,6 +127,10 @@ code {
 @media (min-width: 881px) {
   html:not(.nav-open) .app-shell { grid-template-columns: minmax(0, 1fr); }
   html:not(.nav-open) .sidebar { display: none; }
+  /* Сторінка персонажа (три колонки ляльки) — ширша оболонка; шапка, контент і
+     футер розширюються разом. Клас ставить Layout на маршруті персонажа й
+     знімає при виході; решта сайту лишається на 1300. */
+  html.wide-shell { --shell-w: min(1480px, 97vw); }
 }
 
 /* ── Тогл меню (хамбургер) ─────────────────────────────── */

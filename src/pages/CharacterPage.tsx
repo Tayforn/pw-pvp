@@ -22,9 +22,9 @@ import { browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, useD
 import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
 import { mergeImported } from '../doll/model/importCalc';
+import { clsLabel } from '../doll/ui/CharBar';
 import DollEditor from '../doll/ui/DollEditor';
 import SheetCard from '../doll/ui/SheetCard';
-import { clsLabel } from '../doll/ui/DollHeader';
 
 const SET_PARAM = 'set';
 
@@ -89,6 +89,15 @@ function Notice({ text, onClose }: { text: string; onClose(): void }) {
         ✕
       </button>
     </div>
+  );
+}
+
+/** «← Мої персонажі» на початку смужки персонажа. */
+function BackToList({ onClick }: { onClick(): void }) {
+  return (
+    <button type="button" className="doll-bar-back" onClick={onClick}>
+      ← Мої персонажі
+    </button>
   );
 }
 
@@ -166,6 +175,13 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   );
   const blockers = useMemo(() => saveBlockers(doc), [doc]);
   const hasWork = doc.items.length > 0 || doc.sets.length > 0 || !!doc.name;
+  // Чернетка в браузері не записана: конфлікт вкладок (запис зупинено), запис не вдався або
+  // сховища немає — вихід до списку втратить зміни цієї вкладки, тож питаємо (як toList у профілі).
+  const unsaved = hasWork && (conflict || saveState === 'held' || saveState === 'failed' || saveState === 'off');
+  const toList = () => {
+    if (unsaved && !window.confirm('Зміни в цій вкладці не збережено в браузері. Вийти до списку?')) return;
+    onNavigate?.({ name: 'characters' });
+  };
 
   const resetDraft = () => {
     if (!window.confirm('Скинути чернетку? Усі речі, сети й налаштування персонажа буде видалено з цього браузера.')) return;
@@ -210,53 +226,47 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
     }
   };
 
-  return (
+  // Смужка персонажа: ліворуч «← Мої персонажі», праворуч стан чернетки, дії з нею і збереження.
+  const barEnd = (
     <>
-      <div className="card doll-page-bar">
-        <div className="doll-page-save">
-          {me ? (
-            <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void saveToProfile()}>
-              {saving ? 'Зберігаю…' : 'Зберегти в профіль'}
-            </button>
-          ) : (
-            <button type="button" className="btn btn-primary btn-sm" disabled={meLoading} onClick={login}>
-              Увійти через Discord, щоб зберегти
-            </button>
-          )}
-          <span className="hint">
-            {me ? (
-              <>
-                <span className="doll-page-hint-long">Персонаж збережеться в профілі — його буде видно з будь-якого пристрою.</span>
-                <span className="doll-page-hint-short">Збережеться в профілі.</span>
-              </>
-            ) : (
-              <>
-                <span className="doll-page-hint-long">Без входу лялька працює як чернетка в цьому браузері — після входу її можна зберегти.</span>
-                <span className="doll-page-hint-short">Без входу — лише чернетка.</span>
-              </>
-            )}
-          </span>
-          {me && blockers && (
-            <span className="doll-page-blockers" role="note">
-              Перед збереженням: {blockers}.
-            </span>
-          )}
-        </div>
-        <div className="doll-page-tools">
-          <span className={'doll-save-state is-' + saveState} role="status">
-            {SAVE_TEXT[saveState]}
-          </span>
-          <button type="button" className="btn btn-ghost btn-sm" aria-expanded={importOpen} aria-label="Імпорт із Хелпера" onClick={() => setImportOpen((v) => !v)}>
-            <span className="doll-page-hint-long">Імпорт із Хелпера</span>
-            <span className="doll-page-hint-short">Імпорт</span>
-          </button>
-          <button type="button" className="btn btn-bad btn-sm" aria-label="Скинути чернетку" onClick={resetDraft}>
-            <span className="doll-page-hint-long">Скинути чернетку</span>
-            <span className="doll-page-hint-short">Скинути</span>
-          </button>
-        </div>
-      </div>
-
+      <span className={'doll-save-state is-' + saveState} role="status">
+        {SAVE_TEXT[saveState]}
+      </span>
+      <button type="button" className="btn btn-ghost btn-sm" aria-expanded={importOpen} aria-label="Імпорт із Хелпера" onClick={() => setImportOpen((v) => !v)}>
+        <span className="doll-page-hint-long">Імпорт із Хелпера</span>
+        <span className="doll-page-hint-short">Імпорт</span>
+      </button>
+      <button type="button" className="btn btn-bad btn-sm" aria-label="Скинути чернетку" onClick={resetDraft}>
+        <span className="doll-page-hint-long">Скинути чернетку</span>
+        <span className="doll-page-hint-short">Скинути</span>
+      </button>
+      {me ? (
+        <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void saveToProfile()}>
+          {saving ? 'Зберігаю…' : 'Зберегти в профіль'}
+        </button>
+      ) : (
+        <button type="button" className="btn btn-primary btn-sm" disabled={meLoading} onClick={login}>
+          Увійти через Discord, щоб зберегти
+        </button>
+      )}
+    </>
+  );
+  const barNote = (
+    <>
+      <span>
+        {me
+          ? 'Персонаж збережеться в профілі — його буде видно з будь-якого пристрою.'
+          : 'Без входу лялька працює як чернетка в цьому браузері — після входу її можна зберегти.'}
+      </span>
+      {me && blockers && (
+        <span className="doll-page-blockers" role="note">
+          Перед збереженням: {blockers}.
+        </span>
+      )}
+    </>
+  );
+  const top = (
+    <>
       {conflict && (
         <div className="card doll-page-notice is-warn" role="alert">
           <span>Чернетку змінено в іншій вкладці. Поки ти не вибереш, ця вкладка її не перезаписує.</span>
@@ -272,10 +282,21 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
       )}
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
       {importOpen && <ImportPanel hasWork={hasWork} onImport={importDoc} onClose={() => setImportOpen(false)} />}
-
       <SheetCard doc={doc} onChange={setDoc} />
-      <DollEditor value={doc} onChange={setDoc} activeCfg={activeCfg} onActiveCfg={setActiveCfg} />
     </>
+  );
+
+  return (
+    <DollEditor
+      value={doc}
+      onChange={setDoc}
+      activeCfg={activeCfg}
+      onActiveCfg={setActiveCfg}
+      barStart={<BackToList onClick={toList} />}
+      barEnd={barEnd}
+      barNote={barNote}
+      top={top}
+    />
   );
 }
 
@@ -429,35 +450,31 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
     );
   }
 
-  return (
+  // Смужка персонажа: ліворуч «← Мої персонажі», праворуч стан, «Скасувати зміни», «Видалити», «Зберегти».
+  const barEnd = (
     <>
-      <div className="card doll-page-bar">
-        <div className="doll-page-save">
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={() => void save(revision)}>
-            {busy ? 'Зберігаю…' : 'Зберегти'}
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !dirty} onClick={() => void discard()}>
-            Скасувати зміни
-          </button>
-          <span className={'doll-save-state ' + (dirty ? 'is-pending' : 'is-saved')} role="status">
-            {dirty ? 'Є незбережені зміни' : 'Усе збережено в профілі'}
-          </span>
-          {dirty && blockers && (
-            <span className="doll-page-blockers" role="note">
-              Перед збереженням: {blockers}.
-            </span>
-          )}
-        </div>
-        <div className="doll-page-tools">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={toList}>
-            ← Мої персонажі
-          </button>
-          <button type="button" className="btn btn-bad btn-sm" disabled={busy} onClick={() => void remove()}>
-            Видалити
-          </button>
-        </div>
-      </div>
-
+      <span className={'doll-save-state ' + (dirty ? 'is-pending' : 'is-saved')} role="status">
+        {dirty ? 'Є незбережені зміни' : 'Усе збережено в профілі'}
+      </span>
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !dirty} onClick={() => void discard()}>
+        Скасувати зміни
+      </button>
+      <button type="button" className="btn btn-bad btn-sm" disabled={busy} onClick={() => void remove()}>
+        Видалити
+      </button>
+      <button type="button" className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={() => void save(revision)}>
+        {busy ? 'Зберігаю…' : 'Зберегти'}
+      </button>
+    </>
+  );
+  const barNote =
+    dirty && blockers ? (
+      <span className="doll-page-blockers" role="note">
+        Перед збереженням: {blockers}.
+      </span>
+    ) : null;
+  const top = (
+    <>
       {conflict && (
         <div className="card doll-page-notice is-warn" role="alert">
           <span>Цього персонажа вже змінено в іншій вкладці чи на іншому пристрої. Що лишити?</span>
@@ -472,10 +489,21 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
         </div>
       )}
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
-
       <SheetCard doc={doc} onChange={setDocState} />
-      <DollEditor value={doc} onChange={setDocState} activeCfg={activeCfg} onActiveCfg={setActiveCfg} />
     </>
+  );
+
+  return (
+    <DollEditor
+      value={doc}
+      onChange={setDocState}
+      activeCfg={activeCfg}
+      onActiveCfg={setActiveCfg}
+      barStart={<BackToList onClick={toList} />}
+      barEnd={barEnd}
+      barNote={barNote}
+      top={top}
+    />
   );
 }
 
@@ -597,13 +625,15 @@ export default function CharacterPage({ id, onNavigate }: { id: string | null; o
         title="Персонаж — PW PvP"
         description="Лялька персонажа: спорядження, сети для свапу й характеристики — ті самі формули, що в PW Хелпері."
       />
-      <header className="section-head">
-        <span className="eyebrow">Персонаж</span>
-        <h2>{id === null ? 'Мої персонажі' : 'Лялька персонажа'}</h2>
-        <p>Одягни Головний комплект і додай сети для свапу (ПЗ, ПА, спів). Формули — ті самі, що в PW Хелпері.</p>
-      </header>
       {id === null ? (
-        <CharactersList onNavigate={onNavigate} />
+        <>
+          <header className="section-head">
+            <span className="eyebrow">Персонаж</span>
+            <h2>Мої персонажі</h2>
+            <p>Одягни Головний комплект і додай сети для свапу (ПЗ, ПА, спів). Формули — ті самі, що в PW Хелпері.</p>
+          </header>
+          <CharactersList onNavigate={onNavigate} />
+        </>
       ) : id === 'new' ? (
         <DraftCharacter onNavigate={onNavigate} />
       ) : (

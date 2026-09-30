@@ -46,6 +46,14 @@ describe('маршрути персонажа', () => {
     expect(parse(routeUrl({ name: 'character', id: 'k7' }))).toEqual({ name: 'character', id: 'k7' });
   });
 
+  it('dev-сторінка ляльки /dev/doll (у тестах, як і в dev-збірці, import.meta.env.DEV = true)', () => {
+    expect(parse('/dev/doll')).toEqual({ name: 'dev-doll' });
+    expect(parse('/dev/bracket')).toEqual({ name: 'dev-bracket' });
+    expect(parse('/dev/nope')).toEqual({ name: 'home' });
+    expect(routeUrl({ name: 'dev-doll' })).toBe('/dev/doll');
+    expect(ROUTE_ACCESS['dev-doll']).toBe('public');
+  });
+
   it('обидва маршрути відкриті гостю', () => {
     expect(ROUTE_ACCESS.characters).toBe('public');
     expect(ROUTE_ACCESS.character).toBe('public');

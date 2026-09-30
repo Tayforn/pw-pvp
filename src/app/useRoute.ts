@@ -31,6 +31,8 @@ export type Route =
   | { name: 'tournament-bracket'; id: string }
   /** лише dev-збірка: /dev/bracket — сітка з фейковими командами (верстка) */
   | { name: 'dev-bracket' }
+  /** лише dev-збірка: /dev/doll — редактор ляльки з фікстурами typical-* (верстка без входу) */
+  | { name: 'dev-doll' }
   /** /characters — «Мої персонажі» (список збережених; гостю — вхід і чернетка) */
   | { name: 'characters' }
   /** /characters/:id — 'new' = новий персонаж на локальній чернетці; інакше — збережений (uuid) */
@@ -55,6 +57,7 @@ function parsePath(): Route {
   if (a === 't' && b) return { name: 'tournament', id: b };
   if (a === 'characters') return b && CHARACTER_ID_RE.test(b) ? { name: 'character', id: b } : { name: 'characters' };
   if (import.meta.env.DEV && a === 'dev' && b === 'bracket') return { name: 'dev-bracket' };
+  if (import.meta.env.DEV && a === 'dev' && b === 'doll') return { name: 'dev-doll' };
   return { name: 'home' };
 }
 
@@ -67,6 +70,7 @@ export function routeUrl(route: Route): string {
     // перша вкладка без сегмента — щоб /admin і /admin/tournaments були одним шляхом
     case 'admin': return APP_BASE + 'admin' + (route.tab && route.tab !== 'tournaments' ? '/' + route.tab : '');
     case 'dev-bracket': return APP_BASE + 'dev/bracket';
+    case 'dev-doll': return APP_BASE + 'dev/doll';
     case 'character': return APP_BASE + 'characters/' + encodeURIComponent(route.id);
     default: return APP_BASE + route.name;
   }

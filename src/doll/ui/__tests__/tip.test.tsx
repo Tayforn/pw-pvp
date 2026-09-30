@@ -20,12 +20,13 @@ import type { DollState, Item, TipCtx } from '../../core/types';
 import { catItems, ensureCats } from '../../data/catalog';
 import type { CharacterDoc } from '../../model/doc';
 import { CFG_MAIN, hydrate } from '../../model/hydrate';
-import { createSet, duplicateInstance, equip, setBuffSide, updateInstance } from '../../model/ops';
+import { createSet, duplicateInstance, effectiveBuffLvl, equip, setBuffSide, stepBuffLvl, updateInstance } from '../../model/ops';
 import { buildBuffTipModel, buildTipModel, type TipModel } from '../../model/tipModel';
 import { calcState, docFrom, loadRef, lookup } from '../../model/__tests__/testDoc';
 import { EditorProvider } from '../EditorContext';
-import { BuffCfgModal, effectiveBuffLvl, stepBuffLvl } from '../modals/BuffCfgModal';
+import { BuffCfgModal } from '../modals/BuffCfgModal';
 import { BuffPickModal, buffPickRows, PICK_CLASSES } from '../modals/BuffPickModal';
+import { DeleteSetModal } from '../modals/DeleteSetModal';
 import { EditorModal, replaceBasePatch, restoreBasePatch, STAT_OPTIONS } from '../modals/EditorModal';
 import { OpponentModal, parseOppNum } from '../modals/OpponentModal';
 import { isNoopPatch, keyStats, PickerModal, withSocket } from '../modals/PickerModal';
@@ -314,10 +315,29 @@ describe('стани і суперник', () => {
     expect(visible(pick)).toContain('Бафи');
     expect(visible(pick)).toContain('Дебафи');
     expect((pick.match(/doll-bpick-row/g) || []).length).toBeGreaterThan(0);
+    // «+ дебаф» відкриває пошук одразу на вкладці дебафів
+    const deb = renderIn(doc, <BuffPickModal initialTab="debuff" />);
+    expect(visible(deb)).toContain('Додати дебаф');
+    expect(deb).toMatch(/aria-selected="true"[^>]*>Дебафи/);
+    expect(renderIn(doc, <BuffPickModal initialTab="buff" />)).toMatch(/aria-selected="true"[^>]*>Бафи/);
     // лише 10 класів сервера
     expect(PICK_CLASSES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     const onlyCommon = buffPickRows(getBuffs(), new Set(), '');
     expect(onlyCommon.every((r) => r.sm === 0)).toBe(true);
+  });
+
+  it('вікно видалення сету (через ModalHost): назва сету, вибір прибрати речі-сироти', () => {
+    const base = docFrom('typical-by');
+    const created = createSet(base, 'pz');
+    const setId = created.setId!;
+    // у сеті — копія зброї, яка ніде більше не надіта: після видалення сету стане сиротою
+    const dup = duplicateInstance(created.doc, base.main.ta!);
+    const doc = equip(dup.doc, setId, 'ta', dup.iid!);
+    const text = visible(renderIn(doc, <DeleteSetModal setId={setId} />, setId));
+    expect(text).toContain('Видалити сет «ПЗ»?');
+    expect(text).toContain('Видалити й ці речі (1)');
+    // сету вже немає — вікно нічого не малює (ModalHost його закриє)
+    expect(renderIn(base, <DeleteSetModal setId={setId} />)).toBe('');
   });
 
   it('суперник: числа з розрядами розбираються назад', () => {

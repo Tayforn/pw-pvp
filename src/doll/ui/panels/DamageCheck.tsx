@@ -141,23 +141,26 @@ export function DamageCheck({ defaultOpen = false }: { defaultOpen?: boolean } =
   const hit = (sk: SkillDef) => api.pushDmg(logEntry(calc, api.opponent, sk, nextLogId(api.dmgLog)));
 
   return (
-    <section className={'card doll-pn doll-dmg' + (open ? ' is-open' : '')} aria-label="Перевірка урону">
+    // Та сама картка B3, що й решта (.doll-card), лише шапка — це summary згортки.
+    <section className={'doll-card doll-pn doll-dmg' + (open ? ' is-open' : '')} aria-label="Перевірка урону">
       <details open={open} onToggle={(e: SyntheticEvent<HTMLDetailsElement>) => setOpen(e.currentTarget.open)}>
-        <summary>
+        <summary className="doll-card-head" title="Урон скілів по налаштованому суперникові">
           <h3>Перевірка урону</h3>
           <span className="doll-pn-tag mute">у скор не входить</span>
-          <span className="doll-pn-note">урон скілів по налаштованому суперникові</span>
         </summary>
         {open && (
-          <DamageBody
-            calc={calc}
-            opponent={api.opponent}
-            log={api.dmgLog}
-            onHit={hit}
-            onClear={api.clearDmg}
-            onEditOpp={api.openOpponent}
-            onResetOpp={() => api.setOpponent({ ...DEFAULT_OPP })}
-          />
+          <div className="doll-card-body">
+            <p className="doll-pn-note">Урон скілів по налаштованому суперникові — з увімкненими станами, як у Хелпері.</p>
+            <DamageBody
+              calc={calc}
+              opponent={api.opponent}
+              log={api.dmgLog}
+              onHit={hit}
+              onClear={api.clearDmg}
+              onEditOpp={api.openOpponent}
+              onResetOpp={() => api.setOpponent({ ...DEFAULT_OPP })}
+            />
+          </div>
         )}
       </details>
     </section>

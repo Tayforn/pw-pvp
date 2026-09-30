@@ -1,6 +1,7 @@
 // =========================================================
 // ЛЯЛЬКА — контекст редактора: документ, гідрована модель, активна
-// конфігурація, одна точка змін (apply) і стан модалок. Усі частини
+// конфігурація, одна точка змін (apply), стан модалок і режим характеристик
+// «Чисті / У бою» (уподобання браузера, як і суперник). Усі частини
 // редактора (фігура, інвентар, панелі, модалки) беруть його через useEditor,
 // тож між компонентами не ходять десятки пропсів, а модалка знає, звідки її
 // відкрили, з обʼєкта `modal`, а не з окремих useState.
@@ -23,14 +24,23 @@ export type PickerTarget =
   | { kind: 'gem'; cfgId: string; iid: string; socket: number }
   | { kind: 'wdf' | 'crystal'; cfgId: string; iid: string };
 
+/** Вкладка вікна пошуку станів. Окреме імʼя, бо `kind` у EditorModal — дискримінатор виду вікна. */
+export type BuffPickTab = 'buff' | 'debuff';
+
 export type EditorModal =
   | null
   | { kind: 'picker'; target: PickerTarget }
   | { kind: 'item'; cfgId: string; iid: string }
   | { kind: 'buffCfg'; id: number }
-  | { kind: 'buffPick' }
+  /** tab — з якої вкладки почати; без нього вікно відкриває ту, що була востаннє. */
+  | { kind: 'buffPick'; tab?: BuffPickTab }
   | { kind: 'opponent' }
-  | { kind: 'addSet' };
+  | { kind: 'addSet' }
+  | { kind: 'deleteSet'; setId: string };
+
+/** Як рахувати характеристики на панелі: «Чисті» — як скор (лише пасивки класу,
+ * без бафів), «У бою» — з бафами й дебафами документа. Стан перегляду, не документа. */
+export type StatsMode = 'clean' | 'battle';
 
 export interface EditorApi {
   doc: CharacterDoc;
@@ -43,11 +53,16 @@ export interface EditorApi {
   openPicker(target: PickerTarget): void;
   openItemEditor(cfgId: string, iid: string): void;
   openBuffCfg(id: number): void;
-  openBuffPick(): void;
+  openBuffPick(tab?: BuffPickTab): void;
   openOpponent(): void;
   openAddSet(): void;
+  /** Питання «Видалити сет?» (з вибором прибрати й речі, що ніде більше не надіті). */
+  openDeleteSet(setId: string): void;
   closeModal(): void;
   modal: EditorModal;
+  /** «Чисті / У бою» — памʼятається в браузері (localStorage), типово «Чисті». Працює й у readOnly. */
+  statsMode: StatsMode;
+  setStatsMode(mode: StatsMode): void;
   opponent: OppMob;
   setOpponent(m: OppMob): void;
   dmgLog: DmgLogEntry[];
@@ -67,7 +82,17 @@ const NOTICE_MS = 6000;
 const Ctx = createContext<EditorApi | null>(null);
 
 const OPP_KEY = 'pvpDollOpp';
+const STATS_MODE_KEY = 'pvpDollStatsMode';
 const DMG_LOG_MAX = 200;
+
+/** Режим характеристик — уподобання браузера; немає або зламане — «Чисті». */
+function loadStatsMode(): StatsMode {
+  try {
+    return localStorage.getItem(STATS_MODE_KEY) === 'battle' ? 'battle' : 'clean';
+  } catch {
+    return 'clean';
+  }
+}
 
 /** Суперник для перевірки урону — уподобання браузера, не частина документа. */
 function loadOpp(): OppMob {
@@ -90,15 +115,16 @@ interface ProviderProps {
   children: ReactNode;
 }
 
-export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onActiveCfg, children }: ProviderProps) {
-  // Кілька apply в одному обробнику мають бачити результат попереднього,
-  // а не документ з останнього рендеру.
+/** Єдина точка змін документа: чиста функція doc → doc. Кілька apply в одному
+ * обробнику бачать результат попереднього, а не документ з останнього рендеру;
+ * у readOnly — нічого не робить. Той самий apply — і для смужки персонажа поза
+ * провайдером (DollEditor: смужка живе й поки вантажиться каталог). */
+export function useApply(doc: CharacterDoc, onChange: (doc: CharacterDoc) => void, readOnly: boolean): EditorApi['apply'] {
   const docRef = useRef(doc);
   docRef.current = doc;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-
-  const apply = useCallback(
+  return useCallback(
     (fn: (d: CharacterDoc) => CharacterDoc) => {
       if (readOnly) return;
       const next = fn(docRef.current);
@@ -108,6 +134,10 @@ export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onAc
     },
     [readOnly],
   );
+}
+
+export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onActiveCfg, children }: ProviderProps) {
+  const apply = useApply(doc, onChange, readOnly);
 
   const [modal, setModal] = useState<EditorModal>(null);
   const open = useCallback((m: Exclude<EditorModal, null>) => setModal(m), []);
@@ -120,6 +150,16 @@ export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onAc
       localStorage.setItem(OPP_KEY, JSON.stringify(m));
     } catch {
       /* без сховища суперник живе до перезавантаження */
+    }
+  }, []);
+
+  const [statsMode, setStatsModeState] = useState<StatsMode>(loadStatsMode);
+  const setStatsMode = useCallback((m: StatsMode) => {
+    setStatsModeState(m);
+    try {
+      localStorage.setItem(STATS_MODE_KEY, m);
+    } catch {
+      /* без сховища режим живе до перезавантаження */
     }
   }, []);
 
@@ -161,11 +201,14 @@ export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onAc
       openPicker: (target) => open({ kind: 'picker', target }),
       openItemEditor: (cfgId, iid) => open({ kind: 'item', cfgId, iid }),
       openBuffCfg: (id) => open({ kind: 'buffCfg', id }),
-      openBuffPick: () => open({ kind: 'buffPick' }),
+      openBuffPick: (tab) => open(tab ? { kind: 'buffPick', tab } : { kind: 'buffPick' }),
       openOpponent: () => open({ kind: 'opponent' }),
       openAddSet: () => open({ kind: 'addSet' }),
+      openDeleteSet: (setId) => open({ kind: 'deleteSet', setId }),
       closeModal,
       modal,
+      statsMode,
+      setStatsMode,
       opponent,
       setOpponent,
       dmgLog,
@@ -175,7 +218,7 @@ export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onAc
       notice,
       notify,
     }),
-    [doc, model, readOnly, activeCfg, onActiveCfg, apply, open, closeModal, modal, opponent, setOpponent, dmgLog, pushDmg, clearDmg, buildOf, notice, notify],
+    [doc, model, readOnly, activeCfg, onActiveCfg, apply, open, closeModal, modal, statsMode, setStatsMode, opponent, setOpponent, dmgLog, pushDmg, clearDmg, buildOf, notice, notify],
   );
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;

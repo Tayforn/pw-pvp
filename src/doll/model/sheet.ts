@@ -173,12 +173,26 @@ export function weaponRefineBucket(r: number): WeaponRefine {
   return 'w0_5';
 }
 
-/** Збірка з атрибутів: частка вільних очок, вкладених у Тілобудову. */
-export function buildOf(doc: CharacterDoc, rules: ScoringRules): Build {
+/** Скільки очок роздано понад базові 5 у кожен атрибут. */
+function spentPoints(doc: CharacterDoc): number {
   const { str, dex, vit, mag } = doc.attrs;
-  const free = str + dex + vit + mag - 4 * ATTR_BASE;
-  if (free <= 0) return 'dd';
-  const share = (vit - ATTR_BASE) / free;
+  return str + dex + vit + mag - 4 * ATTR_BASE;
+}
+
+/** Частка розданих очок, вкладених у Тілобудову: 0..1. Нічого не роздано
+ * (порожня чернетка) — 0, а не 0/0 = NaN. */
+export function vitShare(doc: CharacterDoc): number {
+  const spent = spentPoints(doc);
+  if (!(spent > 0)) return 0;
+  const share = (doc.attrs.vit - ATTR_BASE) / spent;
+  return Number.isFinite(share) ? Math.max(0, Math.min(1, share)) : 0;
+}
+
+/** Збірка з атрибутів: частка вільних очок, вкладених у Тілобудову (vitShare),
+ * проти порогів шкали (rules.doll.buildVit). */
+export function buildOf(doc: CharacterDoc, rules: ScoringRules): Build {
+  if (!(spentPoints(doc) > 0)) return 'dd';
+  const share = vitShare(doc);
   if (share >= rules.doll.buildVit.con) return 'con';
   if (share >= rules.doll.buildVit.hybrid) return 'hybrid';
   return 'dd';
