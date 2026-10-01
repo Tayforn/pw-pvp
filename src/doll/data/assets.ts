@@ -11,12 +11,25 @@ import type { Item } from '../core/types';
 import { isCat } from './catalog';
 
 // 26 PNG: 24 спрайти категорій (5 гендерних × 2 + 14 звичайних) + yo.png + item-cells.png.
-const PNG_URL = import.meta.glob('./sprites/**/*.png', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+// Виклик glob — у ледачій функції, як у catalog.ts: Vite трансформує його так
+// само, а в Node без Vite (бекенд, тести поза Vite) модуль імпортується без
+// import.meta.glob — URL-и там порожні.
+let pngUrls: Record<string, string> | null = null;
+function pngUrl(path: string): string | undefined {
+  if (!pngUrls) {
+    try {
+      pngUrls = import.meta.glob('./sprites/**/*.png', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+    } catch {
+      pngUrls = {}; // Node без Vite: спрайтів немає
+    }
+  }
+  return pngUrls[path];
+}
 
-/** Спрайт бафів і вмінь (yo.png). */
-const YO_URL: string = PNG_URL['./sprites/yo.png'] ?? '';
-/** Фон порожніх клітинок — плейсхолдери слотів, позиції як у mypers. */
-export const ITEM_CELLS_URL: string = PNG_URL['./sprites/item-cells.png'] ?? '';
+/** Фон порожніх клітинок — плейсхолдери слотів, позиції як у mypers. Константа
+ * модуля (її читає SlotCell), тож glob у Vite виконується при імпорті — у Node
+ * це просто ''. */
+export const ITEM_CELLS_URL: string = pngUrl('./sprites/item-cells.png') ?? '';
 
 /** URL спрайта категорії. Гендерний спрайт (ft/rv/tg/rx/mj — вигляд різний для
  * ч/ж, індекс `an` той самий) визначаємо за наявністю файла m/ або f/, а не
@@ -24,11 +37,7 @@ export const ITEM_CELLS_URL: string = PNG_URL['./sprites/item-cells.png'] ?? '';
  * списком → '' (ніякого шляху, складеного з даних гравця). */
 export function spriteUrl(cat: string, gender: 'm' | 'f'): string {
   if (!isCat(cat)) return '';
-  return (
-    PNG_URL['./sprites/fe/' + cat + '/' + gender + '/' + cat + '-hii.png'] ??
-    PNG_URL['./sprites/fe/' + cat + '/' + cat + '-hii.png'] ??
-    ''
-  );
+  return pngUrl('./sprites/fe/' + cat + '/' + gender + '/' + cat + '-hii.png') ?? pngUrl('./sprites/fe/' + cat + '/' + cat + '-hii.png') ?? '';
 }
 
 const CELL = 32; // крок спрайта, px
@@ -52,7 +61,9 @@ export function iconStyle(item: Item, cat: string, gender: 'm' | 'f'): CSSProper
 
 /** Стиль іконки бафа зі спрайта yo.png (порт calc buffIconStyle). */
 export function buffIconStyle(an: number): CSSProperties {
-  return { backgroundImage: 'url("' + YO_URL + '")', backgroundPosition: spritePos(Number(an) | 0) };
+  // Спрайт бафів і вмінь (yo.png).
+  const yo = pngUrl('./sprites/yo.png') ?? '';
+  return { backgroundImage: 'url("' + yo + '")', backgroundPosition: spritePos(Number(an) | 0) };
 }
 
 // Контур силуету — той, що реально малює лялька Хелпера (styles.css, .doll-fig::before);

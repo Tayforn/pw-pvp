@@ -1,0 +1,604 @@
+{
+ "version": "balance-v1.22",
+ "rules": {
+  "shg": 15,
+  "doll": {
+   "scope": "main",
+   "buildVit": {
+    "con": 0.5,
+    "hybrid": 0.25
+   },
+   "gemPoints": {
+    "g10": 0.16666666666666666,
+    "g11": 0.3333333333333333,
+    "g12": 0.5833333333333334,
+    "low": 0,
+    "pz1": 1,
+    "topPa": 1,
+    "campPz": 2,
+    "topOther": 0.5833333333333334
+   }
+  },
+  "gems": {
+   "pa": 26,
+   "g10": 4,
+   "g11": 8,
+   "camp": 40,
+   "g0_9": 0,
+   "xuan": 14,
+   "xuan_pa": 20,
+   "xuan_camp": 33
+  },
+  "genie": {
+   "g60": 0,
+   "g100": 10,
+   "g61_70": 2,
+   "g71_80": 4,
+   "g81_90": 6,
+   "g91_99": 8
+  },
+  "level": {
+   "l101": 1,
+   "l102": 2,
+   "l103": 4,
+   "l104": 7,
+   "l105": 10,
+   "l90_100": 0
+  },
+  "rings": {
+   "r9": 12,
+   "pks": 4,
+   "moon": 0,
+   "r9r1": 16,
+   "silver": 8
+  },
+  "tiers": [
+   {
+    "min": 225,
+    "tier": "S"
+   },
+   {
+    "min": 175,
+    "tier": "A"
+   },
+   {
+    "min": 130,
+    "tier": "B"
+   },
+   {
+    "min": 85,
+    "tier": "C"
+   },
+   {
+    "min": null,
+    "tier": "D"
+   }
+  ],
+  "tract": {
+   "t6": 5,
+   "t7": 8,
+   "t8": 15,
+   "t1_3": 0,
+   "t4_5": 2,
+   "emperor": 20
+  },
+  "voznes": 10,
+  "balance": {
+   "T0": 6,
+   "T1": 0.05,
+   "topN": 10,
+   "buffs": {
+    "cap": 40,
+    "pct": {
+     "archer": {
+      "kx": {
+       "je": {
+        "mag": 1,
+        "phys": 1
+       },
+       "rs": {
+        "mag": 1,
+        "phys": 1
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 1,
+        "phys": 1
+       },
+       "rs": {
+        "mag": 1,
+        "phys": 1
+       }
+      }
+     },
+     "cleric": {
+      "kx": {
+       "je": {
+        "mag": 16,
+        "phys": 11
+       },
+       "rs": {
+        "mag": 16,
+        "phys": 11
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 19,
+        "phys": 15
+       },
+       "rs": {
+        "mag": 19,
+        "phys": 15
+       }
+      }
+     },
+     "mystic": {
+      "kx": {
+       "je": {
+        "mag": 0,
+        "phys": 0
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 0
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 0,
+        "phys": 0
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 0
+       }
+      }
+     },
+     "seeker": {
+      "kx": {
+       "je": {
+        "mag": 2,
+        "phys": 2
+       },
+       "rs": {
+        "mag": 2,
+        "phys": 2
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 2,
+        "phys": 2
+       },
+       "rs": {
+        "mag": 2,
+        "phys": 2
+       }
+      }
+     },
+     "wizard": {
+      "kx": {
+       "je": {
+        "mag": 0,
+        "phys": 1
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 1
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 0,
+        "phys": 1
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 1
+       }
+      }
+     },
+     "psychic": {
+      "kx": {
+       "je": {
+        "mag": 0,
+        "phys": 0
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 0
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 0,
+        "phys": 0
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 0
+       }
+      }
+     },
+     "assassin": {
+      "kx": {
+       "je": {
+        "mag": 0,
+        "phys": 0
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 0
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 0,
+        "phys": 0
+       },
+       "rs": {
+        "mag": 0,
+        "phys": 0
+       }
+      }
+     },
+     "barbarian": {
+      "kx": {
+       "je": {
+        "mag": 10,
+        "phys": 14
+       },
+       "rs": {
+        "mag": 10,
+        "phys": 15
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 16,
+        "phys": 21
+       },
+       "rs": {
+        "mag": 16,
+        "phys": 22
+       }
+      }
+     },
+     "venomancer": {
+      "kx": {
+       "je": {
+        "mag": 20,
+        "phys": 20
+       },
+       "rs": {
+        "mag": 20,
+        "phys": 20
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 20,
+        "phys": 20
+       },
+       "rs": {
+        "mag": 20,
+        "phys": 20
+       }
+      }
+     },
+     "blademaster": {
+      "kx": {
+       "je": {
+        "mag": 6,
+        "phys": 7
+       },
+       "rs": {
+        "mag": 6,
+        "phys": 8
+       }
+      },
+      "noKx": {
+       "je": {
+        "mag": 7,
+        "phys": 8
+       },
+       "rs": {
+        "mag": 8,
+        "phys": 10
+       }
+      }
+     }
+    },
+    "bySide": true,
+    "enabled": true,
+    "defaultKx": "noKx",
+    "killScaled": true,
+    "sizeWeight": {
+     "2": 100,
+     "3": 100,
+     "4": 100,
+     "5": 100
+    }
+   },
+   "roleOf": {
+    "archer": "ranged",
+    "cleric": "support",
+    "mystic": "support",
+    "seeker": "melee",
+    "wizard": "ranged",
+    "psychic": "ranged",
+    "assassin": "melee",
+    "barbarian": "tank",
+    "venomancer": "control",
+    "blademaster": "melee"
+   },
+   "epsilon": 5,
+   "weights": {
+    "dup": 1000,
+    "top": 0.25,
+    "role": 3,
+    "total": 1
+   },
+   "composition": {
+    "weights": {
+     "killer": 30,
+     "kpRange": 10,
+     "topSupport": 100,
+     "twoThreats": 10,
+     "topSecondDd": 60
+    },
+    "profiles": {
+     "archer": {
+      "amp": 0,
+      "kill": 1
+     },
+     "cleric": {
+      "amp": 0.5,
+      "kill": 0.2
+     },
+     "mystic": {
+      "amp": 0.5,
+      "kill": 0.3
+     },
+     "seeker": {
+      "amp": 0.1,
+      "kill": 0.3
+     },
+     "wizard": {
+      "amp": 0,
+      "kill": 1
+     },
+     "psychic": {
+      "amp": 0,
+      "kill": 1
+     },
+     "assassin": {
+      "amp": 0,
+      "kill": 1
+     },
+     "barbarian": {
+      "amp": 0.5,
+      "kill": 0.5
+     },
+     "venomancer": {
+      "amp": 1,
+      "kill": 0.2
+     },
+     "blademaster": {
+      "amp": 0.3,
+      "kill": 0.5
+     }
+    },
+    "secondDd": 0.5,
+    "buildKill": {
+     "dd": 1,
+     "con": 0.4,
+     "hybrid": 0.7
+    },
+    "pairsRule": "noSecondDd",
+    "threatMinKill": 0.5,
+    "topDdMinScore": 225,
+    "topSupportAllow": 0.6
+   }
+  },
+  "armorSet": {
+   "r9": 35,
+   "r8r": 22,
+   "other": 0,
+   "nirvana": 5,
+   "nirvana_r8_mix": 14
+  },
+  "weaponPz": 15,
+  "ratingCap": 20,
+  "armorRefine": {
+   "a5": 3,
+   "a6": 7,
+   "a7": 11,
+   "a8": 17,
+   "a9": 23,
+   "a10": 27,
+   "a11": 29,
+   "a12": 30,
+   "a0_4": 0
+  },
+  "specialSets": {
+   "pa": 12,
+   "pz": 15,
+   "aspd": 8
+  },
+  "weaponGrade": {
+   "r9": 32,
+   "cgd": 25,
+   "r8r": 10,
+   "r9r1": 40,
+   "r9r2": 60,
+   "rcgd": 45,
+   "other": 0,
+   "nirvana": 5
+  },
+  "weaponPzCap": 25,
+  "ratingWeight": 5,
+  "setsFromDoll": true,
+  "swapTotalCap": 25,
+  "weaponRefine": {
+   "w10": 12,
+   "w11": 18,
+   "w12": 25,
+   "w0_5": 0,
+   "w6_7": 4,
+   "w8_9": 8
+  },
+  "abilityPoints": {
+   "ka": 15,
+   "kl": 8,
+   "zl": 8
+  },
+  "shgVoznesBonus": 5,
+  "specialSetsCap": 20,
+  "hiddenArmorSets": [
+   "r9"
+  ],
+  "specialSetsExtra": 5,
+  "classPointsBySize": {
+   "2": {
+    "archer": 8,
+    "cleric": 5,
+    "mystic": 5,
+    "seeker": 7,
+    "wizard": 6,
+    "psychic": 9,
+    "assassin": 10,
+    "barbarian": 5,
+    "venomancer": 8,
+    "blademaster": 5
+   },
+   "3": {
+    "archer": 8,
+    "cleric": 7,
+    "mystic": 6,
+    "seeker": 7,
+    "wizard": 7,
+    "psychic": 8,
+    "assassin": 9,
+    "barbarian": 6,
+    "venomancer": 7,
+    "blademaster": 6
+   },
+   "4": {
+    "archer": 8,
+    "cleric": 8,
+    "mystic": 7,
+    "seeker": 7,
+    "wizard": 8,
+    "psychic": 8,
+    "assassin": 8,
+    "barbarian": 7,
+    "venomancer": 6,
+    "blademaster": 7
+   },
+   "5": {
+    "archer": 8,
+    "cleric": 9,
+    "mystic": 8,
+    "seeker": 7,
+    "wizard": 9,
+    "psychic": 7,
+    "assassin": 7,
+    "barbarian": 8,
+    "venomancer": 5,
+    "blademaster": 8
+   },
+   "6": {
+    "archer": 8,
+    "cleric": 10,
+    "mystic": 8,
+    "seeker": 7,
+    "wizard": 10,
+    "psychic": 7,
+    "assassin": 6,
+    "barbarian": 9,
+    "venomancer": 5,
+    "blademaster": 9
+   }
+  },
+  "shgRefinePerLevel": 1,
+  "specialSetGemsCap": 20,
+  "ringRefinePerLevel": 1,
+  "weaponGradeByClass": {
+   "archer": {
+    "r9": 36,
+    "cgd": 30,
+    "r9r1": 55,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "cleric": {
+    "r9": 30,
+    "cgd": 30,
+    "r9r1": 43,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "mystic": {
+    "r9": 30,
+    "cgd": 30,
+    "r9r1": 43,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "seeker": {
+    "r9": 36,
+    "cgd": 30,
+    "r9r1": 55,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "wizard": {
+    "r9": 36,
+    "cgd": 30,
+    "r9r1": 55,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "psychic": {
+    "r9": 33,
+    "cgd": 30,
+    "r9r1": 49,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "assassin": {
+    "r9": 36,
+    "cgd": 30,
+    "r9r1": 55,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "barbarian": {
+    "r9": 36,
+    "cgd": 30,
+    "r9r1": 55,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "venomancer": {
+    "r9": 30,
+    "cgd": 30,
+    "r9r1": 43,
+    "r9r2": 80,
+    "rcgd": 55
+   },
+   "blademaster": {
+    "r9": 36,
+    "cgd": 30,
+    "r9r1": 55,
+    "r9r2": 80,
+    "rcgd": 55
+   }
+  },
+  "specialSetGemsFactor": 0.5,
+  "voznesRefinePerLevel": 1
+ }
+}

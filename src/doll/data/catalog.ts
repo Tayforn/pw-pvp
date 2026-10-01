@@ -6,11 +6,18 @@
 //
 // Чому ?url, а не import JSON як модуль: 2,3 МБ каталогу потрапили б у чанк
 // сторінки; ?url лишає їх окремими файлами, які браузер тягне лише коли треба.
+//
+// Бекенд (src/server/scorer.ts, Node без Vite) імпортує цей модуль заради стору
+// й getItem: import.meta.glob тут викликається лише в ледачій функції (Vite
+// трансформує її так само), а каталог бекенд підставляє сам — setCatalogData.
 // =========================================================
+
+/// <reference types="vite/client" />
+// ↑ тип import.meta.glob і там, де модуль перевіряють поза цим проєктом (typecheck
+// бекенда pw-ladder, що імпортує src/server/scorer.ts).
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { Item } from '../core/types';
-import { errorMessage } from '../../app/errorMessage';
 
 /** Білий список категорій: 17 слотів ляльки (кільця cr/cd → oq) + камені ob,
  * руни шліфовки wdf, кристали crystal. Що не звідси — каталог ігнорує
@@ -29,12 +36,24 @@ export function isCat(cat: string): cat is CatName {
 export type CatState = 'idle' | 'loading' | 'ready' | 'error';
 
 // URL-и всіх 26 JSON (каталоги + довідники): Vite підставляє хешовані шляхи,
-// а eager гарантує, що кожен файл потрапить у білд.
-const JSON_URL = import.meta.glob('./json/*.json', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+// а eager гарантує, що кожен файл потрапить у білд. Виклик — не на рівні
+// модуля, а при першому запиті URL: у Node без Vite (бекенд) import.meta.glob
+// немає, і модуль має імпортуватись без нього — там URL-ів просто нема.
+let jsonUrls: Record<string, string> | null = null;
+function jsonUrlMap(): Record<string, string> {
+  if (!jsonUrls) {
+    try {
+      jsonUrls = import.meta.glob('./json/*.json', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+    } catch {
+      jsonUrls = {}; // Node без Vite: файлів даних за URL немає (каталог — через setCatalogData)
+    }
+  }
+  return jsonUrls;
+}
 
 /** URL файла даних за іменем без розширення ('ft', 'sets', 'buff-defaults'); undefined = такого файла нема. */
 export function jsonUrl(name: string): string | undefined {
-  return JSON_URL['./json/' + name + '.json'];
+  return jsonUrlMap()['./json/' + name + '.json'];
 }
 
 /**
@@ -62,6 +81,14 @@ export async function fetchJsonFile<T = unknown>(name: string): Promise<T> {
   const url = jsonUrl(name);
   if (!url) throw new Error('немає файла даних «' + name + '»');
   return fetchJsonUrl<T>(url, name);
+}
+
+/** Текст помилки — як errorMessage з app/errorMessage.ts, але без його імпорту:
+ * той модуль кличе alert (DOM), а цей імпортує й бекенд у Node (src/server/scorer.ts). */
+function errorText(e: unknown, fallback: string): string {
+  if (e instanceof Error) return e.message;
+  const m = e && typeof e === 'object' ? (e as { message?: unknown }).message : undefined;
+  return typeof m === 'string' ? m : fallback;
 }
 
 interface CatEntry {
@@ -114,6 +141,27 @@ export function catItems(cat: string): Item[] | null {
   return entries.get(cat)?.items ?? null;
 }
 
+/**
+ * Підставити категорії каталогу готовими масивами — без fetch: бекенд у Node
+ * (src/server/scorer.ts — статичні JSON-імпорти, вбудовані в бандл) і тести.
+ * Категорія стає 'ready' (ensureCats її вже не вантажить); поза білим списком —
+ * пропускається, як і в ensureCats. Повторний виклик замінює дані категорії.
+ */
+export function setCatalogData(data: Partial<Record<CatName, readonly Item[]>>): void {
+  for (const [cat, items] of Object.entries(data) as Array<[string, readonly Item[] | undefined]>) {
+    if (!isCat(cat) || !items) continue;
+    const e = entry(cat);
+    const byId = new Map<number, Item>();
+    for (const it of items) byId.set(Number(it.id), it);
+    e.items = [...items];
+    e.byId = byId;
+    e.state = 'ready';
+    e.error = null;
+    e.promise = null;
+  }
+  notify();
+}
+
 function loadCat(cat: CatName): Promise<void> {
   const e = entry(cat);
   if (e.state === 'ready') return Promise.resolve();
@@ -133,7 +181,7 @@ function loadCat(cat: CatName): Promise<void> {
       e.state = 'ready';
     } catch (err) {
       e.state = 'error';
-      e.error = errorMessage(err, 'не вдалося завантажити каталог «' + cat + '»');
+      e.error = errorText(err, 'не вдалося завантажити каталог «' + cat + '»');
       throw err;
     } finally {
       e.promise = null;
