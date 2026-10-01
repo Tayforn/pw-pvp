@@ -336,7 +336,8 @@ html[data-theme="light"] .theme-ico-moon { display: inline; }
 }
 .btn-primary {
   background: var(--accent);
-  color: #ffffff;
+  /* Темний текст на золоті: контраст ≈ 7:1 (білий давав 2,4:1); так само в макетах. */
+  color: #1c1404;
   box-shadow: 0 14px 36px -14px rgba(220, 153, 0, 0.7);
 }
 .btn-primary:hover { transform: translateY(-1px); background: var(--accent-2); box-shadow: 0 18px 40px -14px rgba(176, 136, 27, 0.6); }
