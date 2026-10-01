@@ -1,8 +1,8 @@
 // =========================================================
 // teams.ts: скор заявки для жеребки/адмінки — registrationScore (бали за речі
-// v2, коли є; інакше таблиця анкети), корекція адміна й Ело поверх; скор з
-// еталонів (dollScore.mode = 'on') у жеребку більше не йде. Плюс помічники
-// «не перевірено» (checked) для блокування жеребки й бейджа «таблиця».
+// v2, коли є; інакше таблиця анкети), корекція адміна й Ело поверх; старий
+// блок dollScore у версії шкали (скор з еталонів, прибрано) нічого не змінює.
+// Плюс помічники «не перевірено» (checked) для блокування жеребки й бейджа «таблиця».
 // Supabase — заглушка (клієнт потрібен лише RPC/select, яких тут не кличемо).
 // =========================================================
 
@@ -11,7 +11,7 @@ import { vi } from 'vitest';
 
 vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) } }));
 
-import { BUILTIN_RULES_VERSION, classPointsFor, computeGearScoreWith, dollGearScoreWith, normalizeRules, registerRules, rulesFor } from '../gearRules';
+import { BUILTIN_RULES_VERSION, classPointsFor, computeGearScoreWith, normalizeRules, registerRules, rulesFor } from '../gearRules';
 import type { PlayerRating } from '../ratings';
 import { hasItemPointsRows, isUnverifiedV2, playerScore, playersForBalance, scoreBreakdown, unverifiedForBalance } from '../teams';
 import type { ItemBreakdown, PlayerGear, Registration, Tournament } from '../types';
@@ -65,12 +65,12 @@ describe('scoreBreakdown / playerScore: гір — registrationScore', () => {
     expect(playerScore(reg({ scoreAdjust: -5 }), V, ratings, 3)).toBe(299);
   });
 
-  it('скор з еталонів (dollScore.mode = "on") у жеребку не береться — навіть коли є сила й еталон класу', () => {
+  it('стара версія шкали з блоком dollScore (режим "on", еталон класу): жеребка все одно бере registrationScore', () => {
     const on = normalizeRules({ dollScore: { mode: 'on', refs: { archer: { off: 10000, def: 20000, base: 140, label: 'еталон' } } } });
     registerRules({ version: 'balance-v9.7', note: 'тест', createdAt: '2026-10-01T00:00:00Z', builtin: false }, on, false);
     const r = reg();
-    expect(dollGearScoreWith(GEAR, r.dollPower!, on, 3)).not.toBeNull(); // старий шлях ще рахує…
-    expect(scoreBreakdown(r, 'balance-v9.7', undefined, 3)!.gear).toBe(Math.round(classPointsFor(on, 'archer', 3) + 268.68 + on.level.l104 + on.genie.g100)); // …а жеребка бере registrationScore
+    expect(r.dollPower).not.toBeNull(); // сила в заявці є, але в скор не входить
+    expect(scoreBreakdown(r, 'balance-v9.7', undefined, 3)!.gear).toBe(Math.round(classPointsFor(on, 'archer', 3) + 268.68 + on.level.l104 + on.genie.g100));
     expect(scoreBreakdown(reg({ itemPoints: null }), 'balance-v9.7', undefined, 3)!.gear).toBe(computeGearScoreWith(GEAR, on, 3));
   });
 

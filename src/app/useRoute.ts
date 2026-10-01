@@ -1,6 +1,6 @@
 // =========================================================
 // Роутинг pw-pvp: History API, гібрид статичних шляхів + динамічні
-// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id) — без бібліотеки роутера, просто
+// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id, /admin/doll/:id) — без бібліотеки роутера, просто
 // парсимо перший/другий сегмент шляху (в стилі pw-calc/pw-events, але
 // pw-calc-івський ROUTES-реєстр тут не підходить — сторінки контент-driven,
 // а не фіксований список вкладок).
@@ -37,10 +37,12 @@ export type Route =
   /** /characters — «Мої персонажі» (список збережених; гостю — вхід і чернетка) */
   | { name: 'characters' }
   /** /characters/:id — 'new' = новий персонаж на локальній чернетці; інакше — збережений (uuid) */
-  | { name: 'character'; id: string };
+  | { name: 'character'; id: string }
+  /** /admin/doll/:registrationId — знімок ляльки із заявки в редакторі лише для перегляду (адмін) */
+  | { name: 'admin-doll'; id: string };
 
-/** Id персонажа в адресі: 'new' або короткий ідентифікатор без спецсимволів. */
-const CHARACTER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** Id персонажа чи заявки в адресі: 'new' або короткий ідентифікатор без спецсимволів. */
+const PATH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 function parsePath(): Route {
   let p = location.pathname;
@@ -51,12 +53,14 @@ function parsePath(): Route {
   if (a === 'tournaments') return { name: 'tournaments' };
   if (a === 'register') return { name: 'register' };
   if (a === 'rules') return { name: 'rules' };
+  // лялька із заявки — окрема адмінська сторінка, не вкладка; без id (чи з кривим) — просто адмінка
+  if (a === 'admin' && b === 'doll' && c && PATH_ID_RE.test(c)) return { name: 'admin-doll', id: c };
   // невідома вкладка (/admin/foo) — просто адмінка, як і без сегмента
   if (a === 'admin') return isAdminTab(b) ? { name: 'admin', tab: b } : { name: 'admin' };
   if (a === 'series' && b) return { name: 'series', slug: b };
   if (a === 't' && b && c === 'bracket') return { name: 'tournament-bracket', id: b };
   if (a === 't' && b) return { name: 'tournament', id: b };
-  if (a === 'characters') return b && CHARACTER_ID_RE.test(b) ? { name: 'character', id: b } : { name: 'characters' };
+  if (a === 'characters') return b && PATH_ID_RE.test(b) ? { name: 'character', id: b } : { name: 'characters' };
   if (import.meta.env.DEV && a === 'dev' && b === 'bracket') return { name: 'dev-bracket' };
   if (import.meta.env.DEV && a === 'dev' && b === 'doll') return { name: 'dev-doll' };
   return { name: 'home' };
@@ -73,6 +77,7 @@ export function routeUrl(route: Route): string {
     case 'dev-bracket': return APP_BASE + 'dev/bracket';
     case 'dev-doll': return APP_BASE + 'dev/doll';
     case 'character': return APP_BASE + 'characters/' + encodeURIComponent(route.id);
+    case 'admin-doll': return APP_BASE + 'admin/doll/' + encodeURIComponent(route.id);
     default: return APP_BASE + route.name;
   }
 }

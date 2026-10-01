@@ -4,8 +4,9 @@
 //  • тултіп речі показує рівно рядки buildTipModel (той самий текст, що
 //    звірено з Хелпером golden-тестом), а назва з даних ніколи не стає HTML;
 //  • вікна рендеряться в справжньому EditorProvider і показують те, що
-//    вимагає контракт: банер копії на вкладці сету, секцію «З інвентаря»,
-//    стани каталогу;
+//    вимагає контракт: банер копії на вкладці сету, пікер з двома панелями
+//    (секції «З інвентаря» / «Каталог», картка речі, «Одразу налаштувати»,
+//    «Проти надітого», варіанти однойменних речей), стани каталогу;
 //  • чисті помічники редактора (гнізда, «Замінити/Повернути базу», кроки рівня бафа);
 //  • вікно джина: плитки сітки зі станами, картка вміння, фільтри, лише перегляд.
 // =========================================================
@@ -21,11 +22,11 @@ import { GENIE_SKILLS, clsBit, whyBlocked } from '../../../data/genie';
 import { SLOTS, buffHasSides, buffMaxLevel } from '../../core/constants';
 import { readJson } from '../../core/__tests__/testData';
 import { getBuffById, getBuffs } from '../../core/refdata';
-import { computeStats, flattenItemStats } from '../../core/stats';
+import { computeStats, flattenItemStats, meetsReq } from '../../core/stats';
 import type { DollState, Item, TipCtx } from '../../core/types';
 import { catItems, ensureCats } from '../../data/catalog';
 import type { CharacterDoc } from '../../model/doc';
-import { CFG_MAIN, hydrate } from '../../model/hydrate';
+import { CFG_MAIN, hydrate, toDollState } from '../../model/hydrate';
 import { createSet, duplicateInstance, effectiveBuffLvl, equip, setBuffSide, stepBuffLvl, updateInstance } from '../../model/ops';
 import { CLS_CHAR } from '../../model/sheet';
 import { buildBuffTipModel, buildTipModel, type TipModel } from '../../model/tipModel';
@@ -90,7 +91,7 @@ beforeAll(async () => {
     const name = String(url).split('/').pop()!.replace(/[?#].*$/, '').replace(/\.json$/, '');
     return { ok: true, status: 200, json: async () => readJson(name) };
   });
-  await ensureCats(['ta', 'ob', 'wdf', 'crystal', 'pk']);
+  await ensureCats(['ta', 'ob', 'wdf', 'crystal', 'pk', 'oq']);
 });
 afterAll(() => {
   vi.unstubAllGlobals();
@@ -190,7 +191,7 @@ describe('пікер', () => {
     expect(updateInstance(doc, setId, iid, { r: (inst.r || 0) + 1 }).iid).not.toBe(iid);
   });
 
-  it('ключові стати: для каменя — лише доп у цю річ', () => {
+  it('ключові стати: для каменя — лише доп у цю річ; для речі — атака, ПА/ПЗ, головні допи', () => {
     const gem = catItems('ob')!.find((g) => Array.isArray(g.obDops) && (g.obDops as unknown[]).length > 1)!;
     const weapon = keyStats(gem, 'ob', true);
     const armor = keyStats(gem, 'ob', false);
@@ -199,21 +200,90 @@ describe('пікер', () => {
     expect(weapon.includes(' · ')).toBe(false);
     const sword = readJson<Item[]>('ta').find((t) => Array.isArray(t.ld))!;
     expect(keyStats(sword, 'ta')).toMatch(/^Фіз\. /);
+    // сокира Ареса: діапазон, атак/с, ПА з nw.wu, перші допи — однойменні варіанти відрізняються прямо в рядку
+    const ares = keyStats(lookup('ta', 1900)!, 'ta');
+    expect(ares).toContain('Фіз. 988–' + (2305).toLocaleString('uk'));
+    expect(ares).toContain('ПА +30');
+    expect(ares).toContain('Сила +11');
+    expect(ares.split(' · ').length).toBeLessThanOrEqual(5);
   });
 
-  it('слот: «З інвентаря», лічильник і кнопка зняти', () => {
+  it('слот: вікно xl з двома панелями, «З інвентаря», «Каталог», лічильник, картка надітої речі, «Надіти»', () => {
     const base = docFrom('typical-by');
     const doc = duplicateInstance(base, base.main.ta!).doc; // копія зброї лежить в інвентарі
     const html = renderIn(doc, <PickerModal target={{ cfgId: CFG_MAIN, slot: 'ta' }} />);
     const text = visible(html);
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('doll-modal-xl doll-modal-split');
     expect(text).toContain('З інвентаря · 1');
+    expect(text).toContain('Каталог');
     expect(text).toMatch(/Знайдено: \d/);
     expect(text).toContain('Зняти в інвентар');
-    expect(html).toContain('doll-pick-row');
-    // «лише те, що вдягається» увімкнено за замовчуванням
+    expect(html).toContain('doll-pk-row');
+    // спливних підказок над списком нема — усе в картці
+    expect(html).not.toContain('doll-pick-info');
+    expect(html).not.toContain('doll-pick-row');
+    // «лише придатні мені» увімкнено за замовчуванням, порядок — спершу вищий рівень
     expect(html).toMatch(/type="checkbox" checked=""/);
+    expect(html).toMatch(/<option value="lvl-desc" selected=""/);
+    // картка одразу показує надіту річ: назва, тип/вимоги, стати з тултіп-моделі, абілка
+    expect(text).toContain('Важка сокира Ареса');
+    expect(text).toContain('зараз надіто');
+    expect(text).toContain('ур. 101');
+    // рядки «ключ: значення» тултіп-моделі розкладені на дві клітинки сітки
+    expect(text).toContain('Фіз. атака 988–2 305'); // visible() стискає нерозривний пробіл розряду в звичайний
+    expect(text).toContain('Потрібна сила 305');
+    expect(html).toContain('<span class="doll-pk-cell-k">Потрібна сила</span>');
+    expect(html).toContain('doll-tip-abil');
+    // «Одразу налаштувати»: заточка −/+, 2 гнізда зброї, «як у каталозі · змінити»
+    expect(text).toContain('Одразу налаштувати');
+    expect(html).toMatch(/aria-label="Менша заточка" disabled=""/);
+    expect(html).toContain('aria-label="Більша заточка"');
+    expect(text).toContain('+0');
+    expect((html.match(/aria-label="Гніздо \d"/g) || []).length).toBe(2);
+    expect(text).toContain('— порожнє —');
+    expect(text).toContain('як у каталозі');
+    expect(text).toContain('змінити');
+    // «Проти надітого»: та сама річ без заточки й каменів — атака падає
+    expect(text).toContain('Проти надітого');
+    expect(text).toMatch(/Фіз\. атака \(сер\.\) −[\d\s ]+/);
+    expect(text).toContain('Решта статів без змін');
+    // низ: кнопка (обрано вже надіту річ без налаштувань — «Уже надіто», щоб не підмінити її копією +0) і підказка клавіш
+    expect(html).toMatch(/<button[^>]*class="btn btn-primary btn-sm doll-pk-act"[^>]*>Уже надіто<\/button>/);
+    expect(text).toContain('Enter — надіти, стрілки — далі');
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+  });
+
+  it('слот: рядки списку — один поточний із tabIndex 0, бейдж «надіто», клавіатура без зайвих табів', () => {
+    // Джин: 5 речей каталогу — усі в межах вікна рядків; надіта «Душа Тай Инь» (#1) обрана й позначена.
+    const doc = docFrom('typical-by');
+    const html = renderIn(doc, <PickerModal target={{ cfgId: CFG_MAIN, slot: 'pk' }} />);
+    const text = visible(html);
+    expect((html.match(/class="doll-pk-row/g) || []).length).toBe(5);
+    expect((html.match(/class="doll-pk-row is-cur"[^>]*tabindex="0"/g) || []).length).toBe(1);
+    expect((html.match(/class="doll-pk-row"[^>]*tabindex="-1"/g) || []).length).toBe(4);
+    expect(html).toMatch(/is-cur"[^>]*aria-current="true"/);
+    expect(html).toContain('<span class="doll-pick-tag">надіто</span>');
+    expect(text).toContain('Душа Тай Инь');
+    // у джина нема заточки й гнізд — блоку «Одразу налаштувати» нема, а «Проти надітого» — без змін
+    expect(text).not.toContain('Одразу налаштувати');
+    expect(text).toContain('Ключові стати без змін');
+    expect(text).not.toContain('варіант');
+  });
+
+  it('однойменні речі не злипаються: усі варіанти в списку з бейджем «варіант N з M»', () => {
+    // Сет-вкладка з порожнім слотом зброї не потрібна: беремо кільця — 16 груп двійників у каталозі.
+    const doc = docFrom('typical-by');
+    const html = renderIn(doc, <PickerModal target={{ cfgId: CFG_MAIN, slot: 'cr' }} />);
+    const text = visible(html);
+    expect(text).toMatch(/Знайдено: \d/);
+    // лічильник — усі придатні кільця каталогу, без дедуплікації
+    const oq = readJson<Item[]>('oq');
+    const build = hydrate(doc, lookup);
+    const fit = oq.filter((it) => meetsReq(toDollState(build, CFG_MAIN), it, computeStats(toDollState(build, CFG_MAIN)).gearAttr).ok).length;
+    expect(text).toContain('Знайдено: ' + fit.toLocaleString('uk'));
+    expect(text).toMatch(/варіант 1 з \d/);
   });
 
   it('каталог не завантажено — стан завантаження, а не порожній список', () => {
@@ -222,13 +292,32 @@ describe('пікер', () => {
     expect(visible(html)).toContain('Завантажую каталог');
   });
 
-  it('камінь: заголовок гнізда і список каменів', () => {
+  it('камінь: заголовок гнізда, список каменів, картка з «Вставити» і порівнянням', () => {
     const doc = docFrom('typical-by');
     const html = renderIn(doc, <PickerModal target={{ kind: 'gem', cfgId: CFG_MAIN, iid: doc.main.ta!, socket: 1 }} />);
     const text = visible(html);
     expect(text).toContain('Камінь — гніздо 2');
     expect(text).toMatch(/Знайдено: \d/);
     expect(text).not.toContain('З інвентаря');
+    expect(text).toContain('Прибрати камінь');
+    expect(html).toContain('doll-pk-card');
+    expect(html).toMatch(/<button[^>]*doll-pk-act"[^>]*>Вставити<\/button>/);
+    expect(text).toContain('Enter — вставити');
+    // у гнізді 2 стоїть камінь #55 (нема в пікері: не на сервері) → картка на першому камені списку, порівняння з тим, що стоїть
+    expect(text).toContain('Проти того, що стоїть');
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+  });
+
+  it('лише перегляд: без «Надіти», «Зняти» і налаштування; «Закрити» внизу', () => {
+    const doc = docFrom('typical-by');
+    const html = renderIn(doc, <PickerModal target={{ cfgId: CFG_MAIN, slot: 'ta' }} />, CFG_MAIN, true);
+    const text = visible(html);
+    expect(text).toContain('Лише перегляд');
+    expect(text).not.toContain('Зняти в інвентар');
+    expect(text).not.toContain('Одразу налаштувати');
+    expect(html).not.toMatch(/>Надіти</);
+    expect(html).toMatch(/<button[^>]*doll-pk-act"[^>]*>Закрити<\/button>/);
+    expect(html).toMatch(/aria-disabled="true"/);
   });
 });
 

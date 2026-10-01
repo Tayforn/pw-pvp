@@ -7,7 +7,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, dollGearScoreWith, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor } from './gearRules';
 import { evaluateTeams, teamStrengthFromSnapshot, type BalancePlayer, type FormTeamsResult } from './balance';
 import { resolveBuffOptions, type BuffOptions } from './ruleFlags';
 import { ratingOf, type PlayerRating } from './ratings';
@@ -47,8 +47,7 @@ export interface ScoreBreakdown {
 
 /** teamSize — розмір команди турніру (від нього залежать бали за клас).
  * Гір — registrationScore: заявка персонажем зі скором v2 (itemPoints, 0032) —
- * клас + бали за речі + рівень + джин; старі заявки — таблиця з анкети. Скор з
- * еталонів (dollScore.mode) у жеребку більше не йде — лише dollScoreOf для показу. */
+ * клас + бали за речі + рівень + джин; старі заявки — таблиця з анкети. */
 export function scoreBreakdown(r: Registration, version: string, ratings: Map<string, PlayerRating> | undefined, teamSize: number | null | undefined): ScoreBreakdown | null {
   const rules = rulesFor(version);
   const gear = registrationScore(r, rules, teamSize);
@@ -73,14 +72,6 @@ export function unverifiedForBalance(regs: Registration[]): Registration[] {
 /** Чи є в турнірі заявки зі скором v2 — тоді рядки без itemPoints адмінка позначає «таблиця». */
 export function hasItemPointsRows(regs: Registration[]): boolean {
   return regs.some((r) => r.kind === 'player' && r.itemPoints != null);
-}
-
-/** LEGACY — скор спорядження з ляльки (атака й живучість відносно еталона класу):
- * лише для показу, у жеребку не йде; null — немає сили в заявці або еталона для
- * класу. Прибирається разом із dollGearScoreWith (коміт E). */
-export function dollScoreOf(r: Registration, version: string, teamSize: number | null | undefined): number | null {
-  if (!r.gear || !r.dollPower) return null;
-  return dollGearScoreWith(r.gear, r.dollPower, rulesFor(version), teamSize);
 }
 
 /** Скор гравця для жеребки/відображення в адмінці (з корекцією і рейтингом). */

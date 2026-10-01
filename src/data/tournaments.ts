@@ -208,6 +208,14 @@ export async function fetchRegistrations(tournamentId: string): Promise<Registra
   return (data as RegistrationRow[]).map((r) => registrationFromRow(r, adj));
 }
 
+/** Одна заявка за id — сторінка «лялька із заявки» в адмінці (/admin/doll/:id).
+ * Корекція адміна тут не потрібна (scoreAdjust 0). null — такої заявки немає. */
+export async function fetchRegistration(id: string): Promise<Registration | null> {
+  const { data, error } = await supabase.from('registrations').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? registrationFromRow(data as RegistrationRow) : null;
+}
+
 export async function submitRegistration(input: {
   tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[];
   /** Балансний фул-рандом: анкета обов'язкова (RLS відхилить заявку без char_class). */

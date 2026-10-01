@@ -7,6 +7,8 @@
 // Доступ (app/access.ts): гість без входу через Discord бачить лише заявку,
 // правила, минулі турніри й ляльку персонажа; /t/:id/bracket — окрема
 // сторінка без шапки й меню (посилання «Поділитися»), відкрита всім.
+// Лялька із заявки (/admin/doll/:id) — лише адміну: не-адмін бачить заглушку
+// з посиланням на адмінку (там форма входу).
 //
 // Перехід по сайту (сайдбар, логотип, кнопки сторінок, «Назад / Вперед») іде
 // через useRoute: сторінка з незбереженими змінами (app/leaveGuard.ts) може
@@ -41,6 +43,8 @@ import DevBracketPage from '../pages/DevBracketPage';
 import BracketSharePage from '../pages/BracketSharePage';
 
 const CharacterPage = lazy(() => import('../pages/CharacterPage'));
+// Знімок ляльки із заявки в адмінці — той самий редактор, той самий ледачий чанк ляльки.
+const AdminDollPage = lazy(() => import('../pages/AdminDollPage'));
 // Лише dev-збірка: у проді import.meta.env.DEV = false, і гілка з чанком зникає з бандла.
 const DevDollPage = import.meta.env.DEV ? lazy(() => import('../pages/DevDollPage')) : null;
 
@@ -114,7 +118,7 @@ export default function Layout() {
 
   // Редактор персонажа — три колонки: на його сторінці оболонка ширша (styles.css,
   // html.wide-shell). Клас знімається при виході зі сторінки.
-  const wideShell = route.name === 'character' || route.name === 'dev-doll';
+  const wideShell = route.name === 'character' || route.name === 'dev-doll' || route.name === 'admin-doll';
   useEffect(() => {
     document.documentElement.classList.toggle('wide-shell', wideShell);
     return () => document.documentElement.classList.remove('wide-shell');
@@ -151,7 +155,16 @@ export default function Layout() {
   else if (route.name === 'rules') page = <RulesPage />;
   else if (route.name === 'series') page = <SeriesPage slug={route.slug} onNavigate={go} />;
   else if (route.name === 'tournament') page = <TournamentPage id={route.id} guest={!insider} onLogin={login} />;
-  else if (route.name === 'admin') page = <AdminPage series={series} tab={route.tab} onTab={(tab) => go({ name: 'admin', tab })} />;
+  else if (route.name === 'admin') page = <AdminPage series={series} tab={route.tab} onTab={(tab) => go({ name: 'admin', tab })} onNavigate={go} />;
+  else if (route.name === 'admin-doll') {
+    page = (
+      <LazyPageBoundary key={'admin-doll:' + route.id}>
+        <Suspense fallback={lazyFallback}>
+          <AdminDollPage id={route.id} onNavigate={go} />
+        </Suspense>
+      </LazyPageBoundary>
+    );
+  }
   else if (route.name === 'dev-bracket' && import.meta.env.DEV) page = <DevBracketPage />;
   else if (route.name === 'dev-doll' && DevDollPage) {
     page = (
@@ -177,8 +190,20 @@ export default function Layout() {
   // (інакше гість на мить побачить чуже, а свій — заглушку). Заявка й
   // правила однакові для всіх, адмінка має власну перевірку сесії.
   const viewerDependent = route.name === 'home' || route.name === 'tournaments' || route.name === 'tournament' || route.name === 'series';
-  if (checking && viewerDependent) {
+  // Лялька із заявки — лише адміну; сама адмінка (/admin) має власну форму входу і сюди не підпадає.
+  const adminOnly = route.name === 'admin-doll';
+  if ((checking && viewerDependent) || (adminLoading && adminOnly)) {
     page = <p className="hint" style={{ padding: 24 }}>Перевірка доступу…</p>;
+  } else if (adminOnly && !isAdmin) {
+    page = (
+      // CSS ляльки тут не завантажено (чанк не потрібен) — звичайна картка сайту.
+      <div className="card" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <span>Ця сторінка лише для адміністратора — увійди в адмінку.</span>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => go({ name: 'admin' })}>
+          До адмінки
+        </button>
+      </div>
+    );
   } else if (ROUTE_ACCESS[route.name] === 'member' && route.name !== 'home' && !insider) {
     // Головна для гостя — не заглушка, а список минулих турнірів (вище).
     page = <MemberNotice onLogin={login} />;

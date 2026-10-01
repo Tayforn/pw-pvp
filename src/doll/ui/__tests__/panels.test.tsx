@@ -96,11 +96,11 @@ const OLD_SHEET: Sheet = { weaponGrade: 'other', armorSet: 'other', tract: 't1_3
 /** Готовий до турніру лучник: фікстура + імʼя і шлях (очки фікстури роздано всі); анкета не потрібна. */
 const readyJs = (): CharacterDoc => ({ ...docFrom('typical-js'), name: 'Тайфорн', path: 'rs' });
 
-/** Тимчасово зробити поточною шкалу з еталонами — і повернути вбудовану. */
+/** Тимчасово зробити поточною іншу версію шкали — і повернути вбудовану. */
 function withRules(rules: GearRules, fn: () => void): void {
   const builtin = rulesFor(BUILTIN_RULES_VERSION);
   const info = listRulesVersions().find((v) => v.version === BUILTIN_RULES_VERSION)!;
-  registerRules({ version: 'test-etalon', note: null, createdAt: null, builtin: false }, rules, true);
+  registerRules({ version: 'test-scale', note: null, createdAt: null, builtin: false }, rules, true);
   try {
     fn();
   } finally {
@@ -529,7 +529,7 @@ describe('Готовність до турніру', () => {
       tiers: [{ min: 300, tier: 'S' }, { min: 200, tier: 'A' }, { min: null, tier: 'D' }],
     });
     withRules(rules, () => {
-      const p = dollScorePreview(doc, rules, 'test-etalon', PREVIEW_TEAM_SIZE, lookup);
+      const p = dollScorePreview(doc, rules, 'test-scale', PREVIEW_TEAM_SIZE, lookup);
       expect(p.score).toBe(219);
       const html = renderIn(doc, CFG_MAIN, <ReadinessCard />);
       expect(html).toMatch(new RegExp('class="doll-ready-ring good"[^>]*><b>' + fmt(219) + '</b>'));

@@ -19,7 +19,7 @@ import { supabase } from '../app/supabaseClient';
 import { useAuth } from '../app/useAuth';
 import { reportError } from '../app/errorMessage';
 import PageMeta from '../app/PageMeta';
-import { ADMIN_TABS, routeUrl, type AdminTab } from '../app/useRoute';
+import { ADMIN_TABS, routeUrl, type AdminTab, type Route } from '../app/useRoute';
 import type { Tournament, TournamentSeries } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isRegistrationOpen } from '../data/types';
 import { deleteTournament, fetchAdminTournaments, subscribeToTournamentChanges } from '../data/tournaments';
@@ -82,6 +82,8 @@ function copyLink(path: string) {
   navigator.clipboard?.writeText(url);
 }
 
+type Nav = ((route: Route) => void) | undefined;
+
 function TournamentRow({
   t,
   seriesName,
@@ -89,6 +91,7 @@ function TournamentRow({
   onToggleExpand,
   onEdit,
   onDelete,
+  onNavigate,
 }: {
   t: Tournament;
   seriesName: (id: string | null) => string;
@@ -96,6 +99,8 @@ function TournamentRow({
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Перехід по сайту (роутер Layout) — «Переглянути ляльку» в картці заявки. */
+  onNavigate: Nav;
 }) {
   return (
     <div style={{ borderBottom: '1px solid var(--line)' }}>
@@ -141,7 +146,7 @@ function TournamentRow({
         <div style={{ padding: '4px 18px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <h4>Заявки</h4>
-            <RegistrationsPanel tournament={t} />
+            <RegistrationsPanel tournament={t} onNavigate={onNavigate} />
           </div>
           {isBalancedRandom(t) && (
             // Блок між заявками й сіткою — лише для фул-рандому: сітка
@@ -181,7 +186,7 @@ function Section({ title, items, open, onToggle, render }: { title: string; item
   );
 }
 
-function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: TournamentSeries[]; currentUserId: string; isSuperadmin: boolean }) {
+function TournamentsAdmin({ series, currentUserId, isSuperadmin, onNavigate }: { series: TournamentSeries[]; currentUserId: string; isSuperadmin: boolean; onNavigate: Nav }) {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [editing, setEditing] = useState<Tournament | 'new' | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -225,6 +230,7 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
       onToggleExpand={() => setExpandedId(expandedId === t.id ? null : t.id)}
       onEdit={() => setEditing(t)}
       onDelete={() => confirm(`Видалити турнір «${t.name}»?`) && deleteTournament(t.id).then(reload).catch(reportError)}
+      onNavigate={onNavigate}
     />
   );
 
@@ -253,7 +259,7 @@ function TournamentsAdmin({ series, currentUserId, isSuperadmin }: { series: Tou
   );
 }
 
-export default function AdminPage({ series, tab, onTab }: { series: TournamentSeries[]; tab?: AdminTab; onTab: (tab: AdminTab) => void }) {
+export default function AdminPage({ series, tab, onTab, onNavigate }: { series: TournamentSeries[]; tab?: AdminTab; onTab: (tab: AdminTab) => void; onNavigate?: (route: Route) => void }) {
   const { session, isAdmin, role, loading } = useAuth();
   const isSuperadmin = role === 'superadmin';
   const tabs = isSuperadmin ? ADMIN_TABS : GM_TABS;
@@ -285,7 +291,7 @@ export default function AdminPage({ series, tab, onTab }: { series: TournamentSe
     case 'buffs': body = <><TeamTab /><RulesFooter /></>; break;
     case 'rules': body = <RuleCatalogTab />; break;
     case 'admins': body = <AdminsManager currentUserId={session.user.id} />; break;
-    default: body = <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} />;
+    default: body = <TournamentsAdmin series={series} currentUserId={session.user.id} isSuperadmin={isSuperadmin} onNavigate={onNavigate} />;
   }
 
   return (

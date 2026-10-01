@@ -11,18 +11,16 @@
 // анкети немає: заявку блокують лише відсутня зброя й порожній слот броні.
 // =========================================================
 
-import {
-  classPointsFor, currentRulesVersion, hasRulesVersion, rulesFor, tableGearPartWith, type DollRef, type GearRules,
-} from '../data/gearRules';
+import { classPointsFor, currentRulesVersion, hasRulesVersion, rulesFor } from '../data/gearRules';
 import { loadRulesFromDb } from '../data/rulesStore';
-import type { CharClass, DollPower, ItemBreakdown } from '../data/types';
+import type { DollPower, ItemBreakdown } from '../data/types';
 import { getCharacter, listCharacters, type CharacterRecord, type CharacterSummary } from './api/characters';
 import { ensureCats } from './data/catalog';
 import { ensureRefData } from './data/refLoader';
 import { validateDoc, type CharacterDoc } from './model/doc';
 import { docCats } from './model/hydrate';
 import { itemBreakdown, scoreItems, type ItemScore } from './model/itemScore';
-import { powerOf } from './model/power';
+import { POWER_OPPONENT, powerOf } from './model/power';
 import { PREVIEW_TEAM_SIZE } from './model/readiness';
 import { CLS_CHAR, charLevelOf, dollFacts, gearFromCharacter, genieOf, type CharacterGear } from './model/sheet';
 
@@ -32,9 +30,8 @@ export interface CharacterForRegistration {
   rec: CharacterRecord;
   doc: CharacterDoc;
   result: CharacterGear;
-  /** Чи йдуть свап-сети в бали (перемикач поточної версії шкали). */
-  setsFromDoll: boolean;
-  /** Атака й живучість — для скору з ляльки (legacy, doll_power). */
+  /** Атака й живучість ляльки + склад каменів і абілка — doll_power заявки:
+   * довідка для адміна (попап гравця), у скор не входить. */
   power: DollPower;
   /** Версія шкали, якою рахували скор v2: закріплена за турніром, інакше поточна. */
   rulesVersion: string;
@@ -79,12 +76,12 @@ export async function characterForRegistration(id: string, opts: RegistrationOpt
   await Promise.all([ensureRefData(), ensureCats(docCats(doc)), loadRulesFromDb()]);
   const rulesVersion = opts.rulesVersion && hasRulesVersion(opts.rulesVersion) ? opts.rulesVersion : currentRulesVersion();
   const rules = rulesFor(rulesVersion);
-  const setsFromDoll = rules.setsFromDoll;
   const facts = dollFacts(doc, rules);
-  const result = gearFromCharacter(doc, facts, { setsFromDoll });
+  // Legacy-колонки заявки: сети з ляльки — лише якщо так каже версія шкали (у нових — ні, їх рахує скор v2).
+  const result = gearFromCharacter(doc, facts, { setsFromDoll: rules.setsFromDoll });
   // Разом із силою в заявку йде склад каменів — адмін бачить його замість рядка таблиці.
   const power = {
-    ...powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz }),
+    ...powerOf(doc, POWER_OPPONENT),
     gems: facts.gemCounts,
     ...(facts.weaponPzGain > 0 ? { pzw: Math.round(facts.weaponPzGain * 10) / 10 } : {}),
   };
@@ -99,29 +96,7 @@ export async function characterForRegistration(id: string, opts: RegistrationOpt
     genie: rules.genie[genie],
   });
   return {
-    rec, doc, result, setsFromDoll, power, rulesVersion, items,
+    rec, doc, result, power, rulesVersion, items,
     itemPoints: items.itemPoints, itemBreakdown: breakdown, blockReason: submitBlockReason(result.missing),
-  };
-}
-
-/**
- * Еталон класу для «Шкали балів» зі збереженого персонажа (legacy, DollScoreCard):
- * атака й живучість (з типовим суперником чернетки шкали) і бали спорядження за
- * таблицею з грейдів ляльки, якщо на ній є зброя й броня (інакше base = 0 —
- * адмін впише сам).
- */
-export async function referenceFromCharacter(id: string, rules: GearRules): Promise<{ cls: CharClass; ref: DollRef; note: string | null }> {
-  const rec = await getCharacter(id);
-  const v = validateDoc(rec.doc);
-  const doc = v.ok ? v.doc : v.recoverable;
-  if (!doc) throw new Error('Документ персонажа пошкоджено.');
-  await Promise.all([ensureRefData(), ensureCats(docCats(doc))]);
-  const power = powerOf(doc, { pa: rules.dollScore.oppPa, pz: rules.dollScore.oppPz });
-  const result = gearFromCharacter(doc, dollFacts(doc, rules), { setsFromDoll: false });
-  const base = result.gear ? Math.round(tableGearPartWith(result.gear, rules, 3)) : 0;
-  return {
-    cls: CLS_CHAR[doc.cls],
-    ref: { off: power.off, def: power.def, base, label: rec.name, ...(power.abil ? { abil: power.abil } : {}), wpa: power.wpa ?? 0 },
-    note: result.gear ? null : `На ляльці еталона бракує речей (${result.missing.join('; ')}) — бали еталона впиши вручну.`,
   };
 }

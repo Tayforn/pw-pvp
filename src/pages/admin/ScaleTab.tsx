@@ -1,38 +1,64 @@
 // =========================================================
 // Адмінка (суперадмін): вкладка «Шкала балів» — скільки коштує гравець
-// САМ ПО СОБІ: клас × розмір паті, зброя, броня, камені, сети, трактат,
-// джин, рівень, ШГ/Вознєс, кільця, рейтинг, пороги tier. Усе, що про
-// збирання команд із гравців (бафи тімейтів, правило 4, склад, алгоритм), —
-// на сусідній вкладці «Бафи й склад» (TeamTab.tsx); чернетка в них одна
+// САМ ПО СОБІ за скором v2 «від речей» (src/doll/model/itemScore.ts): клас ×
+// розмір паті, грейд, точка й абілки зброї, сет і точка броні (за річ — чверть
+// і шоста), камені (за камінь), стелі свап-сетів і свап-зброї, трактат, джин
+// (за удачею), рівень, ШГ/Вознєс, кільця, рейтинг, пороги tier. Legacy-таблиці
+// старих заявок (кошики каменів, прапорець ПЗ-зброї, пороги сетів, приховані
+// сети) у версії лишаються, тут не редагуються. Усе, що про збирання команд
+// із гравців (бафи тімейтів, правило 4, склад, алгоритм), — на сусідній
+// вкладці «Бафи й склад» (TeamTab.tsx); чернетка в них одна
 // (data/rulesDraftStore), футер зі збереженням — спільний (RulesFooter.tsx).
 // =========================================================
 
 import { Fragment, useState } from 'react';
-import type { ArmorSet, CharClass, PlayerGear, Tier, WeaponGrade } from '../../data/types';
-import { unitGemPoints,
-  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER, GEMS_LABELS, GEMS_ORDER,
-  GENIE_LABELS, GENIE_ORDER, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER,
-  RING_LABELS, RING_ORDER, RECOMMENDED_CLASS_POINTS_BY_SIZE, SIZE_BUCKETS, SIZE_BUCKET_LABELS,
-  WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER, computeGearScoreWith, maxGearScoreOf, sameForAllSizes, tierForWith,
-  RECOMMENDED_SWAP_TOTAL_CAP, GEM_CLASS_LABELS, GEM_CLASS_ORDER, type SizeBucket,
+import type { CharClass, Tier, WeaponGrade } from '../../data/types';
+import {
+  ARMOR_REFINE_LABELS, ARMOR_REFINE_ORDER, ARMOR_SET_LABELS, ARMOR_SET_ORDER, CHAR_LEVEL_LABELS, CHAR_LEVEL_ORDER, CLASS_LABELS, CLASS_ORDER,
+  GEM_CLASS_LABELS, GEM_CLASS_ORDER, GENIE_LABELS, GENIE_ORDER, RECOMMENDED_ABILITY_POINTS, RECOMMENDED_CLASS_POINTS_BY_SIZE, RECOMMENDED_SWAP_TOTAL_CAP,
+  RING_LABELS, RING_ORDER, SIZE_BUCKETS, SIZE_BUCKET_LABELS, TRACT_LABELS, TRACT_ORDER, WEAPON_GRADE_LABELS, WEAPON_GRADE_ORDER, WEAPON_REFINE_LABELS, WEAPON_REFINE_ORDER,
+  computeGearScoreWith, maxGearScoreOf, sameForAllSizes, tierForWith, unitGemPoints, type SizeBucket,
 } from '../../data/gearRules';
+import { WEAPON_ABILITIES, WEAPON_ABILITY_BY_CODE, type WeaponAbility } from '../../data/weaponAbilities';
 import { draftTiersValid, patchDraft, useRulesDraft } from '../../data/rulesDraftStore';
 import { NumInput, NumTable } from './RulesEditor';
-import DollScoreCard from './DollScoreCard';
-
-/** Контрольні архетипи — щоб одразу бачити, куди зсунуться tier після правки. */
-const ARCHETYPES: { name: string; gear: PlayerGear }[] = [
-  { name: 'Топ (сін): R9R2 +12, R8R +12, Лагеря, всі сети з Лагерями, Імператор, джин 100/100', gear: { charClass: 'assassin', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r2', weaponRefine: 'w12', weaponPz: false, armorSet: 'r8r', armorRefine: 'a12', gems: 'camp', specialSets: ['pz', 'pa', 'aspd'], specialSetGems: { pz: 'camp', pa: 'camp', aspd: 'camp' }, tract: 'emperor', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
-  { name: 'Сильний (лук): R9R1 +11, R8R +10, ПА-камні, ПЗ+ПА з ПА-камінням, Гегемонія, джин 100/100', gear: { charClass: 'archer', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r9r1', weaponRefine: 'w11', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'pa', specialSets: ['pz', 'pa'], specialSetGems: { pz: 'pa', pa: 'pa' }, tract: 't8', genie: 'g100', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
-  { name: 'Типовий (маг): ЦГД +10, R8R +10, Сюаньки, ПА-сет із Сюаньками, трактат 7', gear: { charClass: 'wizard', charLevel: 'l90_100', build: 'dd', weaponGrade: 'cgd', weaponRefine: 'w10', weaponPz: false, armorSet: 'r8r', armorRefine: 'a10', gems: 'xuan', specialSets: ['pa'], specialSetGems: { pa: 'xuan' }, tract: 't7', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
-  { name: 'Середній (прист): R8R +10 з ПЗ-зброєю, Нірвана/R8R (мікс) +8, камні 10, Спів, трактат 6', gear: { charClass: 'cleric', charLevel: 'l90_100', build: 'dd', weaponGrade: 'r8r', weaponRefine: 'w10', weaponPz: true, armorSet: 'nirvana_r8_mix', armorRefine: 'a8', gems: 'g10', specialSets: ['aspd'], specialSetGems: { aspd: 'g10' }, tract: 't6', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
-  { name: 'Слабкий (танк): Нірвана +8 з ПЗ-зброєю, Нірвана +7, трактат 4–5', gear: { charClass: 'barbarian', charLevel: 'l90_100', build: 'dd', weaponGrade: 'nirvana', weaponRefine: 'w8_9', weaponPz: true, armorSet: 'nirvana', armorRefine: 'a7', gems: 'g0_9', specialSets: [], specialSetGems: {}, tract: 't4_5', genie: 'g60', shg: false, shgRefine: null, voznes: false, voznesRefine: null, ring1: null, ring1Refine: null, ring2: null, ring2Refine: null } },
-];
+import { TABLE_ARCHETYPES, V2_ARCHETYPES, v2ArchetypeScore } from './scaleArchetypes';
 
 /** Грейди, для яких є сенс у перевизначенні за класом (R9-лінійка й ЦГД/РЦГД). */
 const OVERRIDE_GRADES: WeaponGrade[] = ['cgd', 'r9', 'r9r1', 'rcgd', 'r9r2'];
 
 const tierClass = (t: Tier) => (t === 'S' || t === 'A' ? 'warn' : 'mute');
+
+/** Абілки топової зброї (300к репутації) — завжди на виду; решта — під спойлером. */
+const TOP_ABILITIES = new Set(Object.keys(RECOMMENDED_ABILITY_POINTS));
+
+function AbilityRow({ a, value, onChange }: { a: WeaponAbility; value: number; onChange: (v: number) => void }) {
+  const id = 'abil-' + a.code;
+  return (
+    <div className={'abil-row' + (value ? ' on' : '')}>
+      <div className="abil-text">
+        <label htmlFor={id} className="abil-name">{a.name}</label>
+        <span className="abil-where">{a.where}</span>
+        <span className="abil-desc">{a.desc}</span>
+      </div>
+      <label className="field abil-pts">
+        <span>Бали</span>
+        <input id={id} type="number" min={-100} max={100} value={value} onChange={(e) => onChange(Math.max(-100, Math.min(100, Math.round(Number(e.target.value) || 0))))} />
+      </label>
+    </div>
+  );
+}
+
+/** Рядок перевірки чернетки: назва архетипу, скор, tier. */
+function ScoreRow({ name, score, tier }: { name: string; score: number; tier: Tier }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <span className="hint" style={{ margin: 0, flex: 1, minWidth: 0 }}>{name}</span>
+      <b style={{ width: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{score}</b>
+      <span className={'badge ' + tierClass(tier)} style={{ width: 28, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 0' }}>{tier}</span>
+    </div>
+  );
+}
 
 export default function ScaleTab() {
   const { draft } = useRulesDraft();
@@ -42,6 +68,9 @@ export default function ScaleTab() {
   const maxScore = maxGearScoreOf(draft);
   const realisticMax = maxScore - Math.max(0, draft.armorSet.r9 - draft.armorSet.r8r);
   const buffsOn = draft.balance.buffs.enabled;
+  /** Курс «1 ПЗ = 1 ПА = u бала» — бал за камінь на +1 ПЗ. */
+  const unit = draft.doll.gemPoints.pz1;
+  const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
   const setTier = (i: number, min: number) => patch({ tiers: draft.tiers.map((t, idx) => (idx === i ? { ...t, min } : t)) });
   // Матриця «клас × розмір паті»
@@ -63,14 +92,31 @@ export default function ScaleTab() {
     if (v === undefined) delete cur[g]; else cur[g] = v;
     patch({ weaponGradeByClass: { ...draft.weaponGradeByClass, [c]: cur } });
   };
-  const toggleHidden = (s: ArmorSet, hidden: boolean) =>
-    patch({ hiddenArmorSets: hidden ? Array.from(new Set([...draft.hiddenArmorSets, s])) : draft.hiddenArmorSets.filter((x) => x !== s) });
+  // Абілки зброї — поле верхнього рівня шкали, його бере скор v2 (головна зброя).
+  const setAbility = (code: string, v: number) => patch({ abilityPoints: { ...draft.abilityPoints, [code]: v } });
+  const applyRecommendedAbilities = () => {
+    const list = Object.entries(RECOMMENDED_ABILITY_POINTS).map(([code, v]) => `${WEAPON_ABILITY_BY_CODE[code]?.name ?? code} ${v}`).join(', ');
+    if (!confirm(`Замінити всі бали за абілки рекомендованими (${list}; решта — 0)?`)) return;
+    patch({ abilityPoints: { ...RECOMMENDED_ABILITY_POINTS } });
+  };
+  const abilityTable = (list: WeaponAbility[]) => (
+    <div className="abil-list">
+      {list.map((a) => (
+        <AbilityRow key={a.code} a={a} value={draft.abilityPoints[a.code] ?? 0} onChange={(v) => setAbility(a.code, v)} />
+      ))}
+    </div>
+  );
+  const topAbilities = WEAPON_ABILITIES.filter((a) => TOP_ABILITIES.has(a.code));
+  const restAbilities = WEAPON_ABILITIES.filter((a) => !TOP_ABILITIES.has(a.code));
+  const restAbilitiesSet = restAbilities.filter((a) => (draft.abilityPoints[a.code] ?? 0) !== 0).length;
+  const maxAbility = Math.max(0, ...Object.values(draft.abilityPoints));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <p className="hint" style={{ margin: 0 }}>
-        Тут — скільки коштує гравець сам по собі: сума всіх полів анкети = гір-скор гравця. Як із гравців збираються команди
-        (бафи тімейтів, правило 4, склад) — на вкладці «Бафи й склад»; чернетка спільна, зберігається внизу як нова версія.
+        Тут — скільки коштує гравець сам по собі: клас + бали за надіті речі ляльки (скор v2 «від речей») + рівень + джин = гір-скор заявки;
+        старі заявки без балів за речі рахуються таблицею з анкети. Як із гравців збираються команди (бафи тімейтів, правило 4, склад) —
+        на вкладці «Бафи й склад»; чернетка спільна, зберігається внизу як нова версія.
       </p>
 
       {/* ── Перевірка чернетки ── */}
@@ -82,23 +128,35 @@ export default function ScaleTab() {
               {SIZE_BUCKETS.map((s) => <option key={s} value={Number(s)}>паті {SIZE_BUCKET_LABELS[s]}</option>)}
             </select>
           </label>
-          <span className="badge mute">максимум {maxScore}</span>
+          <span className="badge mute">максимум {maxScore}{draft.swapTotalCap == null ? ' (без свап-сетів — стелі немає)' : ''}</span>
           <span className="badge mute">без R9-броні {realisticMax}</span>
           {!tiersValid && <span className="badge bad">пороги tier мають спадати</span>}
         </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Скор v2: кожна надіта річ дає бали один раз (грейд, точка, камені, абілка), тож числа вищі за табличні — максимум {maxScore}
+          {draft.swapTotalCap == null ? ' (свап-сети без стелі в максимум не входять)' : ''}. Перед збереженням версії перегляньте пороги tier
+          унизу й поріг «топового ДД» для правила 4 на вкладці «Бафи й склад» (зараз {draft.balance.composition.topDdMinScore}).
+        </p>
+        <p className="hint" style={{ margin: '0 0 6px' }}>
+          <b>Орієнтовні архетипи за v2</b> — та сама арифметика, що в ляльці, але без каталогу: камені одним класом у всіх 30 гніздах.
+        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {ARCHETYPES.map((a) => {
-            const s = computeGearScoreWith(a.gear, draft, checkSize);
-            const t = tierForWith(s, draft);
-            return (
-              <div key={a.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span className="hint" style={{ margin: 0, flex: 1, minWidth: 0 }}>{a.name}</span>
-                <b style={{ width: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{s}</b>
-                <span className={'badge ' + tierClass(t)} style={{ width: 28, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 0' }}>{t}</span>
-              </div>
-            );
+          {V2_ARCHETYPES.map((a) => {
+            const s = v2ArchetypeScore(a, draft, checkSize);
+            return <ScoreRow key={a.name} name={a.name} score={s} tier={tierForWith(s, draft)} />;
           })}
         </div>
+        <details style={{ marginTop: 10 }}>
+          <summary className="hint" style={{ margin: 0, cursor: 'pointer' }}>
+            Табличний скор (старі заявки без балів за речі); заявки персонажем рахуються з речей
+          </summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+            {TABLE_ARCHETYPES.map((a) => {
+              const s = computeGearScoreWith(a.gear, draft, checkSize);
+              return <ScoreRow key={a.name} name={a.name} score={s} tier={tierForWith(s, draft)} />;
+            })}
+          </div>
+        </details>
       </div>
 
       <div className="card" style={{ padding: 14 }}>
@@ -153,7 +211,14 @@ export default function ScaleTab() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={flattenSizes}>Однаково для всіх розмірів (як «паті 2»)</button>
         </div>
       </div>
-      <NumTable title="Зброя (за замовчуванням)" hint="ПА лінійки ЦГД / R9 уже вшитий у бали грейду. Для класів, де це не так, — таблиця нижче." order={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} values={draft.weaponGrade} onChange={(v) => patch({ weaponGrade: v })} />
+      <NumTable
+        title="Зброя (за замовчуванням)"
+        hint="Грейд головної зброї — найдорожчої за v2 серед усіх надітих, де б вона не лежала (Головний чи сет). ПА лінійки ЦГД / R9 уже вшитий у бали грейду. Для класів, де це не так, — таблиця нижче."
+        order={WEAPON_GRADE_ORDER}
+        labels={WEAPON_GRADE_LABELS}
+        values={draft.weaponGrade}
+        onChange={(v) => patch({ weaponGrade: v })}
+      />
 
       <div className="card" style={{ padding: 14 }}>
         <b>Зброя за класами</b>
@@ -193,27 +258,41 @@ export default function ScaleTab() {
         </div>
       </div>
 
-      <NumTable title="Заточка зброї" order={WEAPON_REFINE_ORDER} labels={WEAPON_REFINE_LABELS} values={draft.weaponRefine} onChange={(v) => patch({ weaponRefine: v })} />
+      <NumTable title="Заточка зброї" hint="Точка головної зброї; свап-зброя точку не рахує." order={WEAPON_REFINE_ORDER} labels={WEAPON_REFINE_LABELS} values={draft.weaponRefine} onChange={(v) => patch({ weaponRefine: v })} />
 
+      {/* ── Абілки зброї ── */}
       <div className="card" style={{ padding: 14 }}>
-        <b>ПЗ-зброя</b>
-        <p className="hint" style={{ margin: '0 0 8px' }}>Запасна зброя з показником захисту для свапу — чекбокс в анкеті.</p>
-        <div className="field-row"><NumInput label="Є ПЗ-зброя" value={draft.weaponPz} onChange={(v) => patch({ weaponPz: v })} /></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <b>Абілки зброї</b>
+          <span className="badge mute">max {maxAbility}</span>
+        </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Лялька рахує лише стати, а властивості зброї (зняття бафів, подвійний урон, очищення…) — ні. Бали за абілку головної зброї додаються до
+          її грейду й точки; абілку лялька бере сама з каталогу речі. Свап-зброя абілку не рахує. Нема в списку чи 0 — без балів.
+        </p>
+        {abilityTable(topAbilities)}
+        <details className="abil-more">
+          <summary>Інші абілки ({restAbilities.length}{restAbilitiesSet ? `, з балами ${restAbilitiesSet}` : ''}) — ЦГД/РЦГД 80 рів., старіша зброя</summary>
+          <div style={{ marginTop: 8 }}>{abilityTable(restAbilities)}</div>
+        </details>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={applyRecommendedAbilities}>
+            Рекомендовані: {Object.entries(RECOMMENDED_ABILITY_POINTS).map(([code, v]) => `${WEAPON_ABILITY_BY_CODE[code]?.name ?? code} ${v}`).join(', ')}
+          </button>
+          <span className="hint" style={{ margin: 0 }}>Абілки топової зброї 300к репутації; решта — 0.</span>
+        </div>
       </div>
 
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
           <b>ШГ і Вознєс</b>
-          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {!draft.dollScore.shgVoznesPoints && <span className="badge warn">для ляльки вимкнено</span>}
-            <span className="badge mute">max {draft.shg + draft.voznes + draft.shgVoznesBonus + 12 * (draft.shgRefinePerLevel + draft.voznesRefinePerLevel)}</span>
-          </span>
+          <span className="badge mute">max {draft.shg + draft.voznes + draft.shgVoznesBonus + 12 * (draft.shgRefinePerLevel + draft.voznesRefinePerLevel)}</span>
         </div>
         <p className="hint" style={{ margin: '0 0 8px' }}>
           Бали за наявність кожної шмотки, бонус, якщо є обидві, і бали за кожен рівень точки (0–12) кожної.
           Зараз: ШГ +12 — {draft.shg + 12 * draft.shgRefinePerLevel}, Вознєс +12 — {draft.voznes + 12 * draft.voznesRefinePerLevel}, обидві +12 — {draft.shg + draft.voznes + draft.shgVoznesBonus + 12 * (draft.shgRefinePerLevel + draft.voznesRefinePerLevel)}.
-          Наявність і точку лялька бачить сама («Шлем героя», «Плащ вознесения»); у скорі з ляльки ці бали діють, лише якщо ввімкнено перемикач у картці
-          «Скор з ляльки».
+          Наявність і точку лялька бачить сама («Шлем героя», «Плащ вознесения»): кожна рахується один раз (екземпляр із найбільшою точкою, хоч у
+          Головному, хоч у сеті) замість шостої точки броні за шолом чи накидку; камені в них — як у броні. Бонус — якщо надіті обидві хоч десь.
         </p>
         <div className="field-row" style={{ gap: 10 }}>
           <NumInput label="Є ШГ" value={draft.shg} onChange={(v) => patch({ shg: v })} />
@@ -226,7 +305,7 @@ export default function ScaleTab() {
 
       <NumTable
         title="Кільця (за кожне з двох)"
-        hint={`Бали за грейд кожного кільця. Для R9R1 ще + бали за кожен рівень точки (0–12). Зараз максимум за обидва: ${2 * (Math.max(...RING_ORDER.map((k) => draft.rings[k])) + 12 * draft.ringRefinePerLevel)}.`}
+        hint={`Бали за грейд кільця; рахуються два найкращі за балами з усіх надітих (Головний і сети), решта — 0. Для R9R1 ще + бали за кожен рівень точки (0–12). Зараз максимум за обидва: ${2 * (Math.max(...RING_ORDER.map((k) => draft.rings[k])) + 12 * draft.ringRefinePerLevel)}.`}
         order={RING_ORDER}
         labels={RING_LABELS}
         values={draft.rings}
@@ -236,49 +315,33 @@ export default function ScaleTab() {
         <div className="field-row"><NumInput label="Рівень точки R9R1 (за кільце)" value={draft.ringRefinePerLevel} onChange={(v) => patch({ ringRefinePerLevel: v })} width={220} /></div>
       </div>
 
-      <NumTable title="Сет броні" order={ARMOR_SET_ORDER} labels={ARMOR_SET_LABELS} values={draft.armorSet} onChange={(v) => patch({ armorSet: v })} />
-      <div className="card" style={{ padding: 14, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span className="hint" style={{ margin: 0 }}>Приховати в анкеті (поки ні в кого немає):</span>
-        {ARMOR_SET_ORDER.map((s) => (
-          <label key={s} className="checkbox-row">
-            <input type="checkbox" checked={draft.hiddenArmorSets.includes(s)} onChange={(e) => toggleHidden(s, e.target.checked)} />
-            {ARMOR_SET_LABELS[s]}
-          </label>
-        ))}
-      </div>
-      <NumTable title="Круг точки (броня, біжа, кільця)" order={ARMOR_REFINE_ORDER} labels={ARMOR_REFINE_LABELS} values={draft.armorRefine} onChange={(v) => patch({ armorRefine: v })} />
-      <NumTable title="Камні (основний сет)" hint="За вартістю по зростанню; до 24 каменів, Лагеря — по 2 ПЗ (до 48 ПЗ). Та сама таблиця рахує камені у свап-сетах — з коефіцієнтом і стелею нижче." order={GEMS_ORDER} labels={GEMS_LABELS} values={draft.gems} onChange={(v) => patch({ gems: v })} />
-      <div className="card" style={{ padding: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-          <b>Камні у свап-сетах</b>
-          <span className="badge mute">max {draft.specialSetGemsCap}</span>
-        </div>
-        <p className="hint" style={{ margin: '0 0 8px' }}>
-          За кожен відмічений сет: {Math.round(draft.specialSetGemsFactor * 100)} % від таблиці каменів за його камені; сума по всіх сетах — не більше стелі.
-          Так «сет, затиканий бурштинками» і «сет із фул ПЗ-камінням» дають різні бали.
-        </p>
-        <div className="field-row" style={{ gap: 10 }}>
-          <NumInput label="Частка від таблиці, %" value={Math.round(draft.specialSetGemsFactor * 100)} onChange={(v) => patch({ specialSetGemsFactor: Math.min(100, v) / 100 })} width={160} />
-          <NumInput label="Стеля" value={draft.specialSetGemsCap} onChange={(v) => patch({ specialSetGemsCap: v })} />
-        </div>
-      </div>
+      <NumTable
+        title="Сет броні (за річ — чверть)"
+        hint="Кожна з 4 речей броні (наручі, нагрудник, поножі, взуття) дає чверть балів свого грейду, тож мікс R8R і Нірвани виходить сумою частин; шолом і накидка грейду не мають. Речі в сетах — під стелю свап-сетів. Старі заявки — сет цілком, як в анкеті."
+        order={ARMOR_SET_ORDER}
+        labels={ARMOR_SET_LABELS}
+        values={draft.armorSet}
+        onChange={(v) => patch({ armorSet: v })}
+      />
+      <NumTable
+        title="Точка броні (за річ — шоста)"
+        hint="Кожна річ броні, шолом і накидка (крім ШГ/Вознєса — у них своя таблиця) дає шосту балів кошика своєї точки. Кільця точку рахують лише R9R1 (картка «Кільця»). Старі заявки — середня точка цілком."
+        order={ARMOR_REFINE_ORDER}
+        labels={ARMOR_REFINE_LABELS}
+        values={draft.armorRefine}
+        onChange={(v) => patch({ armorRefine: v })}
+      />
 
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-          <b>Лялька: точка, камені, збірка</b>
+          <b>Лялька: камені й збірка</b>
           <span className="badge mute">заявки персонажем</span>
         </div>
         <p className="hint" style={{ margin: '0 0 8px' }}>
-          У заявці персонажем точку, камені й збірку лялька рахує сама. Точка броні — середня по броні, біжі й кільцях, округлена вгору; точка зброї — з самої зброї.
-          Камені — кожен камінь у кожній речі броні (6 речей × 4 гнізда) за таблицею нижче; сума стає рядком таблиці «Камні».
+          Камені — кожен камінь у кожній надітій речі: зброя (2 гнізда), шолом, нагрудник, поножі, взуття, накидка, браслети і збірник (по 4). ПЗ- і
+          ПА-камені лялька рахує за курсом рядка «ПЗ+1» × одиниці каменя (Лагеря +2 ПЗ = {fmt(2 * unit)}, Цзин Юэ / Ракшаса +3 = {fmt(3 * unit)}; у зброї
+          — за тим, що камінь дає у зброї), тож рядки «ПЗ+2» і «ПА» тут — лише для складу каменів старих заявок; решту каменів — за рівнем.
         </p>
-        <label className="field" style={{ maxWidth: 360, marginBottom: 10 }}>
-          <span>Рахувати по</span>
-          <select value={draft.doll.scope} onChange={(e) => patch({ doll: { ...draft.doll, scope: e.target.value === 'all' ? 'all' : 'main' } })}>
-            <option value="main">Головному комплекту</option>
-            <option value="all">Усіх комплектах (Головний + сети, середнє)</option>
-          </select>
-        </label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
           {GEM_CLASS_ORDER.map((k) => (
             <label key={k} className="field">
@@ -302,13 +365,12 @@ export default function ScaleTab() {
             1 ПА = 1 ПЗ = 1 бал
           </button>
           <span className="hint" style={{ margin: 0 }}>
-            Лагеря (+2 ПЗ) — 2 бали, «Каменная броня» (+1 ПЗ) і «Алмазная броня» (+1 ПА) — по 1. За цим курсом рахуються й ПА та свап ПЗ на зброї.
+            Лагеря (+2 ПЗ) — 2 бали, «Каменная броня» (+1 ПЗ) і «Алмазная броня» (+1 ПА) — по 1. За цим курсом рахується й ПЗ свап-зброї.
           </span>
         </div>
         <p className="hint" style={{ margin: '6px 0 12px' }}>
-          Бали за ОДИН камінь. Повна броня (24 гнізда): Лагеря — {Math.round(24 * draft.doll.gemPoints.campPz)}, «Каменная броня» — {Math.round(24 * draft.doll.gemPoints.pz1)},
-          «Алмазная броня» — {Math.round(24 * draft.doll.gemPoints.topPa)}, камені 12 рів. (Сюань Юань, Пань Гу, Нюйва) — {Math.round(24 * draft.doll.gemPoints.g12)}.
-          ПЗ- і ПА-камені лялька розпізнає за тим, що камінь дає в броні; решту — за рівнем.
+          Бали за ОДИН камінь. Повна броня (24 гнізда): Лагеря — {Math.round(48 * unit)}, «Каменная броня» — {Math.round(24 * unit)},
+          «Алмазная броня» — {Math.round(24 * unit)}, камені 12 рів. (Сюань Юань, Пань Гу, Нюйва) — {Math.round(24 * draft.doll.gemPoints.g12)}.
         </p>
         <div className="field-row" style={{ gap: 10 }}>
           <label className="field">
@@ -334,16 +396,20 @@ export default function ScaleTab() {
         </p>
       </div>
 
-      <DollScoreCard draft={draft} patch={patch} />
-
+      {/* ── Стелі свап-спорядження ── */}
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-          <b>Спеціальні сети</b>
-          <span className="badge mute">max {draft.specialSetsCap}</span>
+          <b>Стелі свап-спорядження</b>
+          <span className="badge mute">max {(draft.swapTotalCap ?? 0) + draft.weaponPzCap}{draft.swapTotalCap == null ? ' + сети без стелі' : ''}</span>
         </div>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Свап-сети: кожна річ сету, якої немає в Головному, дає свої бали (чверть сету броні + шоста точки + камені; трактат сету — свій), а
+          сума всіх сетів разом — не більше спільної стелі, щоб запасне не важило більше за основний круг (сет R8R — {draft.armorSet.r8r}).
+          Зброя, ШГ/Вознєс і кільця із сетів рахуються разом із головними речами й під цю стелю не потрапляють. Порожнє поле — без стелі.
+        </p>
         <div className="field-row" style={{ gap: 10, alignItems: 'end', marginBottom: 8 }}>
           <label className="field">
-            <span>Спільна стеля запасного</span>
+            <span>Стеля свап-сетів</span>
             <input
               type="number"
               min={0}
@@ -355,41 +421,23 @@ export default function ScaleTab() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => patch({ swapTotalCap: RECOMMENDED_SWAP_TOTAL_CAP })}>
             Рекомендована: {RECOMMENDED_SWAP_TOTAL_CAP}
           </button>
+          <NumInput label="Стеля ПЗ свап-зброї" value={draft.weaponPzCap} onChange={(v) => patch({ weaponPzCap: Math.min(100, v) })} width={170} />
         </div>
-        <p className="hint" style={{ margin: '0 0 8px' }}>
-          ПЗ-зброя + свап-сети + камені в них разом — не більше цього числа, щоб запасне спорядження не важило більше за основний круг (сет R8R — {draft.armorSet.r8r}).
-          Зараз повний набір свапів дає {Math.min(draft.swapTotalCap ?? Infinity, draft.weaponPz + draft.specialSetsCap + draft.specialSetGemsCap)}
-          {draft.swapTotalCap == null ? ' (без стелі)' : ''}. Порожнє поле — без спільної стелі.
+        <p className="hint" style={{ margin: 0 }}>
+          Свап-зброя — усі зброї, крім найдорожчої (та йде головною, де б не лежала): лише ПЗ, який дає річ (каталог + камені), за курсом
+          1 ПЗ = {fmt(unit)} бала (рядок «ПЗ+1» картки «Лялька»), усі разом не більше стелі; грейд, точка й абілка свап-зброї не рахуються.
         </p>
-        <label className="checkbox-row" style={{ marginBottom: 8 }}>
-          <input type="checkbox" checked={draft.setsFromDoll} onChange={(e) => patch({ setsFromDoll: e.target.checked })} />
-          Рахувати свап-сети з ляльки в заявках персонажем
-        </label>
-        <p className="hint" style={{ margin: '0 0 8px' }}>
-          Лялька сама бачить, які сети має гравець: сет рахується, якщо в ньому показник захисту чи атаки ≥ 30 (спів — −30 % часу співу) і вищий, ніж у Головному. Вимкнено — у заявку сети не йдуть, як і в звичайній анкеті.
-        </p>
-        <p className="hint" style={{ margin: '0 0 8px' }}>
-          Кілька сетів = найбільший + «бонус за додатковий» за кожен наступний, але не більше «стелі». Зараз: ПА+Спів {Math.min(draft.specialSetsCap, Math.max(draft.specialSets.pa, draft.specialSets.aspd) + draft.specialSetsExtra)},
-          ПЗ+ПА {Math.min(draft.specialSetsCap, Math.max(draft.specialSets.pz, draft.specialSets.pa) + draft.specialSetsExtra)},
-          усі три {Math.min(draft.specialSetsCap, Math.max(draft.specialSets.pz, draft.specialSets.pa, draft.specialSets.aspd) + 2 * draft.specialSetsExtra)}.
-        </p>
-        <div className="field-row" style={{ gap: 10 }}>
-          {SPECIAL_SET_ORDER.map((k) => (
-            <NumInput key={k} label={SPECIAL_SET_LABELS[k]} value={draft.specialSets[k]} onChange={(v) => patch({ specialSets: { ...draft.specialSets, [k]: v } })} />
-          ))}
-          <NumInput label="Бонус за додатковий" value={draft.specialSetsExtra} onChange={(v) => patch({ specialSetsExtra: v })} width={150} />
-          <NumInput label="Стеля" value={draft.specialSetsCap} onChange={(v) => patch({ specialSetsCap: v })} />
-        </div>
       </div>
 
       <NumTable title="Рівень персонажа" order={CHAR_LEVEL_ORDER} labels={CHAR_LEVEL_LABELS} values={draft.level} onChange={(v) => patch({ level: v })} />
-      <NumTable title="Трактат" order={TRACT_ORDER} labels={TRACT_LABELS} values={draft.tract} onChange={(v) => patch({ tract: v })} />
+      <NumTable title="Трактат" hint="Трактат рахується в кожному сеті, де надітий свій екземпляр: Головного — з головними речами, сету — під стелю свап-сетів." order={TRACT_ORDER} labels={TRACT_LABELS} values={draft.tract} onChange={(v) => patch({ tract: v })} />
       <NumTable title="Джин (за удачею)" order={GENIE_ORDER} labels={GENIE_LABELS} values={draft.genie} onChange={(v) => patch({ genie: v })} />
 
       <div className="card" style={{ padding: 14 }}>
         <b>Пороги tier</b>
         <p className="hint" style={{ margin: '0 0 8px' }}>
-          Лише бейдж в адмінці, на баланс команд не впливає. D — усе нижче C. Поріг «топового ДД» для правила 4 — окреме поле на вкладці «Бафи й склад»
+          Лише бейдж в адмінці, на баланс команд не впливає. D — усе нижче C. Скор v2 вищий за табличний (максимум {maxScore}) — звір пороги з
+          архетипами в «Перевірці чернетки». Поріг «топового ДД» для правила 4 — окреме поле на вкладці «Бафи й склад»
           (зараз {draft.balance.composition.topDdMinScore}).
         </p>
         <div className="field-row" style={{ gap: 10 }}>

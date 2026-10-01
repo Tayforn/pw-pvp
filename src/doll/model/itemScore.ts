@@ -26,11 +26,12 @@
 //    стелею). Ручні роли, гравіювання й «свої стати» на бали не впливають
 //    (виняток — ПЗ свап-зброї).
 // Каталоги мають бути завантажені (ensureCats) — довідники не потрібні.
-// Коміт A: ніхто ще не викликає; заявка й картка «Готовність» — далі.
+// Викликають: заявка (registration.ts), перерахунок зі знімка в адмінці
+// (recompute.ts) і картка «Готовність до турніру» (readiness.ts).
 // =========================================================
 
 import {
-  ARMOR_SET_LABELS, ITEM_REFINE_MAX, RING_LABELS, WEAPON_GRADE_LABELS, weaponGradeScore, weaponPzRate, type ScoringRules,
+  ARMOR_SET_LABELS, ITEM_REFINE_MAX, RING_LABELS, WEAPON_GRADE_LABELS, weaponGradeScore, type ScoringRules,
 } from '../../data/gearRules';
 import type { WeaponGrade } from '../../data/types';
 import { flattenItemStats, gemDop } from '../core/stats';
@@ -176,7 +177,9 @@ function wornItems(doc: CharacterDoc, model: CharacterModel): Worn[] {
 export function scoreItems(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemLookup): ItemScore {
   const model = hydrate(doc, lookup);
   const cls = CLS_CHAR[doc.cls];
-  const u = weaponPzRate(rules);
+  // Курс «1 ПЗ = 1 ПА = u бала» — бал за камінь на +1 ПЗ («Каменная броня»); ним
+  // рахуються ПЗ/ПА-камені й ПЗ свап-зброї.
+  const u = rules.doll.gemPoints.pz1;
   const warn: string[] = [];
   const worn = wornItems(doc, model);
 

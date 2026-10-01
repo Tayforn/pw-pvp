@@ -28,14 +28,14 @@ import { CFG_MAIN, findSet, ownSlots, whereWorn, type HydratedInst } from '../..
 import { splitAddons } from '../../model/importCalc';
 import { LIMIT_TEXT, deleteInstance, duplicateInstance, equipAuto, findInst, unequip, updateInstance, type InstPatch, type LimitReason } from '../../model/ops';
 import { codeLabel, propLine } from '../../model/tipModel';
-import { useEditor } from '../EditorContext';
+import { useEditor, type ItemTab } from '../EditorContext';
 import { instTipContent, itemTipContent } from '../tip/ItemTip';
 import { GradeName, ItemName } from '../tip/ItemName';
 import { useTip } from '../tip/useTip';
 import { ModalShell } from './ModalShell';
 import { isNoopPatch, reqText, withSocket } from './PickerModal';
 
-type Tab = 'gems' | 'addons' | 'engrave';
+type Tab = ItemTab;
 
 // Підписи кодів із каталогів (nw.wu), яких нема в ADDON_OPTIONS Хелпера: там
 // вони не пропонувались, а в pvp річ може їх мати — редактор мусить їх назвати.
@@ -143,7 +143,8 @@ function StatRowEdit({
 
 const MAIN_ONLY_CATS: ReadonlySet<string> = new Set(['pk', 'ic']);
 
-export function EditorModal({ cfgId: propCfg, iid: propIid }: { cfgId: string; iid: string }) {
+/** initialTab — з якої вкладки відкрити (пікер після «Надіти» веде на роли); без нього — камені, якщо є гнізда. */
+export function EditorModal({ cfgId: propCfg, iid: propIid, initialTab }: { cfgId: string; iid: string; initialTab?: ItemTab }) {
   const api = useEditor();
   const tip = useTip();
   const { doc, model, readOnly } = api;
@@ -165,7 +166,7 @@ export function EditorModal({ cfgId: propCfg, iid: propIid }: { cfgId: string; i
   const isWeapon = itemCat === 'ta';
   const isGenie = itemCat === 'pk';
 
-  const [tab, setTab] = useState<Tab>(() => (defaultSockets(model.items.get(propIid)?.inst.cat ?? '') > 0 ? 'gems' : 'addons'));
+  const [tab, setTab] = useState<Tab>(() => initialTab ?? (defaultSockets(model.items.get(propIid)?.inst.cat ?? '') > 0 ? 'gems' : 'addons'));
   const [notice, setNotice] = useState<string | null>(null);
 
   const close = () => {

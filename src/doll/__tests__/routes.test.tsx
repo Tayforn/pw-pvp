@@ -1,6 +1,7 @@
 // =========================================================
 // ЛЯЛЬКА — стик із сайтом: адреси /characters і /characters/:id, доступ
-// гостя без входу й пункт «Персонаж» у сайдбарі. Сторінку відкривають за
+// гостя без входу й пункт «Персонаж» у сайдбарі; адмінська /admin/doll/:id
+// (знімок ляльки із заявки) — лише адміну. Сторінку відкривають за
 // посиланням (F5, «Поділитися»), тож розбір адреси — частина контракту.
 // =========================================================
 
@@ -68,6 +69,37 @@ describe('маршрути персонажа', () => {
     expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Персонаж/);
     expect(html.match(/class="tab active"/g)).toHaveLength(1);
     expect(html).not.toContain('Адмінка');
+  });
+});
+
+describe('лялька із заявки в адмінці — /admin/doll/:registrationId', () => {
+  const ADMIN = { member: false, admin: true };
+
+  it('розбирається з id заявки; без id чи з кривим — просто адмінка, вкладки адмінки не зачеплено', () => {
+    expect(parse('/admin/doll/0b1c-reg_9')).toEqual({ name: 'admin-doll', id: '0b1c-reg_9' });
+    expect(parse('/admin/doll/0b1c-reg_9/')).toEqual({ name: 'admin-doll', id: '0b1c-reg_9' });
+    expect(parse('/admin/doll')).toEqual({ name: 'admin' });
+    expect(parse('/admin/doll/' + encodeURIComponent('<x>'))).toEqual({ name: 'admin' });
+    expect(parse('/admin/scale')).toEqual({ name: 'admin', tab: 'scale' });
+    expect(parse('/admin')).toEqual({ name: 'admin' });
+  });
+
+  it('routeUrl — зворотне до розбору', () => {
+    expect(routeUrl({ name: 'admin-doll', id: 'k7' })).toBe('/admin/doll/k7');
+    expect(parse(routeUrl({ name: 'admin-doll', id: 'k7' }))).toEqual({ name: 'admin-doll', id: 'k7' });
+  });
+
+  it('відкрита лише адміну: ні гостю, ні учаснику клану', () => {
+    expect(ROUTE_ACCESS['admin-doll']).toBe('admin');
+    expect(canOpen('admin-doll', GUEST)).toBe(false);
+    expect(canOpen('admin-doll', { member: true, admin: false })).toBe(false);
+    expect(canOpen('admin-doll', ADMIN)).toBe(true);
+  });
+
+  it('у сайдбарі адміна на ній підсвічена «Адмінка», і лише вона', () => {
+    const html = renderToStaticMarkup(<Sidebar route={{ name: 'admin-doll', id: 'k7' }} viewer={ADMIN} onNavigate={() => {}} />);
+    expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Адмінка/);
+    expect(html.match(/class="tab active"/g)).toHaveLength(1);
   });
 });
 

@@ -1,10 +1,13 @@
 // =========================================================
 // Бейдж рангу (S/A/B/C/D) з попапом «картка персонажа»: нік, клас, ранг,
 // анкета спорядження рядками і — для заявки персонажем (скор v2, 0032) —
-// «Розклад по речах» з item_breakdown; в адмінці — ще скор зі складовими,
-// Ело, ПА/ПЗ і корекція. Публічно передається лише те, що й так видно на
-// сторінці турніру (анкета, слоти й назви речей) + ранг; числа скору, у тому
-// числі бали за речі, — тільки адміну (рішення §5.18).
+// «Розклад по речах» з item_breakdown та джин зі знімка («удача N · K вмінь»
+// з іконками вмінь — видно всім, рішення власника); в адмінці — ще скор зі
+// складовими, Ело, ПА/ПЗ і корекція. Публічно передається лише те, що й так
+// видно на сторінці турніру (анкета, слоти й назви речей, джин) + ранг; числа
+// скору, у тому числі бали за речі, — тільки адміну (рішення §5.18).
+// Іконки джина — зі спрайта в src/data (genieIconStyle, розміри інлайном):
+// головний бандл, без каталогу й CSS ляльки.
 //
 // Відкривається з наведення (закривається, коли курсор пішов) і з кліку
 // (закріплюється — закривається Esc, кліком поза або повторним кліком).
@@ -19,6 +22,8 @@ import {
   ARMOR_REFINE_LABELS, ARMOR_SET_LABELS, BUILD_LABELS, CHAR_LEVEL_LABELS, CLASS_LABELS, GEMS_LABELS, GENIE_LABELS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
   TRACT_LABELS, WEAPON_GRADE_LABELS, WEAPON_REFINE_LABELS, ringsLabel, rulesFor, shgVoznesLabel,
 } from '../data/gearRules';
+import { GENIE_MAX_SKILLS, genieSkill, type GenieCfg } from '../data/genie';
+import { genieIconStyle } from '../data/genieIcon';
 import ScoreBreakdown from './ScoreBreakdown';
 
 export interface PlayerCardInfo {
@@ -29,6 +34,9 @@ export interface PlayerCardInfo {
   gemsMix?: string;
   /** Абілка основної зброї з ляльки (назва). */
   weaponAbility?: string;
+  /** Джин зі знімка ляльки (genieFromSnapshot): рядок «удача N · K вмінь» та іконки
+   * вмінь замість діапазону анкети; null/undefined — стара заявка, діапазон GENIE_LABELS. */
+  genie?: GenieCfg | null;
   /** Розклад скору v2 по речах (заявка персонажем, 0032) — рядки під анкетою:
    * публічно слоти й назви без балів, адміну (є admin) — з балами. */
   breakdown?: ItemBreakdown | null;
@@ -54,21 +62,50 @@ export interface PlayerCardInfo {
   };
 }
 
-/** Анкета рядками «поле → значення» (та сама інформація, що в gearSummary, але читабельно). */
-export function gearRows(g: PlayerGear, gemsMix?: string): { label: string; value: string }[] {
+/** «удача 95 · 8 вмінь» — джин зі знімка: «1 вміння», «2–4 вміння», «5+ вмінь», без жодного — «без вмінь». */
+export function genieLine(g: GenieCfg): string {
+  const n = g.skills.length;
+  const skills = n === 0 ? 'без вмінь' : `${n} ${n <= 4 ? 'вміння' : 'вмінь'}`;
+  return `удача ${g.luck} · ${skills}`;
+}
+
+export interface GearRow {
+  key: string;
+  label: string;
+  value: string;
+}
+
+/** Анкета рядками «поле → значення» (та сама інформація, що в gearSummary, але читабельно).
+ * genie — джин зі знімка ляльки: рядок «Джин» тоді з нього, а не з діапазону анкети. */
+export function gearRows(g: PlayerGear, gemsMix?: string, genie?: GenieCfg | null): GearRow[] {
   const sets = SPECIAL_SET_ORDER.filter((s) => g.specialSets.includes(s));
   return [
-    { label: 'Рівень', value: g.charLevel ? CHAR_LEVEL_LABELS[g.charLevel] : '—' },
-    { label: 'Збірка', value: g.build ? BUILD_LABELS[g.build] : '—' },
-    { label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' · є ПЗ-зброя' : ''}` },
-    { label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} · круг точки ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
-    { label: 'Камені', value: gemsMix || GEMS_LABELS[g.gems] },
-    { label: 'Сети', value: sets.length ? sets.map((s) => `${SPECIAL_SET_LABELS[s]} (${GEMS_LABELS[g.specialSetGems[s] ?? 'g0_9']})`).join(', ') : '—' },
-    { label: 'Трактат', value: TRACT_LABELS[g.tract] },
-    { label: 'Джин', value: GENIE_LABELS[g.genie] },
-    { label: 'ШГ / Вознєс', value: shgVoznesLabel(g) || '—' },
-    { label: 'Кільця', value: ringsLabel(g) || '—' },
+    { key: 'level', label: 'Рівень', value: g.charLevel ? CHAR_LEVEL_LABELS[g.charLevel] : '—' },
+    { key: 'build', label: 'Збірка', value: g.build ? BUILD_LABELS[g.build] : '—' },
+    { key: 'weapon', label: 'Зброя', value: `${WEAPON_GRADE_LABELS[g.weaponGrade]} ${WEAPON_REFINE_LABELS[g.weaponRefine]}${g.weaponPz ? ' · є ПЗ-зброя' : ''}` },
+    { key: 'armor', label: 'Броня', value: `${ARMOR_SET_LABELS[g.armorSet]} · круг точки ${ARMOR_REFINE_LABELS[g.armorRefine]}` },
+    { key: 'gems', label: 'Камені', value: gemsMix || GEMS_LABELS[g.gems] },
+    { key: 'sets', label: 'Сети', value: sets.length ? sets.map((s) => `${SPECIAL_SET_LABELS[s]} (${GEMS_LABELS[g.specialSetGems[s] ?? 'g0_9']})`).join(', ') : '—' },
+    { key: 'tract', label: 'Трактат', value: TRACT_LABELS[g.tract] },
+    { key: 'genie', label: 'Джин', value: genie ? genieLine(genie) : GENIE_LABELS[g.genie] },
+    { key: 'shg', label: 'ШГ / Вознєс', value: shgVoznesLabel(g) || '—' },
+    { key: 'rings', label: 'Кільця', value: ringsLabel(g) || '—' },
   ];
+}
+
+/** Іконки вмінь джина зі знімка (до 8, 32×32 зі спрайта; назва вміння — у title)
+ * під рядком «Джин». Без джина чи без вмінь — нічого. Видно всім: власник дозволив
+ * показувати вміння джина іншим гравцям. */
+export function CardGenieSkills({ genie }: { genie: GenieCfg | null | undefined }) {
+  if (!genie || genie.skills.length === 0) return null;
+  return (
+    <span className="player-pop-genie" role="list" aria-label="Вміння джина">
+      {genie.skills.slice(0, GENIE_MAX_SKILLS).map((ref) => {
+        const name = genieSkill(ref)?.name ?? `невідоме вміння #${ref}`;
+        return <span key={ref} role="listitem" className="player-pop-genie-ico" style={genieIconStyle(ref)} title={name} aria-label={name} />;
+      })}
+    </span>
+  );
 }
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
@@ -111,8 +148,8 @@ function Popover({ info, anchor, pinned, onEnter, onLeave }: { info: PlayerCardI
   }, [anchor]);
 
   const a = info.admin;
-  const rows = gearRows(info.gear, info.gemsMix);
-  if (info.weaponAbility) rows.splice(3, 0, { label: 'Абілка', value: info.weaponAbility });
+  const rows = gearRows(info.gear, info.gemsMix, info.genie);
+  if (info.weaponAbility) rows.splice(3, 0, { key: 'ability', label: 'Абілка', value: info.weaponAbility });
   const style: CSSProperties = { top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: Math.min(POP_W, window.innerWidth - 16) };
 
   return createPortal(
@@ -131,9 +168,12 @@ function Popover({ info, anchor, pinned, onEnter, onLeave }: { info: PlayerCardI
       )}
       <div className="player-pop-rows">
         {rows.map((r) => (
-          <div key={r.label} className="player-pop-row">
+          <div key={r.key} className="player-pop-row">
             <span className="player-pop-label">{r.label}</span>
-            <span>{r.value}</span>
+            <span>
+              {r.value}
+              {r.key === 'genie' && <CardGenieSkills genie={info.genie} />}
+            </span>
           </div>
         ))}
         {a && (a.attackLevel !== null || a.defenseLevel !== null) && (

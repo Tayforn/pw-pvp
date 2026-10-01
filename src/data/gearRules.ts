@@ -11,7 +11,6 @@
 // =========================================================
 
 import type {
-  DollPower,
   ArmorRefine, ArmorSet, Build, CharClass, CharLevel, RingGrade, Gems, Genie, PlayerGear, SpecialSet, Tier, Tract, WeaponGrade, WeaponRefine,
 } from './types';
 
@@ -168,43 +167,43 @@ export interface ScoringRules {
    * R9/R9R1 важать більше за +ПА РЦГД, у інтовиків — навпаки); порожньо = дефолт */
   weaponGradeByClass: Record<CharClass, Partial<Record<WeaponGrade, number>>>;
   weaponRefine: Record<WeaponRefine, number>;
-  /** бали за ПЗ-зброю — запасну зброю з показником захисту, на яку свапаються,
-   * щоб отримувати менше шкоди; не залежить від грейду основної зброї */
+  /** LEGACY (таблиця старих заявок) — бали за ПЗ-зброю як прапорець анкети; у
+   * скорі v2 свап-зброя дає свій ПЗ за курсом каменів до weaponPzCap. У
+   * «Шкалі балів» не редагується, у версію пишеться як є. */
   weaponPz: number;
+  /** Бали за сет броні; у скорі v2 кожна річ броні дає чверть (armorSet/4). */
   armorSet: Record<ArmorSet, number>;
-  /** сети, які в формі не показуються, поки ні в кого немає (feature flag) */
+  /** LEGACY — сети, приховані в полях анкети (адмінський ✎ старих заявок). */
   hiddenArmorSets: ArmorSet[];
-  /** Заявка персонажем: свап-сети, які знайшла лялька, ідуть у заявку й у бали.
-   * Вимкнено — як у публічній анкеті, сети не рахуються (ПЗ-зброя — завжди). */
+  /** LEGACY — чи йшли свап-сети ляльки в legacy-анкету заявки; у v2 сети
+   * рахуються з речей (itemScore), прапорець у нових версіях завжди false. */
   setsFromDoll: boolean;
-  /** Точка й камені з ляльки (заявка персонажем). */
+  /** Курс каменів і пороги збірки з ляльки (заявка персонажем). */
   doll: DollGearRules;
-  /** LEGACY — скор з еталонів (атака й живучість відносно еталона класу). Скор v2
-   * «від речей» (src/doll/model/itemScore.ts) еталонів не має; ключ у версію
-   * більше не пишеться (serializeRules), зі старих версій читається, а
-   * abilityPoints і weaponPzCap у ньому — дзеркало полів верхнього рівня.
-   * Прибирається разом із DollScoreCard і dollGearScoreWith (коміт E). */
-  dollScore: DollScoreRules;
   /** Бали за абілку основної зброї (код ac з каталогу → бали; нема в списку — 0).
    * Лялька рахує лише стати, а абілки (зняття бафів, подвійний урон…) — ні. */
   abilityPoints: Record<string, number>;
   /** Стеля балів за ПЗ свап-зброї (усіх разом): 1 ПЗ = бали за камінь на +1 ПЗ. */
   weaponPzCap: number;
+  /** Бали за точку броні; у скорі v2 кожна річ дає шосту (armorRefine/6). */
   armorRefine: Record<ArmorRefine, number>;
-  /** камені в основному сеті — за вартістю по зростанню; максимум = 24 камені по 2 ПЗ */
+  /** LEGACY (таблиця старих заявок) — камені основного сету як кошик; у v2 —
+   * кожен камінь окремо за doll.gemPoints. */
   gems: Record<Gems, number>;
-  /** камені у свап-сетах: частка від таблиці gems за кожен відмічений сет … */
+  /** LEGACY — камені у свап-сетах: частка від таблиці gems за кожен відмічений сет … */
   specialSetGemsFactor: number;
   /** … і стеля на їх суму */
   specialSetGemsCap: number;
+  /** LEGACY — бали за свап-сети як такі (пороги «ПЗ ≥ 30»); у v2 сет вартий
+   * своїх речей під стелею swapTotalCap. */
   specialSets: Record<SpecialSet, number>;
-  /** бонус за кожен додатковий сет понад найсильніший (гнучкість свапу) */
+  /** LEGACY — бонус за кожен додатковий сет понад найсильніший */
   specialSetsExtra: number;
   specialSetsCap: number;
-  /** Спільна стеля всього «запасного» спорядження: ПЗ-зброя + свап-сети + камені
-   * в них разом. null — без спільної стелі (так рахуються версії до появи поля).
-   * Навіщо: запасне не має важити більше за основний круг (сет R8R — 22 бали),
-   * а без стелі повний набір свапів давав до 55. */
+  /** Спільна стеля свап-сетів: у v2 — на суму балів речей усіх сетів, крім
+   * Головного; у таблиці старих заявок — ПЗ-зброя + сети + камені в них разом.
+   * null — без стелі (так рахуються версії до появи поля). Навіщо: запасне не
+   * має важити більше за основний круг (сет R8R — 22 бали). */
   swapTotalCap: number | null;
   tract: Record<Tract, number>;
   genie: Record<Genie, number>;
@@ -322,58 +321,10 @@ function normalizeDollGear(raw: unknown): DollGearRules {
   return { scope: d.scope === 'all' ? 'all' : 'main', gemPoints, buildVit: { hybrid, con } };
 }
 
-/** Еталон класу для скору з ляльки: атака й живучість еталонної ляльки і
- * скільки балів спорядження вона має отримати. */
-export interface DollRef {
-  off: number;
-  def: number;
-  /** Бали спорядження еталона (без класу, джина, ШГ/Вознєса й запасного). */
-  base: number;
-  /** Звідки взято — ім'я персонажа (для адміна). */
-  label: string;
-  /** Абілка зброї еталона (код ac) — бонус гравця рахується відносно неї. */
-  abil?: string;
-  /** ПА на зброї еталона — бали за ПА зброї гравця рахуються понад неї. */
-  wpa?: number;
-}
-
-/** off — не рахуємо; shadow — рахуємо й показуємо адміну, жеребка по анкеті;
- * on — у жеребці скор заявки персонажем береться з ляльки. */
-export type DollScoreMode = 'off' | 'shadow' | 'on';
-
-export interface DollScoreRules {
-  mode: DollScoreMode;
-  /** Бали за подвоєння сили відносно еталона. */
-  perDouble: number;
-  /** Частка атаки у скорі за збіркою (решта — живучість). */
-  alphaByBuild: Record<Build, number>;
-  /** Типовий суперник: його ПА (для живучості) і ПЗ (для атаки). */
-  oppPa: number;
-  oppPz: number;
-  refs: Partial<Record<CharClass, DollRef>>;
-  /** Дзеркало ScoringRules.abilityPoints (поле переїхало на верхній рівень;
-   * тут — щоб старі виклики бачили ті самі числа). */
-  abilityPoints: Record<string, number>;
-  /** Дзеркало ScoringRules.weaponPzCap. */
-  weaponPzCap: number;
-  /** Чи додавати до скору з ляльки окремі бали за ШГ і Вознєс. Їхні стати (HP,
-   * ПА, ПЗ, бонус комплекту) вже входять в атаку й живучість ляльки, тож ці
-   * бали — доплата понад стати. true — як було досі. */
-  shgVoznesPoints: boolean;
-}
-
-/** Курс «бали за 1 ПЗ» = бали за камінь на +1 ПЗ («Каменная броня», doll.gemPoints.pz1).
- * Рішення власника 25.09.2026: 1 ПА важить стільки ж, скільки 1 ПЗ, тож курс ПА
- * на зброї — той самий. */
-export const weaponPzRate = (r: ScoringRules): number => r.doll.gemPoints.pz1;
-export const weaponPaRate = weaponPzRate;
-/** Курс «1 ПА = 1 ПЗ = u бала» для каменів: Лагеря 2u, Каменная й Алмазная броня — u. */
+/** Курс «1 ПА = 1 ПЗ = u бала» для каменів: Лагеря 2u, Каменная й Алмазна броня — u.
+ * Той самий u (doll.gemPoints.pz1) — курс ПЗ свап-зброї у скорі v2. */
 export function unitGemPoints(u: number): Pick<Record<GemClass, number>, 'campPz' | 'pz1' | 'topPa'> {
   return { campPz: 2 * u, pz1: u, topPa: u };
-}
-/** Бали за ПЗ-зброю з ляльки: ПЗ × курс Лагерів, не більше стелі. */
-export function weaponPzPointsFromDoll(pzw: number, r: ScoringRules): number {
-  return Math.min(r.weaponPzCap, Math.round(Math.max(0, pzw) * weaponPzRate(r)));
 }
 
 /** Стартові бали за абілки топової зброї (300к репутації); решта — 0, адмін задає сам. */
@@ -381,24 +332,7 @@ export const RECOMMENDED_ABILITY_POINTS: Record<string, number> = { ka: 15, zl: 
 /** Стеля балів за ПЗ свап-зброї у вбудованій версії. */
 export const BUILTIN_WEAPON_PZ_CAP = 25;
 
-export const BUILTIN_DOLL_SCORE: DollScoreRules = {
-  mode: 'off',
-  perDouble: 50,
-  alphaByBuild: { dd: 0.7, hybrid: 0.5, con: 0.3 },
-  oppPa: 40,
-  oppPz: 40,
-  refs: {},
-  abilityPoints: { ...RECOMMENDED_ABILITY_POINTS },
-  weaponPzCap: BUILTIN_WEAPON_PZ_CAP,
-  shgVoznesPoints: true,
-};
-
 const ABIL_CODE = /^[a-z_]{1,32}$/;
-/** Бали за абілку гравця понад абілку еталона його класу (LEGACY, скор з еталонів). */
-export function abilityBonus(r: ScoringRules, abil: string | undefined, refAbil: string | undefined): number {
-  const pts = r.abilityPoints;
-  return (abil ? pts[abil] ?? 0 : 0) - (refAbil ? pts[refAbil] ?? 0 : 0);
-}
 
 /** Таблиця абілок із JSON: лише коди [a-z_] і цілі −100..100; відсутня — рекомендована. */
 function normalizeAbilityPoints(raw: unknown): Record<string, number> {
@@ -414,34 +348,12 @@ function normalizeWeaponPzCap(raw: unknown): number {
   return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.min(100, raw) : BUILTIN_WEAPON_PZ_CAP;
 }
 
-/** abilityPoints і weaponPzCap сюди передаються вже розібраними з верхнього рівня
- * (normalizeRules) — тут вони лише дзеркало. */
-function normalizeDollScore(raw: unknown, abilityPoints: Record<string, number>, weaponPzCap: number): DollScoreRules {
+/** Старі версії шкали в базі: абілки й стеля ПЗ свап-зброї жили в блоці dollScore
+ * (скор з еталонів, прибраний). Звідти беремо лише ці два ключі, коли на
+ * верхньому рівні їх немає; решта блоку (режим, еталони, суперник) ігнорується. */
+function legacyDollScore(raw: unknown): { abilityPoints: unknown; weaponPzCap: unknown } {
   const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const num = (v: unknown, def: number, min = 0) => (typeof v === 'number' && Number.isFinite(v) && v >= min ? v : def);
-  const ab = (d.alphaByBuild && typeof d.alphaByBuild === 'object' ? d.alphaByBuild : {}) as Record<string, unknown>;
-  const alphaByBuild = {} as Record<Build, number>;
-  for (const b of ['dd', 'hybrid', 'con'] as Build[]) alphaByBuild[b] = Math.min(1, num(ab[b], BUILTIN_DOLL_SCORE.alphaByBuild[b]));
-  const refs: Partial<Record<CharClass, DollRef>> = {};
-  const rr = (d.refs && typeof d.refs === 'object' ? d.refs : {}) as Record<string, unknown>;
-  for (const cls of Object.keys(rr)) {
-    const x = rr[cls] as Record<string, unknown> | null;
-    if (!x || typeof x !== 'object' || !(cls in BUILTIN_CLASS_PROFILES)) continue;
-    const off = num(x.off, 0), def = num(x.def, 0);
-    if (off <= 0 || def <= 0) continue;
-    const abil = typeof x.abil === 'string' && ABIL_CODE.test(x.abil) ? x.abil : undefined;
-    const wpa = typeof x.wpa === 'number' && Number.isFinite(x.wpa) && x.wpa >= 0 ? x.wpa : undefined;
-    refs[cls as CharClass] = {
-      off, def, base: num(x.base, 0, -1000), label: typeof x.label === 'string' ? x.label.slice(0, 40) : '',
-      ...(abil ? { abil } : {}), ...(wpa !== undefined ? { wpa } : {}),
-    };
-  }
-  const mode = d.mode === 'shadow' || d.mode === 'on' ? d.mode : 'off';
-  return { mode, perDouble: num(d.perDouble, BUILTIN_DOLL_SCORE.perDouble), alphaByBuild, oppPa: num(d.oppPa, BUILTIN_DOLL_SCORE.oppPa), oppPz: num(d.oppPz, BUILTIN_DOLL_SCORE.oppPz), refs,
-    abilityPoints: { ...abilityPoints },
-    weaponPzCap,
-    shgVoznesPoints: typeof d.shgVoznesPoints === 'boolean' ? d.shgVoznesPoints : BUILTIN_DOLL_SCORE.shgVoznesPoints,
-  };
+  return { abilityPoints: d.abilityPoints, weaponPzCap: d.weaponPzCap };
 }
 
 /** Вбудована версія — фолбек і шаблон для нових версій. */
@@ -621,7 +533,6 @@ const BUILTIN: GearRules = {
   hiddenArmorSets: ['r9'],
   setsFromDoll: false,
   doll: BUILTIN_DOLL_GEAR,
-  dollScore: BUILTIN_DOLL_SCORE,
   abilityPoints: { ...RECOMMENDED_ABILITY_POINTS },
   weaponPzCap: BUILTIN_WEAPON_PZ_CAP,
   armorRefine: { a0_4: 0, a5: 3, a6: 7, a7: 11, a8: 17, a9: 23, a10: 27, a11: 29, a12: 30 },
@@ -812,11 +723,11 @@ export function normalizeRules(raw: unknown): GearRules {
     }
     byCls[c] = out;
   }
-  // Абілки й стеля ПЗ свап-зброї: з верхнього рівня; версії, збережені, коли вони
-  // жили в dollScore, читаються звідти (у нових записах ключа dollScore немає).
-  const ds = (r.dollScore && typeof r.dollScore === 'object' ? r.dollScore : {}) as Record<string, unknown>;
-  const abilityPoints = normalizeAbilityPoints(r.abilityPoints ?? ds.abilityPoints);
-  const weaponPzCap = normalizeWeaponPzCap(r.weaponPzCap ?? ds.weaponPzCap);
+  // Абілки й стеля ПЗ свап-зброї: з верхнього рівня; старі версії шкали в базі
+  // тримали їх у dollScore — читаємо звідти (у нових записах цього ключа немає).
+  const legacy = legacyDollScore(r.dollScore);
+  const abilityPoints = normalizeAbilityPoints(r.abilityPoints ?? legacy.abilityPoints);
+  const weaponPzCap = normalizeWeaponPzCap(r.weaponPzCap ?? legacy.weaponPzCap);
   return {
     classPointsBySize: classMatrix(r),
     weaponGrade: numTable(r.weaponGrade, BUILTIN.weaponGrade),
@@ -827,7 +738,6 @@ export function normalizeRules(raw: unknown): GearRules {
     hiddenArmorSets: hidden,
     setsFromDoll: r.setsFromDoll === true,
     doll: normalizeDollGear(r.doll),
-    dollScore: normalizeDollScore(r.dollScore, abilityPoints, weaponPzCap),
     abilityPoints,
     weaponPzCap,
     armorRefine: numTable(r.armorRefine, BUILTIN.armorRefine),
@@ -864,21 +774,16 @@ export function normalizeRules(raw: unknown): GearRules {
   };
 }
 
-/** У JSON -Infinity не існує — tier D пишемо з min: null. Ключ dollScore (скор з
- * еталонів) у версію не пишеться: скор v2 еталонів не має, а abilityPoints і
- * weaponPzCap тепер на верхньому рівні; старі записи з dollScore читаються. */
+/** У JSON -Infinity не існує — tier D пишемо з min: null. Старий блок dollScore
+ * (скор з еталонів) у версію не пишеться: normalizeRules його не тримає, лише
+ * читає зі старих записів абілки й стелю ПЗ (legacyDollScore). */
 export function serializeRules(rules: GearRules): unknown {
-  const out: Partial<GearRules> & Record<string, unknown> = { ...rules, tiers: rules.tiers.map((t) => ({ tier: t.tier, min: Number.isFinite(t.min) ? t.min : null })) as GearRules['tiers'] };
-  delete out.dollScore;
-  return out;
+  return { ...rules, tiers: rules.tiers.map((t) => ({ tier: t.tier, min: Number.isFinite(t.min) ? t.min : null })) };
 }
 
-/** Глибока копія для чернетки редактора. dollScore копіюється теж — картка
- * «Скор з ляльки» ще показує еталони версії, доки її не прибрано (коміт E);
- * у збережену версію він усе одно не потрапить (serializeRules). */
+/** Глибока копія для чернетки редактора. */
 export function cloneRules(rules: GearRules): GearRules {
-  const json = JSON.parse(JSON.stringify({ ...(serializeRules(rules) as object), dollScore: rules.dollScore })) as Record<string, unknown>;
-  return normalizeRules(json);
+  return normalizeRules(JSON.parse(JSON.stringify(serializeRules(rules))));
 }
 
 // ── Підрахунок ───────────────────────────────────────────────────
@@ -898,9 +803,9 @@ export function weaponGradeScore(cls: CharClass, grade: WeaponGrade, r: ScoringR
 /** Рекомендована спільна стеля запасного спорядження (порядку сету R8R). */
 export const RECOMMENDED_SWAP_TOTAL_CAP = 25;
 
-/** Усе «запасне» разом: ПЗ-зброя + свап-сети + камені в них, не більше спільної стелі. */
-export function swapScore(g: Pick<PlayerGear, 'weaponPz' | 'specialSets' | 'specialSetGems'>, r: ScoringRules, weaponPzPoints?: number): number {
-  const wpz = g.weaponPz ? weaponPzPoints ?? r.weaponPz : 0;
+/** Таблиця старих заявок: усе «запасне» разом — ПЗ-зброя + свап-сети + камені в них, не більше спільної стелі. */
+export function swapScore(g: Pick<PlayerGear, 'weaponPz' | 'specialSets' | 'specialSetGems'>, r: ScoringRules): number {
+  const wpz = g.weaponPz ? r.weaponPz : 0;
   const sum = wpz + specialSetGemsScore(g, r) + specialSetsScore(g.specialSets, r);
   return r.swapTotalCap == null ? sum : Math.min(r.swapTotalCap, sum);
 }
@@ -955,35 +860,6 @@ export function computeGearScoreWith(g: PlayerGear, r: ScoringRules, teamSize: n
     shgVoznesScore(g, r) +
     ringsScore(g, r)
   );
-}
-
-/**
- * Скор із ляльки: бали класу + бали спорядження з атаки й живучості відносно
- * еталона класу (+ бонус за абілку зброї понад еталон) + джин + запасне (сети,
- * ПЗ-зброя) + бали за ШГ/Вознєс, якщо їх увімкнено (dollScore.shgVoznesPoints). Грейди зброї,
- * броні, камені, точки, кільця, трактат і рівень уже сидять у характеристиках.
- * null — немає еталона для класу.
- */
-export function dollGearScoreWith(g: PlayerGear, power: DollPower, r: ScoringRules, teamSize: number | null | undefined): number | null {
-  const ref = r.dollScore.refs[g.charClass];
-  if (!ref || power.off <= 0 || power.def <= 0) return null;
-  const alpha = r.dollScore.alphaByBuild[g.build ?? 'dd'];
-  const rel = alpha * Math.log2(power.off / ref.off) + (1 - alpha) * Math.log2(power.def / ref.def);
-  // ПА на зброї — окремо, за курсом 1 ПА = 1 ПЗ (в атаку ляльки вона не входить).
-  const wpaBonus = power.wpa !== undefined ? weaponPaRate(r) * (power.wpa - (ref.wpa ?? 0)) : 0;
-  const gearPart = Math.max(0, ref.base + r.dollScore.perDouble * rel + abilityBonus(r, power.abil, ref.abil) + wpaBonus);
-  // ПЗ-зброя — за тим, скільки ПЗ вона дає (курс Лагерів, до стелі); старі заявки — як в анкеті.
-  const wpz = power.pzw !== undefined ? weaponPzPointsFromDoll(power.pzw, r) : undefined;
-  const items = r.dollScore.shgVoznesPoints ? shgVoznesScore(g, r) : 0;
-  return Math.round(classPointsFor(r, g.charClass, teamSize) + gearPart + r.genie[g.genie] + items + swapScore(g, r, wpz));
-}
-
-/** Бали спорядження еталона за таблицею — те, що скор з ляльки замінює: без класу, джина й запасного,
- * а також без ШГ/Вознєса, якщо їхні бали додаються окремо (dollScore.shgVoznesPoints). Коли окремих балів
- * немає, ШГ і Вознєс еталона лишаються в його балах — інакше гравець, рівний еталону, втратив би їх. */
-export function tableGearPartWith(g: PlayerGear, r: ScoringRules, teamSize: number | null | undefined): number {
-  const items = r.dollScore.shgVoznesPoints ? shgVoznesScore(g, r) : 0;
-  return computeGearScoreWith(g, r, teamSize) - classPointsFor(r, g.charClass, teamSize) - r.genie[g.genie] - items - swapScore(g, r);
 }
 
 export function computeGearScore(g: PlayerGear, version: string | null | undefined, teamSize: number | null | undefined): number {

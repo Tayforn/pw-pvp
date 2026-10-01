@@ -29,7 +29,8 @@ const KIND_CLASS: Record<TipLine['kind'], string> = {
   setb: 'doll-tip-setb',
 };
 
-function lineClass(l: TipLine): string {
+/** Клас рядка за видом (і станом): той самий і в тултіпі, і в картці речі пікера. */
+export function lineClass(l: TipLine): string {
   let c = KIND_CLASS[l.kind] || 'doll-tip-base';
   if (l.kind === 'req' && l.ok === false) c += ' bad';
   if ((l.kind === 'setp' || l.kind === 'setb') && l.on) c += ' on';

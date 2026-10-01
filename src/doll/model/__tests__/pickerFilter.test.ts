@@ -3,7 +3,7 @@ import { computeStats } from '../../core/stats';
 import type { Item } from '../../core/types';
 import { readJson } from '../../core/__tests__/testData';
 import { gemOk, NOT_ON_SERVER_GEMS } from '../gemOk';
-import { filterPickerItems, parsePickerQuery, pickerReqLvl, pickerTypeIrs } from '../pickerFilter';
+import { filterPickerItems, parsePickerQuery, pickerReqLvl, pickerTypeIrs, pickerVariants, variantText } from '../pickerFilter';
 import { calcState, loadRef, lookup } from './testDoc';
 
 beforeAll(() => loadRef());
@@ -25,13 +25,13 @@ describe('gemOk', () => {
 });
 
 describe('filterPickerItems', () => {
-  it('запит «рівень назва», типи, ліміт, дедуплікація', () => {
+  it('запит «рівень назва», типи, ліміт; однойменні речі НЕ злипаються', () => {
     expect(parsePickerQuery('101 меч')).toEqual({ lvl: 101, name: 'меч' });
     expect(parsePickerQuery('  Меч ')).toEqual({ lvl: null, name: 'меч' });
     const all = filterPickerItems(TA, '', { cls: 'by', level: 105, onlyFit: false });
     expect(all.rows.length).toBeLessThanOrEqual(400);
     expect(all.total).toBeGreaterThan(400);
-    expect(all.total).toBeLessThan(TA.length); // однакові речі злиплись
+    expect(all.total).toBe(TA.length); // кожна річ каталогу — окремий рядок (варіанти не ховаються)
     const lvl = filterPickerItems(TA, '101', { cls: 'by', level: 105, onlyFit: false, limit: 10000 });
     expect(lvl.rows.every((it) => pickerReqLvl(it) === 101)).toBe(true);
     const named = filterPickerItems(TA, 'сокира ареса', { cls: 'by', level: 105, onlyFit: false });
@@ -42,6 +42,24 @@ describe('filterPickerItems', () => {
     expect(typed.rows.every((it) => it.ir === 'jh')).toBe(true);
     const sorted = filterPickerItems(TA, '', { cls: 'by', level: 105, onlyFit: false, sort: 'lvl-desc' });
     expect(pickerReqLvl(sorted.rows[0])).toBeGreaterThanOrEqual(pickerReqLvl(sorted.rows[sorted.rows.length - 1]));
+  });
+
+  it('варіанти однойменних речей: нумерація в порядку каталогу, без двійників — нема в мапі', () => {
+    const v = pickerVariants(TA);
+    expect(v.size).toBeGreaterThan(40); // аудит: 48 груп двійників серед зброї
+    // «Душа Лі Хуа» 80 рів.: #1168 (ПА 50) і #2355 (ПА 65) — та сама назва, іконка, рівень і грейд
+    expect(v.get(1168)).toEqual({ n: 1, of: 2 });
+    expect(v.get(2355)).toEqual({ n: 2, of: 2 });
+    expect(v.has(1900)).toBe(false); // сокира Ареса — одна
+    for (const { n, of } of v.values()) {
+      expect(of).toBeGreaterThan(1);
+      expect(n).toBeGreaterThanOrEqual(1);
+      expect(n).toBeLessThanOrEqual(of);
+    }
+    expect(variantText({ n: 2, of: 4 })).toBe('варіант 2 з 4');
+    // обидва варіанти проходять фільтр і стоять у списку
+    const named = filterPickerItems(TA, 'душа лі хуа', { cls: 'by', level: 105, onlyFit: false });
+    expect(named.rows.map((it) => Number(it.id))).toEqual(expect.arrayContaining([1168, 2355]));
   });
 
   it('«лише що вдягається»: за build з gearAttr або за cls/level/attrs', () => {

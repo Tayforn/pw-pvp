@@ -110,7 +110,7 @@ describe('golden: чернетка з balance-v1.13 серіалізується
     expect(r.balance.composition.pairsRule).toBe('legacy');
     expect(r.balance.composition.weights.topSupport).toBe(40); // не переписано на рекомендовані 100
     // і жодних зайвих полів: збережений JSON = запис + нові поля верхнього рівня (setsFromDoll, swapTotalCap,
-    // doll, abilityPoints, weaponPzCap); dollScore (скор з еталонів) у версію не пишеться
+    // doll, abilityPoints, weaponPzCap); старого блоку dollScore (скор з еталонів) у шкалі немає
     const keys = (o: unknown) => Object.keys(o as object).sort();
     expect(keys(out)).toEqual([...keys(V113_RAW), 'setsFromDoll', 'swapTotalCap', 'doll', 'abilityPoints', 'weaponPzCap'].sort());
     expect(out).not.toHaveProperty('dollScore');

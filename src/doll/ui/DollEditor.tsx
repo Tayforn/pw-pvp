@@ -90,7 +90,7 @@ function ModalHost() {
     case 'picker':
       return <PickerModal key={'picker:' + JSON.stringify(m.target)} target={m.target} />;
     case 'item':
-      return <ItemEditorModal key={'item:' + m.cfgId + ':' + m.iid} cfgId={m.cfgId} iid={m.iid} />;
+      return <ItemEditorModal key={'item:' + m.cfgId + ':' + m.iid} cfgId={m.cfgId} iid={m.iid} initialTab={m.tab} />;
     case 'buffCfg':
       return <BuffCfgModal key={'buff:' + m.id} id={m.id} />;
     case 'buffPick':

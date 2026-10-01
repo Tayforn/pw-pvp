@@ -26,11 +26,14 @@ export type PickerTarget =
 
 /** Вкладка вікна пошуку станів. Окреме імʼя, бо `kind` у EditorModal — дискримінатор виду вікна. */
 export type BuffPickTab = 'buff' | 'debuff';
+/** Вкладка редактора речі (камені, характеристики-роли, гравіювання). */
+export type ItemTab = 'gems' | 'addons' | 'engrave';
 
 export type EditorModal =
   | null
   | { kind: 'picker'; target: PickerTarget }
-  | { kind: 'item'; cfgId: string; iid: string }
+  /** tab — з якої вкладки відкрити (пікер: «змінити роли» одразу після «Надіти»). */
+  | { kind: 'item'; cfgId: string; iid: string; tab?: ItemTab }
   | { kind: 'buffCfg'; id: number }
   /** tab — з якої вкладки почати; без нього вікно відкриває ту, що була востаннє. */
   | { kind: 'buffPick'; tab?: BuffPickTab }
@@ -53,7 +56,7 @@ export interface EditorApi {
   /** Єдина точка змін документа: чиста функція doc → doc (model/ops.ts). У readOnly — нічого не робить. */
   apply(fn: (doc: CharacterDoc) => CharacterDoc): void;
   openPicker(target: PickerTarget): void;
-  openItemEditor(cfgId: string, iid: string): void;
+  openItemEditor(cfgId: string, iid: string, tab?: ItemTab): void;
   openBuffCfg(id: number): void;
   openBuffPick(tab?: BuffPickTab): void;
   openOpponent(): void;
@@ -203,7 +206,7 @@ export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onAc
       setActiveCfg: onActiveCfg,
       apply,
       openPicker: (target) => open({ kind: 'picker', target }),
-      openItemEditor: (cfgId, iid) => open({ kind: 'item', cfgId, iid }),
+      openItemEditor: (cfgId, iid, tab) => open(tab ? { kind: 'item', cfgId, iid, tab } : { kind: 'item', cfgId, iid }),
       openBuffCfg: (id) => open({ kind: 'buffCfg', id }),
       openBuffPick: (tab) => open(tab ? { kind: 'buffPick', tab } : { kind: 'buffPick' }),
       openOpponent: () => open({ kind: 'opponent' }),

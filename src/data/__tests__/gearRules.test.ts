@@ -38,29 +38,33 @@ describe('balance-v1.0: шкала', () => {
     expect(registrationScore({ gear: null, itemPoints: 100 }, rulesFor(), 3)).toBeNull();
   });
 
-  it('abilityPoints і weaponPzCap — на верхньому рівні; старі версії з dollScore читаються; у JSON dollScore не пишеться', () => {
+  it('abilityPoints і weaponPzCap — на верхньому рівні; зі старих версій із блоком dollScore читаються лише вони; блоку в шкалі немає', () => {
     const r = rulesFor();
     expect(r.abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 });
     expect(r.weaponPzCap).toBe(25);
-    expect(r.dollScore.abilityPoints).toEqual(r.abilityPoints); // дзеркало для старих викликів
-    const legacy = normalizeRules({ dollScore: { mode: 'shadow', abilityPoints: { ka: 20, zr: 3 }, weaponPzCap: 30 } });
+    expect(r).not.toHaveProperty('dollScore');
+    // стара версія шкали в базі: абілки й стеля жили в dollScore; режим, еталони й суперник ігноруються
+    const legacy = normalizeRules({
+      dollScore: { mode: 'shadow', refs: { archer: { off: 12345, def: 67890, base: 140, label: 'Тайфорн' } }, oppPa: 60, abilityPoints: { ka: 20, zr: 3 }, weaponPzCap: 30 },
+    });
     expect(legacy.abilityPoints).toEqual({ ka: 20, zr: 3 });
     expect(legacy.weaponPzCap).toBe(30);
-    expect(legacy.dollScore.mode).toBe('shadow');
-    expect(legacy.dollScore.weaponPzCap).toBe(30);
+    expect(legacy).not.toHaveProperty('dollScore');
     // верхній рівень головніший за dollScore; зламані значення → вбудовані
     const top = normalizeRules({ abilityPoints: { ka: 500, 'BAD KEY': 3, zl: 'x', kl: 4.4 }, weaponPzCap: 200, dollScore: { abilityPoints: { ka: 1 }, weaponPzCap: 5 } });
     expect(top.abilityPoints).toEqual({ ka: 100, kl: 4 });
     expect(top.weaponPzCap).toBe(100);
+    expect(normalizeRules({ dollScore: { abilityPoints: { ka: 500, 'BAD KEY': 3, zl: 'x', kl: 4.4 } } }).abilityPoints).toEqual({ ka: 100, kl: 4 });
     expect(normalizeRules({ weaponPzCap: -1 }).weaponPzCap).toBe(25);
+    expect(normalizeRules({ dollScore: 'зламано' }).abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 });
+    // у JSON нової версії блоку dollScore немає, абілки й стеля — зверху; чернетка редактора — те саме
     const json = serializeRules(legacy) as Record<string, unknown>;
     expect(json).not.toHaveProperty('dollScore');
     expect(json.abilityPoints).toEqual({ ka: 20, zr: 3 });
     expect(json.weaponPzCap).toBe(30);
-    expect(normalizeRules(json).dollScore.mode).toBe('off'); // еталони в нову версію не переходять
-    // чернетка редактора копію dollScore ще тримає (картка «Скор з ляльки» до коміту E)
-    expect(cloneRules(legacy).dollScore.mode).toBe('shadow');
     expect(cloneRules(legacy).abilityPoints).toEqual({ ka: 20, zr: 3 });
+    expect(cloneRules(legacy).weaponPzCap).toBe(30);
+    expect(cloneRules(legacy)).not.toHaveProperty('dollScore');
   });
 
   it('архетипи з документа (§3.1) — ті самі, що в адмінському редакторі (з балами класу)', () => {

@@ -12,6 +12,7 @@ import BracketView from '../components/BracketView';
 import RulesList from '../components/RulesList';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
 import { setNamesOf } from '../components/ScoreBreakdown';
+import { genieFromSnapshot } from '../data/genie';
 import { weaponAbilityName } from '../data/weaponAbilities';
 import MemberNotice from '../components/MemberNotice';
 
@@ -32,7 +33,7 @@ function classCountsLine(players: Registration[]): string {
 }
 
 /** Публічна картка гравця для бейджа рангу: нік, клас, спорядження, розклад по
- * речах (заявка персонажем) і ранг — без чисел скору (їх бачить лише адмін).
+ * речах і джин зі знімка (заявка персонажем) і ранг — без чисел скору (їх бачить лише адмін).
  * Ранг у сформованих командах — зі знімка жеребки (там урахована корекція й
  * рейтинг, яких анонім не бачить); до формування — з самої заявки
  * (registrationScore: бали за речі v2, а без них — таблиця грейдів старої заявки). */
@@ -43,7 +44,7 @@ function publicInfo(r: Registration, tournament: Tournament, frozenTiers?: Map<s
   const tier = frozenTiers?.get(r.id) ?? tierFor(registrationScore(r, rules, tournament.teamSize) ?? 0, version);
   return {
     nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems, rules) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil),
-    breakdown: r.itemBreakdown, setNames: setNamesOf(r.characterSnapshot),
+    breakdown: r.itemBreakdown, setNames: setNamesOf(r.characterSnapshot), genie: genieFromSnapshot(r.characterSnapshot),
   };
 }
 

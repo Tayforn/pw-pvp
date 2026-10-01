@@ -457,9 +457,10 @@ export function dollMissing(doc: CharacterDoc, model: CharacterModel): string[] 
 /**
  * Legacy-анкета заявки з персонажа: усе з ляльки — грейди зброї, броні, трактату
  * й кілець з надітих речей (DollFacts), джин з блоку джина (genieOf; ніде не
- * заповнено — «до 60»). setsFromDoll — чи рахувати свап-сети з ляльки
- * (перемикач у «Шкалі балів»); вимкнено — сети в заявку не йдуть, ПЗ-зброя —
- * завжди з ляльки. gear = null лише коли бракує речей (dollMissing).
+ * заповнено — «до 60»). setsFromDoll — legacy-прапорець версії шкали: чи йдуть
+ * свап-сети ляльки в legacy-колонки (у нових версіях false — сети рахує скор v2
+ * з речей); ПЗ-зброя — завжди з ляльки. gear = null лише коли бракує речей
+ * (dollMissing).
  */
 export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { setsFromDoll: boolean }, lookup?: ItemLookup): CharacterGear {
   const missing = dollMissing(doc, hydrate(doc, lookup));

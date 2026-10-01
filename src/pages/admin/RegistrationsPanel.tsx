@@ -11,17 +11,20 @@
 // перераховує само; «Перерахувати всі» — у блоці «Команди»). Рядки без
 // item_points у турнірі, де вони вже є, — «таблиця» (скор з анкети). У модалці
 // ✎ для v2-рядків анкета не редагується (лялька визначила грейди з речей):
-// лише корекція адміна, розклад по речах і перерахунок.
+// лише корекція адміна, розклад по речах і перерахунок. Заявка зі знімком має
+// посилання «Переглянути ляльку» — редактор лише для перегляду (/admin/doll/:id).
 // Team-рядки (згенеровані команди) тут не показуються — вони в блоці
 // «Команди»; після формування «Відхилити/✕» блокуються.
 // =========================================================
 
 import { useEffect, useState } from 'react';
 import { errorMessage, reportError } from '../../app/errorMessage';
+import { routeUrl, type Route } from '../../app/useRoute';
 import type { PlayerGear, Registration, Tournament } from '../../data/types';
 import { isBalancedRandom } from '../../data/types';
 import { deleteRegistration, fetchRegistrations, setRegistrationStatus, subscribeToTournamentChanges, updateRegistrationAdjust, updateRegistrationGear } from '../../data/tournaments';
 import { CLASS_LABELS, classPointsFor, gearSummary, gemMixLabel, registrationScore, rulesFor, tierFor } from '../../data/gearRules';
+import { genieFromSnapshot } from '../../data/genie';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import { NO_SNAPSHOT_HINT, canRecalc, recalcRegistration, recalcSummary } from '../../data/itemPointsRecalc';
@@ -191,7 +194,7 @@ function RegModal({ reg, tournament, version, recalc, itemName, onRecalc, onClos
   );
 }
 
-export default function RegistrationsPanel({ tournament }: { tournament: Tournament }) {
+export default function RegistrationsPanel({ tournament, onNavigate }: { tournament: Tournament; onNavigate?: (route: Route) => void }) {
   const tournamentId = tournament.id;
   // скор/tier у рядках рахуються за версією шкали турніру — підписка на реєстр версій
   useRules();
@@ -305,7 +308,7 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                     <TierBadge
                       info={{
                         nickname: r.nickname, gear: r.gear, tier: tierFor(bd.total, version), gemsMix: gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil),
-                        breakdown: r.itemBreakdown, setNames: setNamesOf(r.characterSnapshot), itemName: names?.fn,
+                        breakdown: r.itemBreakdown, setNames: setNamesOf(r.characterSnapshot), genie: genieFromSnapshot(r.characterSnapshot), itemName: names?.fn,
                         admin: {
                           score: bd.total, gearScore: bd.gear, adjust: bd.adjust, rating: bd.rating, adjustNote: r.scoreAdjustNote,
                           elo, attackLevel: r.attackLevel, defenseLevel: r.defenseLevel, version,
@@ -351,6 +354,22 @@ export default function RegistrationsPanel({ tournament }: { tournament: Tournam
                 >
                   з ляльки ✓
                 </span>
+              )}
+              {r.characterSnapshot != null && (
+                // Знімок ляльки в редакторі лише для перегляду (/admin/doll/:id) — справжнє
+                // посилання: з модифікаторами відкривається в новій вкладці браузера.
+                <a
+                  className="link"
+                  href={routeUrl({ name: 'admin-doll', id: r.id })}
+                  title="Відкрити знімок ляльки з цієї заявки в редакторі (лише перегляд)"
+                  onClick={(e) => {
+                    if (!onNavigate || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                    e.preventDefault();
+                    onNavigate({ name: 'admin-doll', id: r.id });
+                  }}
+                >
+                  Переглянути ляльку
+                </a>
               )}
               {Number.isFinite(rulesChangedAt) && Date.parse(r.createdAt) < rulesChangedAt && (
                 <span className="badge warn" title="Текст правил змінено після подання цієї заявки — гравець підтверджував інший текст">правила змінено після заявки</span>

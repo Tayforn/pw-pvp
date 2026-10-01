@@ -43,6 +43,7 @@ import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
 import { canRecalc, recalcRegistration } from '../../data/itemPointsRecalc';
 import TierBadge, { type PlayerCardInfo } from '../../components/PlayerPopover';
+import { genieFromSnapshot } from '../../data/genie';
 import { setNamesOf } from '../../components/ScoreBreakdown';
 import { weaponAbilityName } from '../../data/weaponAbilities';
 import {
@@ -210,6 +211,7 @@ function playerInfos(regs: Registration[], version: string, teamSize: number | n
       // розклад по речах (скор v2) — назви речей тут без каталогу, лише слоти й бали
       breakdown: r.itemBreakdown,
       setNames: setNamesOf(r.characterSnapshot),
+      genie: genieFromSnapshot(r.characterSnapshot),
       admin: {
         score, gearScore: b.gear, adjust: b.adjust, rating: b.rating, adjustNote: r.scoreAdjustNote,
         elo: ratings ? ratingOf(ratings, r.nickname) : undefined,

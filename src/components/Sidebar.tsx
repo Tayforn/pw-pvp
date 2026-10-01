@@ -28,8 +28,9 @@ const charIco = <svg {...S}><circle cx="12" cy="5" r="2.2" /><path d="M8 21l1.2-
 function routeKey(r: Route): string {
   if (r.name === 'series') return `series:${r.slug}`;
   if (r.name === 'tournament') return `tournament:${r.id}`;
-  // Будь-який персонаж підсвічує один пункт «Персонаж».
+  // Будь-який персонаж підсвічує один пункт «Персонаж»; лялька із заявки — «Адмінку».
   if (r.name === 'character') return 'characters';
+  if (r.name === 'admin-doll') return 'admin';
   return r.name;
 }
 
