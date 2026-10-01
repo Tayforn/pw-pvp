@@ -13,8 +13,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Анкета персонажа й картки «Готовність до турніру» / «Атрибути» тягнуть шкалу балів
-// (rulesStore → Supabase) — у тестах без мережі: лишається вбудована шкала без еталонів.
+// Картки «Готовність до турніру» / «Атрибути» тягнуть шкалу балів (rulesStore → Supabase) —
+// у тестах без мережі: лишається вбудована шкала.
 vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) } }));
 import { readJson } from '../core/__tests__/testData';
 import { ensureCats } from '../data/catalog';
@@ -105,10 +105,12 @@ function expectEditor(html: string): void {
   // середня: «Характеристики» з перемикачем (типово «Чисті» — як скор) і смужкою станів
   expect(html).toMatch(/class="doll-col doll-col-stats"(?:(?!doll-col-).)*Характеристики(?:(?!doll-col-).)*aria-checked="true"[^>]*>Чисті<(?:(?!doll-col-).)*aria-label="Стани"/);
   expect(html).toContain('Бафи вимкнено з розрахунку — так рахує скор');
-  // права: «Готовність» → «Атрибути» (титули — унизу картки) → «Пасивки класу» → плашка стану
+  // права: «Готовність» → «Атрибути» (титули — унизу картки) → «Пасивки класу» → «Джин» → плашка стану
   expect(html).toMatch(
-    /class="doll-col doll-col-side"(?:(?!doll-col-).)*Готовність до турніру(?:(?!doll-col-).)*Атрибути(?:(?!doll-col-).)*Титули(?:(?!doll-col-).)*Пасивки класу(?:(?!doll-col-).)*class="doll-status (?:good|warn)"/,
+    /class="doll-col doll-col-side"(?:(?!doll-col-).)*Готовність до турніру(?:(?!doll-col-).)*Атрибути(?:(?!doll-col-).)*Титули(?:(?!doll-col-).)*Пасивки класу(?:(?!doll-col-).)*class="doll-card doll-genie"(?:(?!doll-col-).)*class="doll-status (?:good|warn)"/,
   );
+  // картка джина не тягне тексти вмінь і не малює іконку виду класом doll-icon (його рахують як надіту річ)
+  expect(html).not.toContain('doll-genie-kind-img" style="background-image:url(&quot;undefined');
   // сторінка без входу (у тестах /api/me недоступний): замість збереження — вхід, чернетка в браузері
   const text = visible(html);
   expect(text).toContain('← Мої персонажі');
@@ -129,6 +131,9 @@ describe('CharacterPage — перший рендер без винятків', 
     expect(html).toContain('class="doll-status warn"');
     expect(visible(html)).toContain('вільних 520');
     expect(visible(html)).toContain('у Тілобудові 0 % очок');
+    // джина не заповнено: жовта пігулка, порожні слоти, підсумки «—»
+    expect(html).toMatch(/class="doll-card doll-genie"(?:(?!doll-status).)*doll-card-pill warn"[^>]*>не заповнено</);
+    expect(count(html, /class="doll-genie-slot is-empty/g)).toBe(8);
     // жодної іконки речі (спрайт) — порожні слоти лишаються порожніми
     expect(html).not.toMatch(/-hii\.png/);
     expect(store.getItem(KEY)).toBeNull();
@@ -146,6 +151,8 @@ describe('CharacterPage — перший рендер без винятків', 
       // (інвентар Головного порожній: усі речі фікстури надіті)
       expect(count(html, /class="doll-icon" style="background-image:url\(&quot;[^&]*-hii\.png&quot;\)/g)).toBe(worn);
       expect(count(html, /class="doll-slot is-filled/g)).toBe(worn);
+      // вид джина в картці — та сама річ слота pk, але своїм класом (не doll-icon)
+      expect(html).toMatch(/class="doll-genie-kind-img" style="background-image:url\(&quot;[^&]*pk[^&]*-hii\.png/);
       // плитки: у кастерів маг. атака і спів, в інших — фіз. атака й атаки/сек
       expect(html).toContain(CASTERS.has(cls) ? 'Маг. атака' : 'Фіз. атака');
       // пасивки зброї є лише в некастерів (Воїн — 4, решта — по 1); кастерам — один рядок

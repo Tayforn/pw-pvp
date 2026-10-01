@@ -3,10 +3,12 @@
 // головному бандлі, а ляльці потрібні каталоги й формули — тож цей модуль
 // вантажиться динамічно (import()), лише коли гравець обрав персонажа.
 //
-// Крок C скору v2: разом із анкетою (legacy-колонки заявки, gearFromCharacter)
-// заявка несе itemPoints і itemBreakdown — бали за речі ляльки за версією шкали
-// турніру (model/itemScore.ts). Скор заявки = клас + itemPoints + рівень + джин
-// (registrationScore у gearRules.ts); адмін перераховує зі знімка.
+// Скор v2: разом із legacy-колонками заявки (gearFromCharacter — грейди лялька
+// визначає з надітих речей, джин — з блоку джина) заявка несе itemPoints і
+// itemBreakdown — бали за речі ляльки за версією шкали турніру
+// (model/itemScore.ts). Скор заявки = клас + itemPoints + рівень + джин
+// (registrationScore у gearRules.ts); адмін перераховує зі знімка. Ручної
+// анкети немає: заявку блокують лише відсутня зброя й порожній слот броні.
 // =========================================================
 
 import {
@@ -41,7 +43,7 @@ export interface CharacterForRegistration {
   /** Те, що піде в item_points / item_breakdown заявки. */
   itemPoints: number;
   itemBreakdown: ItemBreakdown;
-  /** Чому заявку не подати (анкета неповна); null — можна. */
+  /** Чому заявку не подати (немає зброї, порожній слот броні); null — можна. */
   blockReason: string | null;
 }
 
@@ -56,25 +58,18 @@ export function myCharacters(): Promise<CharacterSummary[]> {
   return listCharacters().then((r) => r.characters);
 }
 
-/** Так gearFromCharacter називає зброю й броню, яких немає на ляльці (решта missing — поля анкети). */
-const DOLL_MISSING: Record<string, string> = { 'зброя на ляльці': 'зброї', 'броня на ляльці': 'броні' };
-
 /**
- * «Заявку не подати: у персонажа немає зброї в Головному (або не заповнена
- * анкета: грейд зброї, джин).» — з missing анкети; null — усе є. Зброя й броня
- * на ляльці — окремо від полів анкети (та зникає кроком D).
+ * «Заявку не подати: у персонажа немає зброї; у Головному порожній слот броні:
+ * нагрудник.» — з missing ляльки (dollMissing у sheet.ts: «зброя», «порожній
+ * слот броні: …»); null — усе є.
  */
 export function submitBlockReason(missing: readonly string[]): string | null {
   if (!missing.length) return null;
-  const doll = missing.filter((m) => m in DOLL_MISSING).map((m) => DOLL_MISSING[m]);
-  const sheet = missing.filter((m) => !(m in DOLL_MISSING));
-  const dollText = doll.length ? `у персонажа немає ${doll.join(' і ')} в Головному` : '';
-  const sheetText = sheet.length ? `не заповнена анкета: ${sheet.join(', ')}` : '';
-  if (dollText && sheetText) return `Заявку не подати: ${dollText} (або ${sheetText}).`;
-  return `Заявку не подати: ${dollText || sheetText}.`;
+  const parts = missing.map((m) => (m === 'зброя' ? 'у персонажа немає зброї (ні в Головному, ні в сеті)' : `у Головному ${m}`));
+  return `Заявку не подати: ${parts.join('; ')}.`;
 }
 
-/** Завантажити персонажа й зібрати з нього анкету заявки й скор v2. Кидає Error з поясненням. */
+/** Завантажити персонажа й зібрати з нього legacy-анкету заявки й скор v2. Кидає Error з поясненням. */
 export async function characterForRegistration(id: string, opts: RegistrationOptions = {}): Promise<CharacterForRegistration> {
   const rec = await getCharacter(id);
   const v = validateDoc(rec.doc);
@@ -94,10 +89,10 @@ export async function characterForRegistration(id: string, opts: RegistrationOpt
     ...(facts.weaponPzGain > 0 ? { pzw: Math.round(facts.weaponPzGain * 10) / 10 } : {}),
   };
   // Скор v2: бали за речі + розклад із класом (за розміром команди), рівнем і джином —
-  // ті самі складові, що registrationScore бере з анкети, тож sum сходиться зі скором.
+  // ті самі складові, що registrationScore бере з legacy-колонок, тож sum сходиться зі скором.
   const items = scoreItems(doc, rules);
   const teamSize = opts.teamSize ?? PREVIEW_TEAM_SIZE;
-  const genie = result.gear?.genie ?? genieOf(doc) ?? 'g60';
+  const genie = genieOf(doc) ?? 'g60';
   const breakdown = itemBreakdown(items, rulesVersion, {
     cls: classPointsFor(rules, CLS_CHAR[doc.cls], teamSize),
     lvl: rules.level[charLevelOf(doc.level)],
@@ -110,9 +105,10 @@ export async function characterForRegistration(id: string, opts: RegistrationOpt
 }
 
 /**
- * Еталон класу для «Шкали балів» зі збереженого персонажа: атака й живучість
- * (з типовим суперником чернетки шкали) і бали спорядження за таблицею, якщо
- * анкета персонажа повна (інакше base = 0 — адмін впише сам).
+ * Еталон класу для «Шкали балів» зі збереженого персонажа (legacy, DollScoreCard):
+ * атака й живучість (з типовим суперником чернетки шкали) і бали спорядження за
+ * таблицею з грейдів ляльки, якщо на ній є зброя й броня (інакше base = 0 —
+ * адмін впише сам).
  */
 export async function referenceFromCharacter(id: string, rules: GearRules): Promise<{ cls: CharClass; ref: DollRef; note: string | null }> {
   const rec = await getCharacter(id);
@@ -126,6 +122,6 @@ export async function referenceFromCharacter(id: string, rules: GearRules): Prom
   return {
     cls: CLS_CHAR[doc.cls],
     ref: { off: power.off, def: power.def, base, label: rec.name, ...(power.abil ? { abil: power.abil } : {}), wpa: power.wpa ?? 0 },
-    note: result.gear ? null : `Анкета персонажа неповна (${result.missing.join(', ')}) — бали еталона впиши вручну.`,
+    note: result.gear ? null : `На ляльці еталона бракує речей (${result.missing.join('; ')}) — бали еталона впиши вручну.`,
   };
 }

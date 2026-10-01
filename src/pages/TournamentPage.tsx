@@ -15,8 +15,8 @@ import { setNamesOf } from '../components/ScoreBreakdown';
 import { weaponAbilityName } from '../data/weaponAbilities';
 import MemberNotice from '../components/MemberNotice';
 
-/** Підтверджені гравці фул-рандому з анкетою — без анкети (старі/зламані
- * заявки) до формування не допускаються, тож і публічно їх не показуємо. */
+/** Підтверджені гравці фул-рандому зі спорядженням (gear) — без нього (старі/
+ * зламані заявки) до формування не допускаються, тож і публічно їх не показуємо. */
 function gearedPlayers(regs: Registration[]): Registration[] {
   return regs.filter((r) => r.kind === 'player' && r.status === 'confirmed' && !!r.gear);
 }
@@ -31,11 +31,11 @@ function classCountsLine(players: Registration[]): string {
     .join(' · ');
 }
 
-/** Публічна картка гравця для бейджа рангу: нік, клас, анкета, розклад по
+/** Публічна картка гравця для бейджа рангу: нік, клас, спорядження, розклад по
  * речах (заявка персонажем) і ранг — без чисел скору (їх бачить лише адмін).
  * Ранг у сформованих командах — зі знімка жеребки (там урахована корекція й
  * рейтинг, яких анонім не бачить); до формування — з самої заявки
- * (registrationScore: бали за речі v2, а без них — таблиця анкети). */
+ * (registrationScore: бали за речі v2, а без них — таблиця грейдів старої заявки). */
 function publicInfo(r: Registration, tournament: Tournament, frozenTiers?: Map<string, Tier>): PlayerCardInfo | null {
   if (!r.gear) return null;
   const version = rulesVersionFor(tournament);
@@ -56,7 +56,7 @@ function PlayerRow({ reg, info }: { reg: Registration; info: PlayerCardInfo | nu
       {reg.gear ? (
         <span className="badge mute" style={{ width: COL.cls, boxSizing: 'border-box', justifyContent: 'center', padding: '3px 6px', flexShrink: 0 }}>{CLASS_LABELS[reg.gear.charClass]}</span>
       ) : (
-        <span className="badge bad">без анкети</span>
+        <span className="badge bad">без спорядження</span>
       )}
       {info && <TierBadge info={info} width={COL.tier} />}
     </div>

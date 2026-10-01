@@ -4,7 +4,8 @@
 // пасивки класу, плашка стану): рендер у рядок через renderToStaticMarkup на
 // golden-фікстурах ядра, у справжньому EditorProvider. Перевіряємо те, що
 // бачить гравець: ПА/ПЗ у плитках, «Чисті / У бою», знак і колір дельти сету,
-// скор і тир, «вивчено» пасивок, «+97 → 552» атрибутів, підписи «у скор не входить».
+// скор і тир, «вивчено» пасивок, «+97 → 552» атрибутів, підписи «у скор не входить»,
+// картка «Джин» (пігулка балів, слоти, підсумки червоним).
 // =========================================================
 
 import type { ReactNode } from 'react';
@@ -16,6 +17,7 @@ vi.mock('../../../app/supabaseClient', () => ({ supabase: { from: () => ({ selec
 import {
   BUILTIN_RULES_VERSION, listRulesVersions, normalizeRules, registerRules, rulesFor, tierForWith, type GearRules,
 } from '../../../data/gearRules';
+import { affPointsAtLevel } from '../../../data/genie';
 import { shownBuffs } from '../../core/buffs';
 import { DEFAULT_OPP } from '../../core/damage';
 import { computeStats } from '../../core/stats';
@@ -25,11 +27,12 @@ import { CFG_MAIN, hydrate, toDollState } from '../../model/hydrate';
 import { buffRow, createSet, equip, setBuffSide, setLevel, stepBuffLvl, toggleBuff, updateInstance } from '../../model/ops';
 import { classPassives, isClassPassive } from '../../model/passives';
 import { dollScorePreview, PREVIEW_TEAM_SIZE } from '../../model/readiness';
-import { buildOf, dollFacts, vitShare, type Sheet } from '../../model/sheet';
+import { buildOf, vitShare, type Sheet } from '../../model/sheet';
 import { docFrom, loadRef, lookup } from '../../model/__tests__/testDoc';
 import { EditorProvider, useEditor } from '../EditorContext';
 import { AttrsCard, BuildScale, clampAttr } from '../panels/AttrsCard';
 import { classSkills, DamageBody, DamageCheck, logEntry } from '../panels/DamageCheck';
+import { GenieCard, GenieCardView, genieSums } from '../panels/GenieCard';
 import { PassivesCard, passiveShort } from '../panels/PassivesCard';
 import { ReadinessCard } from '../panels/ReadinessCard';
 import { deltaRows, SetDeltaPanel, SetDeltaView } from '../panels/SetDeltaPanel';
@@ -88,10 +91,10 @@ function buffedBy(): { doc: CharacterDoc; id: number } {
   throw new Error('жоден баф воїна не міняє характеристик');
 }
 
-/** Повна анкета для турнірів: поки заявка бере грейди й джина з неї, без неї персонаж «не готовий». */
-const SHEET: Sheet = { weaponGrade: 'r9r2', armorSet: 'r9', tract: 't8', genie: 'g71_80', ring1: 'r9', ring2: 'r9' };
-/** Готовий до турніру лучник: фікстура + імʼя, шлях і анкета (очки фікстури роздано всі). */
-const readyJs = (): CharacterDoc => ({ ...docFrom('typical-js'), name: 'Тайфорн', path: 'rs', sheet: SHEET });
+/** Стара «Анкета для турнірів» у збереженому персонажі (без джина): у бали й у картки не йде. */
+const OLD_SHEET: Sheet = { weaponGrade: 'other', armorSet: 'other', tract: 't1_3', ring1: 'r9r1', ring2: 'r9r1' };
+/** Готовий до турніру лучник: фікстура + імʼя і шлях (очки фікстури роздано всі); анкета не потрібна. */
+const readyJs = (): CharacterDoc => ({ ...docFrom('typical-js'), name: 'Тайфорн', path: 'rs' });
 
 /** Тимчасово зробити поточною шкалу з еталонами — і повернути вбудовану. */
 function withRules(rules: GearRules, fn: () => void): void {
@@ -451,7 +454,7 @@ describe('Пасивки класу', () => {
 });
 
 describe('Готовність до турніру', () => {
-  it('порожня чернетка на вбудованій шкалі: «—», пояснення, «не готовий», жодного NaN', () => {
+  it('порожня чернетка: «—», пояснення, «не готовий», без розкладу й тиру, жодного NaN', () => {
     const html = renderIn(emptyDoc('js'), CFG_MAIN, <ReadinessCard />);
     const text = visible(html);
     expect(text).toContain('Готовність до турніру');
@@ -459,7 +462,7 @@ describe('Готовність до турніру', () => {
     expect(html).toMatch(/class="doll-ready-ring"[^>]*><b>—<\/b>/);
     expect(text).toContain('Надінь зброю й броню в Головному');
     expect(text).toContain('Лучник · 105 · ДД');
-    // що бачить лялька: зброї, броні, трактату й кілець немає (не «Луна і нижче» з анкети), джина не заповнено
+    // що бачить лялька: зброї, броні, трактату й кілець немає (не «Луна і нижче» порожнього слота), джина не заповнено
     expect(text).toContain('Лялька бачить:');
     expect(text).toContain('Зброї немає');
     expect(text).toContain('Броні немає');
@@ -468,74 +471,104 @@ describe('Готовність до турніру', () => {
     expect(text).toContain('Джин: не заповнено');
     expect(text).toContain('ШГ / Вознєс: немає');
     expect(text).not.toContain('Луна');
-    expect(text).not.toMatch(/Атака ×|Живучість ×/);
     expect(html).not.toContain('badge tier');
+    expect(html).not.toContain('doll-ready-parts');
+    expect(text).not.toContain('Розклад по речах');
+    expect(text).toContain('Попередній скор для 3×3');
+    expect(text).not.toMatch(/Атака ×|Живучість ×|еталон/);
     expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
   });
 
-  it('вбудована шкала без еталонів: сила є, скору, тиру й множників немає', () => {
+  it('скор v2 на поточній шкалі: число в кільці, тир, чипи складових, «Лялька бачить» з речей, розклад із назвами', () => {
     const doc = readyJs();
     const rules = rulesFor(null);
-    const power = dollScorePreview(doc, dollFacts(doc, rules, lookup), rules, PREVIEW_TEAM_SIZE, lookup).power!;
+    const p = dollScorePreview(doc, rules, BUILTIN_RULES_VERSION, PREVIEW_TEAM_SIZE, lookup);
+    expect(p.score).toBe(207); // клас 8 + рівень 10 + джин 0 + речі 189.01
     const html = renderIn(doc, CFG_MAIN, <ReadinessCard />);
     const text = visible(html);
     expect(text).toContain('готовий');
     expect(text).not.toContain('не готовий');
-    expect(text).toContain(norm('Атака ' + fmt(power.off)));
-    expect(text).toContain(norm('Живучість ' + fmt(power.def)));
-    expect(html).toMatch(/<b>—<\/b><span>скор/);
-    expect(text).toContain('Скор з ляльки в шкалі ще не ввімкнено');
-    expect(text).not.toMatch(/Атака ×|Живучість ×/);
-    expect(text).toMatch(/Зброя: [^·]+\+/); // грейд і точка зброї з речей
-    expect(text).toMatch(/Броня: [^·]+\+/);
-    expect(text).toMatch(/Трактат: [^·]+ · Джин: 71–80/); // трактат з речі, джин — з анкети
+    expect(html).toMatch(new RegExp('class="doll-ready-ring good"[^>]*><b>' + fmt(p.score) + '</b>'));
+    expect(html).toContain('badge tier tier-' + tierForWith(p.score, rules));
+    // складові — ті самі, що в заявці (registrationScore)
+    expect(text).toMatch(/клас 8 .*рівень 10 .*речі 189\.01 .*джин 0/);
+    expect(html).toMatch(/doll-ready-part warn"[^>]*title="джина не заповнено — за нього 0 балів"/);
+    // що визначила лялька — з надітих речей, а не з анкети
+    expect(text).toMatch(/Зброя: R9 \+/);
+    expect(text).toMatch(/Броня: R9 \+/);
+    expect(text).toMatch(/Трактат: Імператор і вище · Джин: не заповнено/);
     expect(text).toMatch(/· ШГ \+\d+, Вознєс \+\d+ ·/); // без повтору назви «ШГ / Вознєс ШГ …»
     expect(text).not.toContain('ШГ / Вознєс ШГ');
-    expect(text).toMatch(/Кільця: [^·]+/);
-    // без анкети заявку не подати — «не готовий», хоч лялька й повна
-    const bare = visible(renderIn({ ...doc, sheet: undefined }, CFG_MAIN, <ReadinessCard />));
-    expect(bare).toContain('не готовий');
+    expect(text).toMatch(/Кільця: Луна/);
+    // згорнутий розклад по речах: бали за речі в заголовку, Головний, назви речей зі scoreItems
+    expect(html).toMatch(/<details class="score-bd">/);
+    expect(html).not.toMatch(/<details class="score-bd" open/);
+    expect(text).toContain('Розклад по речах · 189.01 б.');
+    expect(text).toContain('Головний');
+    expect(text).toContain('Небесний лук');
+    expect(text).toContain('Шлем героя');
+    expect(text).toContain('клас 8 · рівень 10 · джин 0');
+    // примітки про нерозпізнані речі — у плашці стану повністю, а не обрізаними рядками розкладу
+    expect(text).not.toContain('не розпізнала');
+    expect(text).toContain('Попередній скор для 3×3; на турнірі бали класу — за розміром команди, у жеребці ще корекції адміна');
+    expect(text).not.toMatch(/Атака ×|Живучість ×|еталон|анкет/);
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+    // стара анкета з іншими грейдами нічого не змінює; блок джина — додає бали і підпис
+    expect(renderIn({ ...doc, sheet: OLD_SHEET }, CFG_MAIN, <ReadinessCard />)).toBe(html);
+    const withGenie = visible(renderIn({ ...doc, genie: { level: 105, luck: 100, skills: [] } }, CFG_MAIN, <ReadinessCard />));
+    expect(withGenie).toContain('Джин: удача 100');
+    expect(withGenie).toMatch(/джин 10/);
+    expect(withGenie).toContain(fmt(217));
   });
 
-  it('шкала з еталоном класу: скор, тир, множники ×1,0 і зелене кільце', () => {
+  it('інша поточна версія шкали — інші бали класу й тир; картка рахує за поточною', () => {
     const doc = readyJs();
     const base = rulesFor(null);
-    const own = dollScorePreview(doc, dollFacts(doc, base, lookup), base, PREVIEW_TEAM_SIZE, lookup).power!;
     const rules = normalizeRules({
-      dollScore: { mode: 'on', refs: { archer: { off: own.off, def: own.def, base: 150, label: 'еталон', wpa: own.wpa, ...(own.abil ? { abil: own.abil } : {}) } } },
+      classPointsBySize: { ...base.classPointsBySize, '3': { ...base.classPointsBySize['3'], archer: 20 } },
+      tiers: [{ min: 300, tier: 'S' }, { min: 200, tier: 'A' }, { min: null, tier: 'D' }],
     });
     withRules(rules, () => {
-      const p = dollScorePreview(doc, dollFacts(doc, rules, lookup), rules, PREVIEW_TEAM_SIZE, lookup);
-      expect(p.score).not.toBeNull();
+      const p = dollScorePreview(doc, rules, 'test-etalon', PREVIEW_TEAM_SIZE, lookup);
+      expect(p.score).toBe(219);
       const html = renderIn(doc, CFG_MAIN, <ReadinessCard />);
-      const text = visible(html);
-      expect(html).toMatch(new RegExp('class="doll-ready-ring good"[^>]*><b>' + fmt(p.score!) + '</b>'));
-      expect(html).toContain('badge tier tier-' + tierForWith(p.score!, rules));
-      expect(text).toContain('Атака ×1,0');
-      expect(text).toContain('Живучість ×1,0');
-      expect(text).not.toContain('Попередній: у жеребці');
-      // гола лялька (без зброї й броні) — ні числа, ні тиру, ні множників, хоч еталон і є
-      const bare = renderIn(emptyDoc('js'), CFG_MAIN, <ReadinessCard />);
-      expect(bare).toMatch(/class="doll-ready-ring"[^>]*><b>—<\/b>/);
-      expect(bare).not.toContain('badge tier');
-      expect(visible(bare)).not.toMatch(/Атака ×|Живучість ×/);
-      expect(visible(bare)).toContain('Надінь зброю й броню в Головному');
-      // роздано більше очок, ніж дає рівень — «—» з поясненням, без тиру й множників, хоч еталон і є
-      const over = { ...doc, attrs: { ...doc.attrs, str: doc.attrs.str + 1 } };
-      const overHtml = renderIn(over, CFG_MAIN, <ReadinessCard />);
-      expect(overHtml).toMatch(/class="doll-ready-ring"[^>]*><b>—<\/b>/);
-      expect(overHtml).not.toContain('badge tier');
-      expect(visible(overHtml)).toContain('роздано більше очок, ніж дає рівень');
-      expect(visible(overHtml)).not.toMatch(/Атака ×|Живучість ×/);
-      expect(visible(overHtml)).toContain('не готовий');
-      // тіньовий режим — те саме число з підписом; для іншого класу еталона немає
-      withRules(normalizeRules({ dollScore: { ...rules.dollScore, mode: 'shadow' } }), () => {
-        expect(visible(renderIn(doc, CFG_MAIN, <ReadinessCard />))).toContain('Попередній: у жеребці поки рахується таблиця');
-        const mage = visible(renderIn(docFrom('typical-ga'), CFG_MAIN, <ReadinessCard />));
-        expect(mage).toContain('Для класу ще немає еталона');
-        expect(mage).not.toMatch(/NaN|undefined|Infinity/);
-      });
+      expect(html).toMatch(new RegExp('class="doll-ready-ring good"[^>]*><b>' + fmt(219) + '</b>'));
+      expect(html).toContain('badge tier tier-A');
+      expect(visible(html)).toMatch(/клас 20 /);
     });
+  });
+
+  it('без зброї чи броні або з перевитратою очок — «—» з поясненням, без тиру й розкладу', () => {
+    const doc = readyJs();
+    // зброю знято (ніде немає) — заявку не подати
+    const main = { ...doc.main };
+    delete main.ta;
+    const noWeapon = renderIn({ ...doc, main }, CFG_MAIN, <ReadinessCard />);
+    expect(noWeapon).toMatch(/class="doll-ready-ring"[^>]*><b>—<\/b>/);
+    expect(noWeapon).not.toContain('badge tier');
+    expect(visible(noWeapon)).toContain('Надінь зброю й броню в Головному');
+    expect(visible(noWeapon)).toContain('не готовий');
+    expect(visible(noWeapon)).not.toContain('Розклад по речах');
+    // та сама зброя лише в сеті — скор є (рахується зброя із сету), а в Головному її немає
+    const { doc: withSet, setId } = createSet({ ...doc, main }, 'pz');
+    const inSet = visible(renderIn(equip(withSet, setId!, 'ta', doc.main.ta!), CFG_MAIN, <ReadinessCard />));
+    expect(inSet).toContain('Зброя: R9 +10'); // грейд і точка — з найдорожчої зброї, хоч вона й у сеті
+    expect(inSet).toContain(fmt(207));
+    // порожній слот броні
+    const armor = { ...doc.main };
+    delete armor.rv;
+    const noArmor = visible(renderIn({ ...doc, main: armor }, CFG_MAIN, <ReadinessCard />));
+    expect(noArmor).toContain('Надінь зброю й броню в Головному');
+    expect(noArmor).toContain('не готовий');
+    // роздано більше очок, ніж дає рівень
+    const over = { ...doc, attrs: { ...doc.attrs, str: doc.attrs.str + 1 } };
+    const overHtml = renderIn(over, CFG_MAIN, <ReadinessCard />);
+    expect(overHtml).toMatch(/class="doll-ready-ring"[^>]*><b>—<\/b>/);
+    expect(overHtml).not.toContain('badge tier');
+    expect(visible(overHtml)).toContain('роздано більше очок, ніж дає рівень');
+    expect(visible(overHtml)).toContain('не готовий');
+    expect(visible(overHtml)).not.toContain('Розклад по речах');
+    expect(visible(overHtml)).not.toMatch(/NaN|undefined|Infinity/);
   });
 
   it('лише перегляд — картка та сама, без кнопок', () => {
@@ -546,7 +579,7 @@ describe('Готовність до турніру', () => {
 });
 
 describe('Плашка стану', () => {
-  it('порожня чернетка: «Бракує» з переліком і жовте нагадування про джина', () => {
+  it('порожня чернетка: «Бракує» з переліком без анкети і жовте нагадування про джина', () => {
     const html = renderIn(emptyDoc(), CFG_MAIN, <StatusPlate />);
     const text = visible(html);
     expect(html).toContain('class="doll-status warn"');
@@ -554,18 +587,18 @@ describe('Плашка стану', () => {
     for (const b of [
       'імʼя персонажа',
       'вільні очки атрибутів: 520',
-      'зброя в Головному',
-      'порожні слоти: нагрудник, поножі, взуття, браслети',
-      'анкета для турнірів: бракує грейд зброї',
+      'зброя',
+      'порожні слоти броні: нагрудник, поножі, взуття, браслети',
     ]) {
       expect(text).toContain(b);
     }
+    expect(text).not.toContain('анкет');
     expect(text).toContain('Зверни увагу');
     expect(text).toContain('порожні слоти: шолом, накидка, намисто, пояс, кільце (л), кільце (п)');
     expect(text).toContain('джина не заповнено — за нього 0 балів');
   });
 
-  it('заповнений персонаж: зелене «Усе заповнено»', () => {
+  it('заповнений персонаж: зелене «Усе заповнено»; нерозпізнані речі — лише нагадування', () => {
     const doc = readyJs();
     const html = renderIn(doc, CFG_MAIN, <StatusPlate />);
     expect(html).toContain('class="doll-status good"');
@@ -573,12 +606,119 @@ describe('Плашка стану', () => {
     expect(text).toContain('Усе заповнено');
     expect(text).toContain('шлях вказано');
     expect(text).not.toContain('Бракує');
+    // кільця фікстури (ранг 17) лялька не впізнає — зараховано «Луна і нижче», заявку не блокує
+    expect(text).toContain('Зверни увагу');
+    expect(text).toMatch(/Кільце 1: лялька не розпізнала «.+» — зараховано як «Луна і нижче»/);
+    // стара галочка ШГ без речі — нагадування
+    const main = { ...doc.main };
+    delete main.ft;
+    const old = visible(renderIn({ ...doc, main, sheet: { ...OLD_SHEET, shg: true } }, CFG_MAIN, <StatusPlate />));
+    expect(old).toContain('у старій анкеті стояла галочка ШГ');
   });
 
   it('перевірити не вдалося — так і кажемо, а не «Усе заповнено»', () => {
     const text = visible(renderToStaticMarkup(<StatusPlateView issues={{ blockers: [], notes: [] }} checked={false} level={105} />));
     expect(text).toContain('Персонажа не вдалося перевірити');
     expect(text).not.toContain('Усе заповнено');
+  });
+});
+
+describe('Джин (картка)', () => {
+  /** Дешеві вміння 1-го рівня (як у genie.test): 8 штук → джин від 100 рівня й удачі 91. */
+  const CHEAP = [10001, 9681, 9751, 9791, 9941, 9601, 9581, 9741];
+  const full = (): CharacterDoc => ({ ...docFrom('typical-by'), genie: { level: 100, luck: 91, skills: CHEAP } });
+
+  it('порожня чернетка: «не заповнено», порожні поля, 8 порожніх слотів (5–8 з удачею 51/71/81/91), підсумки «—», без іконки doll-icon', () => {
+    const html = renderIn(emptyDoc(), CFG_MAIN, <GenieCard />);
+    const text = visible(html);
+    expect(html).toContain('class="doll-card doll-genie"');
+    expect(text).toContain('Джин');
+    expect(text).toContain('не заповнено');
+    expect(html).toContain('doll-card-pill warn');
+    expect(text).toContain('вміння ›');
+    expect(html).toContain('aria-label="Вид джина: не обрано"');
+    expect(count(html, /class="doll-genie-in[^"]*"[^>]*value=""/g)).toBe(2);
+    expect(count(html, /class="doll-genie-slot is-empty"/g)).toBe(4);
+    expect(count(html, /class="doll-genie-slot is-empty is-short"/g)).toBe(4);
+    for (const n of ['51', '71', '81', '91']) expect(html).toMatch(new RegExp('is-short"[^>]*>' + n + '<'));
+    expect(count(html, /doll-genie-sum-v">—/g)).toBe(3);
+    expect(html).not.toContain('class="doll-icon"');
+    expect(html).not.toContain('doll-genie-range');
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+  });
+
+  it('вид джина — річ у слоті pk Головного: назва в aria-label, іконка спрайта без класу doll-icon', () => {
+    const html = renderIn(docFrom('typical-by'), CFG_MAIN, <GenieCard />);
+    expect(html).toMatch(/aria-label="Вид джина: [^"]*Тай Инь"/);
+    expect(html).toMatch(/class="doll-genie-kind-img" style="background-image:url\(&quot;[^&]*-hii\.png/);
+    expect(html).not.toContain('class="doll-icon"');
+  });
+
+  it('повна збірка: 8 іконок зі спрайта, «+8 у скор» і діапазон «91–99», підсумки без порушень', () => {
+    const doc = full();
+    const html = renderIn(doc, CFG_MAIN, <GenieCard />);
+    const text = visible(html);
+    expect(text).toContain('+8 у скор');
+    expect(html).toContain('doll-card-pill good');
+    expect(html).toMatch(/doll-genie-range"[^>]*>91–99</);
+    expect(count(html, /class="doll-genie-slot"/g)).toBe(8);
+    expect(count(html, /class="doll-genie-slot-img" style="[^"]*genie2[^"]*"/g)).toBe(8);
+    expect(html).not.toContain('is-empty');
+    expect(html).toMatch(/value="100"/);
+    expect(html).toMatch(/value="91"/);
+    expect(genieSums(doc.genie!)).toEqual({ minLevel: 100, luck: 91, aff: 6, affHave: affPointsAtLevel(100) });
+    expect(text).toContain(norm('Мін. рівень 100 є 100'));
+    expect(text).toContain(norm('Треба удачі 91 є 91'));
+    expect(text).toContain(norm('Спорідненість 6 з 21'));
+    expect(html).not.toContain('doll-genie-sum bad');
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+  });
+
+  it('рівня чи удачі бракує — підсумки червоні; занижена удача балів не знижує (8 вмінь → від 91)', () => {
+    const doc: CharacterDoc = { ...docFrom('typical-by'), genie: { level: 80, luck: 50, skills: CHEAP } };
+    const html = renderIn(doc, CFG_MAIN, <GenieCard />);
+    const text = visible(html);
+    expect(count(html, /class="doll-genie-sum bad"/g)).toBe(2);
+    expect(text).toContain(norm('Мін. рівень 100 є 80'));
+    expect(text).toContain(norm('Треба удачі 91 є 50'));
+    expect(text).toContain('+8 у скор');
+    // 4 вміння й удача 60: слот 5 відкрито (51), слоти 6–8 пригашені; порушень немає
+    const four: CharacterDoc = { ...doc, genie: { level: 60, luck: 60, skills: CHEAP.slice(0, 4) } };
+    const h4 = renderIn(four, CFG_MAIN, <GenieCard />);
+    expect(count(h4, /class="doll-genie-slot"/g)).toBe(4);
+    expect(count(h4, /class="doll-genie-slot is-empty"/g)).toBe(1);
+    expect(count(h4, /class="doll-genie-slot is-empty is-short"/g)).toBe(3);
+    expect(h4).not.toContain('doll-genie-sum bad');
+    expect(visible(h4)).toContain('+0 у скор');
+  });
+
+  it('лише перегляд: поля вимкнені, слоти й вид лишаються кнопками (відкривають вікно у перегляді)', () => {
+    const html = renderIn(full(), CFG_MAIN, <GenieCard />, true);
+    expect(count(html, /class="doll-genie-in[^"]*"[^>]*disabled=""/g)).toBe(2);
+    expect(count(html, /class="doll-genie-slot"/g)).toBe(8);
+    expect(html).toContain('вміння ›');
+  });
+
+  it('чистий вигляд без контексту: вид і бали з пропсів', () => {
+    const html = renderToStaticMarkup(
+      <GenieCardView
+        genie={{ level: 100, luck: 100, skills: [] }}
+        kind={{ name: 'Душа Тай Чин', icon: { backgroundImage: 'url("x.png")' } }}
+        points={10}
+        rangeLabel="удача 100"
+        readOnly={false}
+        onOpen={noop}
+        onLevel={noop}
+        onLuck={noop}
+      />,
+    );
+    expect(html).toContain('aria-label="Вид джина: Душа Тай Чин"');
+    expect(visible(html)).toContain('+10 у скор');
+    expect(html).toMatch(/doll-genie-range"[^>]*>удача 100</);
+    // без вмінь удача 100 нічого не вимагає: підсумки 1 / 10 / 0 з 21
+    expect(visible(html)).toContain(norm('Мін. рівень 1 є 100'));
+    expect(visible(html)).toContain(norm('Треба удачі 10 є 100'));
+    expect(visible(html)).toContain(norm('Спорідненість 0 з 21'));
   });
 });
 

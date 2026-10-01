@@ -1,18 +1,20 @@
 // =========================================================
-// ЛЯЛЬКА — анкета заявки з персонажа. Більшість полів лялька визначає сама:
+// ЛЯЛЬКА — що лялька знає про персонажа для заявки (DollFacts) і legacy-анкета
+// заявки (PlayerGear для колонок registrations). Усе лялька визначає сама:
 // клас і рівень; збірку (ДД / гібрид / кон — за часткою очок у Тілобудові);
-// точку зброї, точку броні (середня, округлена вгору), точку кілець R9R1;
-// камені (поштучно, бали за клас каменя з каталогу); ПЗ-зброю й свап-сети
-// (сет рахується, якщо показник у ньому досягає порогу і вищий, ніж у
-// Головному) разом із каменями сетів; ШГ і Вознєс (надіті «Шлем героя» і
-// «Плащ вознесения», SHG_ITEM / VOZNES_ITEM) та їхню точку. Гравець заповнює
-// лише те, чого в каталозі немає: грейд зброї й сету броні, грейди кілець,
-// трактат, джин — це поля «Анкети для турнірів» у персонажі (doc.sheet).
-// Ті самі грейди лялька вже визначає й з надітих речей (model/grades.ts,
-// поля weaponGrade … gradeNotes у DollFacts), але в заявку вони поки йдуть з
-// анкети — перехід на них наступним кроком.
-// Згодом, коли скор рахуватиметься прямо з характеристик ляльки, ці грейди
-// стануть непотрібні.
+// грейд зброї, сет броні, трактат і кільця — з надітих речей каталогу
+// (model/grades.ts); точку зброї, точку броні (середня, округлена вгору),
+// точку кілець R9R1; камені (поштучно, бали за клас каменя з каталогу);
+// ПЗ-зброю й свап-сети (сет рахується, якщо показник у ньому досягає порогу і
+// вищий, ніж у Головному) разом із каменями сетів; ШГ і Вознєс (надіті «Шлем
+// героя» і «Плащ вознесения», SHG_ITEM / VOZNES_ITEM) та їхню точку; джина —
+// з блоку джина (doc.genie, бали за удачею).
+// Ручної «Анкети для турнірів» більше немає (рішення власника 01.10.2026):
+// старий ключ doc.sheet у збережених персонажах лишається валідним
+// (sheetErrors), але в бали не йде — лише doc.sheet.genie як запасний шлях
+// для джина, поки гравець не заповнив блок джина. Бали заявки рахує скор v2
+// «від речей» (model/itemScore.ts); PlayerGear звідси — для legacy-колонок
+// заявки (CHECK «усі 10 або жодна») і табличного запасного шляху старих заявок.
 // =========================================================
 
 import { deriveIb } from '../core/buffs';
@@ -25,10 +27,11 @@ import type {
   ArmorRefine, ArmorSet, Build, CharClass, CharLevel, Gems, Genie, PlayerGear, RingGrade, SpecialSet, Tract, WeaponGrade, WeaponRefine,
 } from '../../data/types';
 import { genieBucket, genieScoreLuck } from '../../data/genie';
+import { SLOTS } from '../core/constants';
 import { ATTR_BASE, gemDop } from '../core/stats';
 import type { Item } from '../core/types';
 import { derivedNumbers, type DerivedNumbers } from '../core/derived';
-import type { CharacterDoc, ClsKey, SlotKey } from './doc';
+import { SLOT_CAT, type CharacterDoc, type ClsKey, type SlotKey } from './doc';
 import { armorSetOf, ringGradeOf, tractOf, weaponGradeOf } from './grades';
 import { CFG_MAIN, effectiveSlots, hydrate, toDollState, type CharacterModel, type ItemLookup } from './hydrate';
 
@@ -38,24 +41,31 @@ export const CLS_CHAR: Record<ClsKey, CharClass> = {
   js: 'archer', fx: 'assassin', sj: 'psychic', ej: 'seeker', rg: 'mystic',
 };
 
-/** Поля, які заповнює гравець (решту дає лялька). Старі чернетки могли мати й
- * інші ключі (точка, камені, збірка, ШГ/Вознєс) — перевірка їх приймає, мапер
- * ігнорує. ШГ і Вознєс лялька бачить сама (SHG_ITEM / VOZNES_ITEM). */
-export type SheetFields = Pick<PlayerGear, 'weaponGrade' | 'armorSet' | 'tract' | 'genie' | 'ring1' | 'ring2'>;
-
 /** ШГ — «Шлем героя», Вознєс — «Плащ вознесения» (разом — комплект «Артефакт
  * белого владыки»). Наявність і точку беремо з ляльки: річ надіта в Головному
  * або в будь-якому сеті (рішення власника 30.09.2026 — окремо не питаємо). */
 export const SHG_ITEM = { slot: 'ft', id: 83 } as const;
 export const VOZNES_ITEM = { slot: 'wy', id: 40 } as const;
-export type Sheet = Partial<SheetFields> &
-  Partial<Pick<PlayerGear, 'build' | 'weaponRefine' | 'armorRefine' | 'gems' | 'ring1Refine' | 'ring2Refine' | 'specialSetGems' | 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine'>>;
+
+/** Стара «Анкета для турнірів» у збережених персонажах (до 01.10.2026): грейди,
+ * які гравець вибирав сам, і ще старіші ключі (точка, камені, збірка, галочки
+ * ШГ/Вознєс). Ключ лише читається: перевірка приймає, у бали йде тільки genie
+ * (genieOf), галочки ШГ/Вознєс без речі на ляльці — нагадування в плашці стану. */
+export type Sheet = Partial<
+  Pick<
+    PlayerGear,
+    | 'weaponGrade' | 'armorSet' | 'tract' | 'genie' | 'ring1' | 'ring2'
+    | 'build' | 'weaponRefine' | 'armorRefine' | 'gems' | 'ring1Refine' | 'ring2Refine' | 'specialSetGems'
+    | 'shg' | 'shgRefine' | 'voznes' | 'voznesRefine'
+  >
+>;
 
 const REFINE_MAX = 12;
 const enumOk = (order: readonly string[], v: unknown) => typeof v === 'string' && order.includes(v);
 const refineOk = (v: unknown) => v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= REFINE_MAX);
 
-/** Перевірка анкети в документі: лише відомі ключі й допустимі значення. Повертає список помилок. */
+/** Перевірка старої анкети в документі: лише відомі ключі й допустимі значення
+ * (старі персонажі мають і далі відкриватися). Повертає список помилок. */
 export function sheetErrors(raw: unknown): string[] {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return ['анкета має бути обʼєктом'];
   const s = raw as Record<string, unknown>;
@@ -227,10 +237,12 @@ export interface DollFacts {
    * в Головному чи в сеті; null — речі на ляльці немає. */
   shgRefine: number | null;
   voznesRefine: number | null;
-  /** Грейди шкали з надітих речей (model/grades.ts). Зброя — з Головного,
-   * null — зброї немає; сет броні — нагрудник, поножі, взуття, наручі
-   * Головного; кільця — cr і cd Головного (порожній слот — «Луна і нижче»);
-   * трактат — найкращий з Головного й усіх сетів. */
+  /** Грейди шкали з надітих речей (model/grades.ts) — для legacy-колонок
+   * заявки й рядка «Лялька бачить». Зброя — з Головного, null — зброї немає;
+   * сет броні — нагрудник, поножі, взуття, наручі Головного; кільця — cr і cd
+   * Головного (порожній слот — «Луна і нижче»); трактат — найкращий з
+   * Головного й усіх сетів. Скор v2 (itemScore.ts) рахує грейди сам, за
+   * кожною річчю. */
   weaponGrade: WeaponGrade | null;
   armorSet: ArmorSet;
   tract: Tract;
@@ -283,6 +295,23 @@ const ARMOR_SET_SLOTS: SlotKey[] = ['rv', 'tg', 'rx', 'mj'];
 /** Назва речі для попередження — без хвостових пробілів каталогу. */
 const itemName = (it: Item) => String(it.name).replace(/\s+/g, ' ').trim();
 
+/** Зброя для грейду й точки: найдорожча за грейдом (далі — за точкою) серед Головного
+ * й сетів — у скорі v2 головна зброя теж найдорожча, де б вона не лежала. */
+function bestWeapon(doc: CharacterDoc, model: CharacterModel): ReturnType<CharacterModel['items']['get']> {
+  let best: ReturnType<CharacterModel['items']['get']> = undefined;
+  let bestKey = -1;
+  for (const iid of [doc.main.ta, ...doc.sets.map((s) => s.slots.ta)]) {
+    const h = iid ? model.items.get(iid) : undefined;
+    if (!h?.item) continue;
+    const key = WEAPON_GRADE_ORDER.indexOf(weaponGradeOf(h.item).grade) * 100 + (h.inst.r ?? 0);
+    if (key > bestKey) {
+      best = h;
+      bestKey = key;
+    }
+  }
+  return best;
+}
+
 /**
  * Усе, що лялька визначає сама. Каталоги й довідники мають бути завантажені
  * (ensureCats/ensureRefData). Обсяг (Головний чи всі сети) — rules.doll.scope.
@@ -328,7 +357,7 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
     const v = Math.round(avg(counts.map((c) => c[k] ?? 0)));
     if (v > 0) gemCounts[k] = v;
   }
-  const weapon = doc.main.ta ? model.items.get(doc.main.ta) : undefined;
+  const weapon = bestWeapon(doc, model);
   const ringR = (slot: 'cr' | 'cd') => {
     const iid = doc.main[slot];
     const h = iid ? model.items.get(iid) : undefined;
@@ -386,94 +415,87 @@ export function dollFacts(doc: CharacterDoc, rules: ScoringRules, lookup?: ItemL
   };
 }
 
-const SHEET_LABELS: Record<string, string> = {
-  weaponGrade: 'грейд зброї', armorSet: 'сет броні', tract: 'трактат', genie: 'джин', ring1: 'кільце 1', ring2: 'кільце 2',
-};
-
 export interface CharacterGear {
-  /** Повна анкета для заявки; null — бракує полів (missing). */
+  /** Legacy-анкета для колонок заявки (грейди — з ляльки); null — бракує речей (missing). */
   gear: PlayerGear | null;
-  /** Чого бракує — простими словами. */
+  /** Чого бракує для заявки — ті самі рядки, що в плашці стану (dollMissing). */
   missing: string[];
   attackLevel: number;
   defenseLevel: number;
   facts: DollFacts;
 }
 
+/** Назва слота для «порожній слот броні: нагрудник». */
+const SLOT_NAME: Record<string, string> = Object.fromEntries(SLOTS.map((s) => [s.slot, s.label.toLowerCase()]));
+
+/** Чи є хоч одна зброя — у Головному чи в будь-якому сеті (скор v2 бере найдорожчу, де б вона не лежала). */
+export function hasAnyWeapon(doc: CharacterDoc, model: CharacterModel): boolean {
+  return [doc.main.ta, ...doc.sets.map((s) => s.slots.ta)].some((iid) => {
+    const h = iid ? model.items.get(iid) : undefined;
+    return !!h?.item && h.inst.cat === SLOT_CAT.ta;
+  });
+}
+
 /**
- * Анкета заявки з персонажа. setsFromDoll — чи рахувати свап-сети з ляльки
- * (перемикач у «Шкалі балів»); вимкнено — сети в заявку не йдуть, як і в
- * публічній анкеті, ПЗ-зброя — завжди з ляльки.
+ * Без чого заявку не подати (рішення власника, скор v2 §10): немає жодної зброї
+ * (ні в Головному, ні в сеті) і порожній слот броні rv/tg/rx/mj у Головному.
+ * Решта порожніх слотів, джин і нерозпізнані речі заявку не блокують. Рядки —
+ * іменники для «Бракує: …» у плашці стану; заявка перефразовує (submitBlockReason).
  */
-export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { setsFromDoll: boolean }): CharacterGear {
-  const s: Sheet = doc.sheet ?? {};
-  const missing: string[] = [];
-  for (const k of ['weaponGrade', 'armorSet', 'tract', 'genie', 'ring1', 'ring2'] as const) {
-    if (s[k] == null) missing.push(SHEET_LABELS[k]);
-  }
-  if (!facts.weaponRefine) missing.push('зброя на ляльці');
-  if (!facts.armorRefine) missing.push('броня на ляльці');
-  if (s.ring1 && s.ring1 !== 'moon' && facts.ring1Refine == null) missing.push('кільце 1 на ляльці');
-  if (s.ring2 && s.ring2 !== 'moon' && facts.ring2Refine == null) missing.push('кільце 2 на ляльці');
-  const sets = opts.setsFromDoll ? facts.specialSets : [];
+export function dollMissing(doc: CharacterDoc, model: CharacterModel): string[] {
+  const out: string[] = [];
+  if (!hasAnyWeapon(doc, model)) out.push('зброя');
+  const empty = ARMOR_SET_SLOTS.filter((s) => {
+    const iid = doc.main[s];
+    const h = iid ? model.items.get(iid) : undefined;
+    return !h?.item || h.inst.cat !== SLOT_CAT[s];
+  }).map((s) => SLOT_NAME[s] ?? s);
+  if (empty.length) out.push((empty.length === 1 ? 'порожній слот броні: ' : 'порожні слоти броні: ') + empty.join(', '));
+  return out;
+}
+
+/**
+ * Legacy-анкета заявки з персонажа: усе з ляльки — грейди зброї, броні, трактату
+ * й кілець з надітих речей (DollFacts), джин з блоку джина (genieOf; ніде не
+ * заповнено — «до 60»). setsFromDoll — чи рахувати свап-сети з ляльки
+ * (перемикач у «Шкалі балів»); вимкнено — сети в заявку не йдуть, ПЗ-зброя —
+ * завжди з ляльки. gear = null лише коли бракує речей (dollMissing).
+ */
+export function gearFromCharacter(doc: CharacterDoc, facts: DollFacts, opts: { setsFromDoll: boolean }, lookup?: ItemLookup): CharacterGear {
+  const missing = dollMissing(doc, hydrate(doc, lookup));
   const base = { attackLevel: Math.round(facts.pa), defenseLevel: Math.round(facts.pz), facts };
   if (missing.length) return { gear: null, missing, ...base };
+  return { gear: gearOfFacts(doc, facts, opts.setsFromDoll), missing: [], ...base };
+}
+
+/** Legacy-анкета з того, що визначила лялька, — завжди, навіть для голої ляльки
+ * (порожній слот — найнижчий грейд): рядок «Лялька бачить» у картці «Готовність». */
+export function gearOfFacts(doc: CharacterDoc, facts: DollFacts, setsFromDoll: boolean): PlayerGear {
+  const sets = setsFromDoll ? facts.specialSets : [];
   const setGems: Partial<Record<SpecialSet, Gems>> = {};
   for (const k of sets) setGems[k] = facts.specialSetGems[k] ?? 'g0_9';
-  const gear: PlayerGear = {
+  return {
     charClass: CLS_CHAR[doc.cls],
     charLevel: charLevelOf(doc.level),
     build: facts.build,
-    weaponGrade: s.weaponGrade!,
-    weaponRefine: facts.weaponRefine!,
+    // Зброя лише в сеті (у Головному порожньо) — для таблиці «інше» з точкою 0–5; скор v2 бере її повністю.
+    weaponGrade: facts.weaponGrade ?? 'other',
+    weaponRefine: facts.weaponRefine ?? 'w0_5',
     weaponPz: facts.weaponPz,
-    armorSet: s.armorSet!,
-    armorRefine: facts.armorRefine!,
+    armorSet: facts.armorSet,
+    armorRefine: facts.armorRefine ?? 'a0_4',
     gems: facts.gems,
     specialSets: sets,
     specialSetGems: setGems,
-    tract: s.tract!,
-    genie: s.genie!,
+    tract: facts.tract,
+    genie: genieOf(doc) ?? 'g60',
     shg: facts.shgRefine != null,
     shgRefine: facts.shgRefine,
     voznes: facts.voznesRefine != null,
     voznesRefine: facts.voznesRefine,
-    ring1: s.ring1!,
-    ring1Refine: s.ring1 === 'r9r1' ? facts.ring1Refine ?? 0 : null,
-    ring2: s.ring2!,
-    ring2Refine: s.ring2 === 'r9r1' ? facts.ring2Refine ?? 0 : null,
+    ring1: facts.ring1,
+    ring1Refine: facts.ring1 === 'r9r1' ? facts.ring1Refine ?? 0 : null,
+    ring2: facts.ring2,
+    ring2Refine: facts.ring2 === 'r9r1' ? facts.ring2Refine ?? 0 : null,
   };
-  return { gear, missing: [], ...base };
-}
-
-/** Анкета → поля для GearFields: те, що дає лялька, підставлено (їх не редагують). */
-export function sheetAsGear(doc: CharacterDoc, facts: DollFacts | null): Partial<PlayerGear> {
-  const s = doc.sheet ?? {};
-  return {
-    weaponGrade: s.weaponGrade, armorSet: s.armorSet, tract: s.tract, genie: s.genie, ring1: s.ring1, ring2: s.ring2,
-    shg: facts ? facts.shgRefine != null : false, shgRefine: facts?.shgRefine ?? null,
-    voznes: facts ? facts.voznesRefine != null : false, voznesRefine: facts?.voznesRefine ?? null,
-    charClass: CLS_CHAR[doc.cls],
-    charLevel: charLevelOf(doc.level),
-    build: facts?.build,
-    weaponRefine: facts?.weaponRefine ?? undefined,
-    armorRefine: facts?.armorRefine ?? undefined,
-    gems: facts?.gems,
-    weaponPz: facts?.weaponPz ?? false,
-    specialSets: facts?.specialSets ?? [],
-    specialSetGems: facts?.specialSetGems ?? {},
-    ring1Refine: facts?.ring1Refine ?? null,
-    ring2Refine: facts?.ring2Refine ?? null,
-  };
-}
-
-/** Зміна з GearFields → лише поля, які заповнює гравець. */
-export function sheetFromGear(g: Partial<PlayerGear>): Sheet {
-  const out: Sheet = {};
-  const keys: Array<keyof SheetFields> = ['weaponGrade', 'armorSet', 'tract', 'genie', 'ring1', 'ring2'];
-  for (const k of keys) {
-    const v = g[k];
-    if (v !== undefined) (out as Record<string, unknown>)[k] = v;
-  }
-  return out;
 }

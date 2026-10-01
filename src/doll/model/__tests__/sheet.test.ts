@@ -4,14 +4,16 @@ import type { Item } from '../../core/types';
 import { validateDoc } from '../doc';
 import { createSet, equip, updateInstance } from '../ops';
 import {
-  armorRefineBucket, buildOf, charLevelOf, dollFacts, gearFromCharacter, gemClass, gemsBucket, genieOf, sheetErrors, sheetFromGear, weaponRefineBucket,
+  armorRefineBucket, buildOf, charLevelOf, dollFacts, dollMissing, gearFromCharacter, gemClass, gemsBucket, genieOf, sheetErrors, weaponRefineBucket,
   SHG_ITEM, VOZNES_ITEM, type DollFacts, type Sheet,
 } from '../sheet';
+import { hydrate } from '../hydrate';
 import { docFrom, inst, loadRef, lookup, mkDoc, mkSet } from './testDoc';
 
 beforeAll(() => loadRef());
 
 const rules = normalizeRules({});
+/** Стара «Анкета для турнірів» у збереженому персонажі — у бали не йде (крім genie як запасного шляху). */
 const SHEET: Sheet = { weaponGrade: 'r8r', armorSet: 'r8r', tract: 't7', genie: 'g100', shg: false, voznes: false, ring1: 'r9', ring2: 'r9r1' };
 const FACTS: DollFacts = {
   build: 'dd', weaponPz: false, weaponPzGain: 0, specialSets: [], specialSetGems: {}, weaponRefine: 'w10', armorRefine: 'a8', armorRefineAvg: 7.4,
@@ -81,31 +83,54 @@ describe('анкета персонажа', () => {
     expect(validateDoc({ ...doc, sheet: { weaponGrade: 'r99' } }).ok).toBe(false);
   });
 
-  it('неповна анкета — перелік того, чого бракує', () => {
-    const doc = { ...docFrom('typical-js'), sheet: { weaponGrade: 'r8r' } as Sheet };
-    const r = gearFromCharacter(doc, FACTS, { setsFromDoll: true });
-    expect(r.gear).toBeNull();
-    expect(r.missing).toContain('сет броні');
-    expect(r.missing).toContain('кільце 2');
+  it('бракує речей: без зброї (ніде) чи з порожнім слотом броні Головного gear = null; рядки — як у плашці стану', () => {
+    const base = docFrom('typical-js');
+    expect(dollMissing(base, hydrate(base, lookup))).toEqual([]);
+    const main = { ...base.main };
+    delete main.ta;
+    const noWeapon = gearFromCharacter({ ...base, main }, FACTS, { setsFromDoll: true }, lookup);
+    expect(noWeapon.gear).toBeNull();
+    expect(noWeapon.missing).toEqual(['зброя']);
+    // зброя лише в сеті — цього досить (скор v2 рахує найдорожчу, де б вона не лежала)
+    const inSet = { ...base, main, sets: [mkSet('s1', { ta: base.main.ta })] };
+    expect(gearFromCharacter(inSet, FACTS, { setsFromDoll: true }, lookup).missing).toEqual([]);
+    delete main.rv;
+    delete main.mj;
+    const noArmor = gearFromCharacter({ ...base, main }, FACTS, { setsFromDoll: true }, lookup);
+    expect(noArmor.gear).toBeNull();
+    expect(noArmor.missing).toEqual(['зброя', 'порожні слоти броні: нагрудник, браслети']);
+    const oneSlot = { ...base.main };
+    delete oneSlot.tg;
+    expect(gearFromCharacter({ ...base, main: oneSlot }, FACTS, { setsFromDoll: true }, lookup).missing).toEqual(['порожній слот броні: поножі']);
+    // стара анкета не потрібна і нічого не блокує
+    expect(gearFromCharacter(base, FACTS, { setsFromDoll: true }, lookup).missing).toEqual([]);
+    expect(gearFromCharacter({ ...base, sheet: { weaponGrade: 'r8r' } }, FACTS, { setsFromDoll: true }, lookup).missing).toEqual([]);
   });
 
-  it('повна анкета: грейди з анкети, решта — з ляльки', () => {
-    const doc = { ...docFrom('typical-js'), sheet: SHEET };
-    const r = gearFromCharacter(doc, FACTS, { setsFromDoll: true });
+  it('грейди — з ляльки (DollFacts), стара анкета в документі на них не впливає; джин — genieOf', () => {
+    const doc = { ...docFrom('typical-js'), sheet: SHEET }; // в анкеті r8r / r8r / t7 / r9 / r9r1 — ігнорується
+    const r = gearFromCharacter(doc, FACTS, { setsFromDoll: true }, lookup);
     expect(r.missing).toEqual([]);
     expect(r.gear).toMatchObject({
-      charClass: 'archer', build: 'dd', weaponGrade: 'r8r', weaponRefine: 'w10', armorRefine: 'a8', gems: 'pa',
-      ring2: 'r9r1', ring2Refine: 3, ring1Refine: null,
+      charClass: 'archer', charLevel: 'l105', build: 'dd', weaponGrade: 'r9', weaponRefine: 'w10', armorSet: 'r9', armorRefine: 'a8', gems: 'pa',
+      tract: 'emperor', ring1: 'moon', ring2: 'moon', ring1Refine: null, ring2Refine: null,
+      genie: 'g100', // зі старої анкети — запасний шлях, поки блок джина не заповнено
     });
     expect(r.attackLevel).toBe(12);
     expect(r.defenseLevel).toBe(8);
+    // точка кільця — лише для R9R1, з ляльки
+    const r9r1 = gearFromCharacter(doc, { ...FACTS, ring2: 'r9r1' }, { setsFromDoll: true }, lookup).gear!;
+    expect([r9r1.ring2, r9r1.ring2Refine]).toEqual(['r9r1', 3]);
+    // без анкети й блоку джина — «до 60»; блок джина головніший за анкету
+    expect(gearFromCharacter(docFrom('typical-js'), FACTS, { setsFromDoll: true }, lookup).gear?.genie).toBe('g60');
+    expect(gearFromCharacter({ ...doc, genie: { level: 70, luck: 65, skills: [] } }, FACTS, { setsFromDoll: true }, lookup).gear?.genie).toBe('g61_70');
   });
 
   it('сети з ляльки: лише коли ввімкнено, камені сету — з ляльки', () => {
-    const doc = { ...docFrom('typical-js'), sheet: SHEET };
+    const doc = docFrom('typical-js');
     const facts: DollFacts = { ...FACTS, specialSets: ['pz'], specialSetGems: { pz: 'camp' } };
-    expect(gearFromCharacter(doc, facts, { setsFromDoll: false }).gear?.specialSets).toEqual([]);
-    const on = gearFromCharacter(doc, facts, { setsFromDoll: true }).gear;
+    expect(gearFromCharacter(doc, facts, { setsFromDoll: false }, lookup).gear?.specialSets).toEqual([]);
+    const on = gearFromCharacter(doc, facts, { setsFromDoll: true }, lookup).gear;
     expect(on?.specialSets).toEqual(['pz']);
     expect(on?.specialSetGems).toEqual({ pz: 'camp' });
   });
@@ -152,12 +177,12 @@ describe('анкета персонажа', () => {
     expect([main.shgRefine, main.voznesRefine]).toEqual([11, 7]);
     const inSet = dollFacts(mkDoc({ items, main: { ft: 'x' }, sets: [mkSet('s1', { ft: 'h', wy: 'c' })] }), rules, lookup);
     expect([inSet.shgRefine, inSet.voznesRefine]).toEqual([11, 7]);
-    // В анкеті заявки — з ляльки, а старі галочки в документі ігноруються
+    // У заявці — з ляльки, а старі галочки в документі ігноруються
     const doc = { ...docFrom('typical-js'), sheet: { ...SHEET, shg: true, shgRefine: 12 } };
-    const g = gearFromCharacter(doc, { ...FACTS, shgRefine: null, voznesRefine: 9 }, { setsFromDoll: false }).gear!;
+    const g = gearFromCharacter(doc, { ...FACTS, shgRefine: null, voznesRefine: 9 }, { setsFromDoll: false }, lookup).gear!;
     expect([g.shg, g.shgRefine, g.voznes, g.voznesRefine]).toEqual([false, null, true, 9]);
-    // стара галочка без точки більше не робить анкету неповною
-    const noRefine = gearFromCharacter({ ...doc, sheet: { ...SHEET, shg: true } }, FACTS, { setsFromDoll: false });
+    // стара галочка без точки нічого не блокує
+    const noRefine = gearFromCharacter({ ...doc, sheet: { ...SHEET, shg: true } }, FACTS, { setsFromDoll: false }, lookup);
     expect(noRefine.missing).toEqual([]);
     // два екземпляри: у Головному +5, у сеті +11 — береться більша точка
     const two = [inst('h5', 'ft', SHG_ITEM.id, { r: 5 }), inst('h11', 'ft', SHG_ITEM.id, { r: 11 })];
@@ -180,11 +205,4 @@ describe('анкета персонажа', () => {
     expect(genieOf({ ...base, genie: { level: 80, luck: 0, skills: eight.slice(0, 6) } })).toBe('g71_80');
   });
 
-  it('зміна з анкети зберігає лише грейди', () => {
-    const out = sheetFromGear({
-      charClass: 'archer', weaponPz: true, specialSets: ['pz'], weaponGrade: 'r9', gems: 'camp', armorRefine: 'a10', ring1: 'moon',
-      shg: true, shgRefine: 5, voznes: true, voznesRefine: 7, // підставлені з ляльки — у документ не пишуться
-    });
-    expect(out).toEqual({ weaponGrade: 'r9', ring1: 'moon' });
-  });
 });

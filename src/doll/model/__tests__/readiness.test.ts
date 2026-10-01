@@ -1,20 +1,22 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { classPointsFor, dollGearScoreWith, normalizeRules, shgVoznesScore, tierForWith } from '../../../data/gearRules';
+import { BUILTIN_RULES_VERSION, classPointsFor, normalizeRules, registrationScore, tierForWith } from '../../../data/gearRules';
 import { emptyDoc, type CharacterDoc } from '../doc';
 import { hydrate } from '../hydrate';
-import { resetAttrs, setAttr, setLevel } from '../ops';
-import { PREVIEW_TEAM_SIZE, dollScorePreview, gearFromFacts, readinessIssues, vitShare } from '../readiness';
-import { buildOf, dollFacts, type Sheet } from '../sheet';
+import { scoreItems } from '../itemScore';
+import { createSet, equip, resetAttrs, setAttr, setLevel } from '../ops';
+import { PREVIEW_TEAM_SIZE, dollScorePreview, itemNamesOf, readinessIssues, vitShare } from '../readiness';
+import { buildOf, dollFacts, gearFromCharacter, type Sheet } from '../sheet';
 import { docFrom, loadRef, lookup } from './testDoc';
 
 beforeAll(() => loadRef());
 
 const rules = normalizeRules({});
-/** Повна анкета для турнірів: поки заявка бере грейди й джина з неї, без неї персонаж «не готовий». */
-const SHEET: Sheet = { weaponGrade: 'r9r2', armorSet: 'r9', tract: 't8', genie: 'g71_80', ring1: 'r9', ring2: 'r9' };
-/** Готовий до турніру лучник: фікстура + імʼя, шлях і анкета (очки фікстури роздано всі). */
-const ready = (): CharacterDoc => ({ ...docFrom('typical-js'), name: 'Тайфорн', path: 'rs', sheet: SHEET });
-const issues = (doc: CharacterDoc) => readinessIssues(doc, hydrate(doc, lookup), dollFacts(doc, rules, lookup), rules);
+/** Стара «Анкета для турнірів» у збереженому персонажі: у бали не йде (крім джина як запасного шляху). */
+const OLD_SHEET: Sheet = { weaponGrade: 'other', armorSet: 'other', tract: 't1_3', genie: 'g71_80', ring1: 'r9r1', ring2: 'r9r1' };
+/** Готовий до турніру лучник: фікстура + імʼя і шлях (очки фікстури роздано всі); анкета не потрібна. */
+const ready = (): CharacterDoc => ({ ...docFrom('typical-js'), name: 'Тайфорн', path: 'rs' });
+const issues = (doc: CharacterDoc) => readinessIssues(doc, hydrate(doc, lookup), dollFacts(doc, rules, lookup), scoreItems(doc, rules, lookup));
+const preview = (doc: CharacterDoc) => dollScorePreview(doc, rules, BUILTIN_RULES_VERSION, PREVIEW_TEAM_SIZE, lookup);
 const noNaN = (o: unknown) => expect(JSON.stringify(o)).not.toMatch(/NaN|Infinity/);
 
 describe('частка Тілобудови і збірка', () => {
@@ -42,93 +44,100 @@ describe('частка Тілобудови і збірка', () => {
   });
 });
 
-describe('попередній скор з ляльки', () => {
-  it('вбудована шкала (еталонів немає): скору, тиру й множників немає — і жодного NaN', () => {
+describe('попередній скор v2 з ляльки', () => {
+  // typical-js (лучник 105): 189.01 балів за речі (itemScore.test); клас 8 (3×3), рівень 10, джин не заповнено — 0 → 207.
+  it('клас (3×3) + рівень + джин + бали за речі — як registrationScore у заявці; тир зі шкали; розклад із назвами', () => {
     const doc = ready();
-    const p = dollScorePreview(doc, dollFacts(doc, rules, lookup), rules, PREVIEW_TEAM_SIZE, lookup);
-    expect(p.mode).toBe('off');
-    expect(p.power?.off).toBeGreaterThan(0);
-    expect(p.ref).toBeNull();
-    expect(p.offMult).toBeNull();
-    expect(p.defMult).toBeNull();
-    expect(p.score).toBeNull();
-    expect(p.tier).toBeNull();
+    const p = preview(doc);
+    const items = scoreItems(doc, rules, lookup);
+    expect(p.parts).toEqual({ cls: classPointsFor(rules, 'archer', 3), lvl: rules.level.l105, genie: 0, items: items.itemPoints });
+    expect(p.parts).toEqual({ cls: 8, lvl: 10, genie: 0, items: 189.01 });
+    expect(p.score).toBe(207);
+    expect(p.tier).toBe(tierForWith(207, rules));
+    expect(p.genie).toBe('g60');
+    expect(p.genieFilled).toBe(false);
+    // те саме число, що складе заявка з legacy-колонок і itemPoints
+    const gear = gearFromCharacter(doc, dollFacts(doc, rules, lookup), { setsFromDoll: rules.setsFromDoll }, lookup).gear;
+    expect(registrationScore({ gear, itemPoints: items.itemPoints }, rules, 3)).toBe(p.score);
+    // розклад — як у заявці: версія, складові, лише зараховані рядки
+    expect(p.breakdown.ver).toBe(BUILTIN_RULES_VERSION);
+    expect(p.breakdown.sum).toMatchObject({ cls: 8, lvl: 10, genie: 0, main: items.mainTotal, sets: items.setsCapped });
+    expect(p.breakdown.rows.length).toBeGreaterThan(5);
+    expect(p.breakdown.rows.every((r) => r[3] > 0)).toBe(true);
+    // назви речей для розкладу — зі scoreItems
+    const name = itemNamesOf(p.items);
+    expect(name(1902, 'ta')).toBe('Небесний лук');
+    expect(name(1902, 'qn')).toBeNull();
     noNaN(p);
   });
 
-  it('порожня чернетка — без винятків і без NaN', () => {
-    const doc = emptyDoc('js');
-    const p = dollScorePreview(doc, dollFacts(doc, rules, lookup), rules, PREVIEW_TEAM_SIZE, lookup);
-    expect(p.score).toBeNull();
-    noNaN(p);
+  it('джин — з блоку джина за удачею; без нього — зі старої анкети; ніде не заповнено — «до 60» (0 балів)', () => {
+    const base = ready();
+    const withGenie: CharacterDoc = { ...base, genie: { level: 105, luck: 100, skills: [] } };
+    const p = preview(withGenie);
+    expect(p.genie).toBe('g100');
+    expect(p.genieFilled).toBe(true);
+    expect(p.parts.genie).toBe(rules.genie.g100);
+    expect(p.score).toBe(217);
+    // блок джина головніший за стару анкету; стара анкета — запасний шлях
+    expect(preview({ ...withGenie, sheet: OLD_SHEET }).genie).toBe('g100');
+    const old = preview({ ...base, sheet: OLD_SHEET });
+    expect(old.genie).toBe('g71_80');
+    expect(old.genieFilled).toBe(true);
+    expect(old.score).toBe(207 + rules.genie.g71_80);
   });
 
-  it('еталон, рівний персонажу: множники 1, скор = бали еталона + клас (3×3) + джин + ШГ/Вознєс', () => {
+  it('стара анкета з іншими грейдами на бали не впливає — грейди з речей', () => {
     const doc = ready();
-    const facts = dollFacts(doc, rules, lookup);
-    const own = dollScorePreview(doc, facts, rules, PREVIEW_TEAM_SIZE, lookup).power!;
-    const r = normalizeRules({
-      dollScore: { mode: 'shadow', refs: { archer: { off: own.off, def: own.def, base: 150, label: 'еталон', wpa: own.wpa, ...(own.abil ? { abil: own.abil } : {}) } } },
-    });
-    const p = dollScorePreview(doc, facts, r, 3, lookup);
-    expect(p.mode).toBe('shadow');
-    expect(p.offMult).toBe(1);
-    expect(p.defMult).toBe(1);
-    const gear = gearFromFacts(doc, facts, r.setsFromDoll);
-    expect(gear.genie).toBe(SHEET.genie); // джин — з анкети, як у заявці
-    expect(p.score).toBe(Math.round(150 + classPointsFor(r, 'archer', 3) + r.genie[SHEET.genie!] + shgVoznesScore(gear, r)));
-    expect(p.score).toBe(dollGearScoreWith(gear, p.power!, r, 3));
-    expect(p.tier).toBe(tierForWith(p.score!, r));
-    // удвічі сильніший еталон — множники 0,5
-    const weaker = normalizeRules({ dollScore: { refs: { archer: { off: own.off * 2, def: own.def * 2, base: 150 } } } });
-    const half = dollScorePreview(doc, facts, weaker, 3, lookup);
-    expect(half.offMult).toBeCloseTo(0.5, 6);
-    expect(half.defMult).toBeCloseTo(0.5, 6);
+    const a = preview(doc);
+    const b = preview({ ...doc, sheet: { ...OLD_SHEET, genie: undefined } });
+    expect(b.parts).toEqual(a.parts);
+    expect(b.score).toBe(a.score);
   });
 
-  it('джин — як у заявці зараз: з анкети; без неї — з блоку джина за удачею; ніде не заповнено — «до 60»', () => {
-    const base = docFrom('typical-js');
-    const withGenie = { ...base, genie: { level: 105, luck: 100, skills: [] } };
-    expect(gearFromFacts(withGenie, dollFacts(withGenie, rules, lookup), true).genie).toBe('g100');
-    // анкета поки головніша за блок джина (у заявку йде вона)
-    const withSheet: CharacterDoc = { ...withGenie, sheet: { genie: 'g81_90' } };
-    expect(gearFromFacts(withSheet, dollFacts(withSheet, rules, lookup), true).genie).toBe('g81_90');
-    expect(gearFromFacts(base, dollFacts(base, rules, lookup), true).genie).toBe('g60');
+  it('порожня чернетка — лише клас і рівень, без винятків і без NaN', () => {
+    const p = preview(emptyDoc('js'));
+    expect(p.parts).toEqual({ cls: 8, lvl: 10, genie: 0, items: 0 });
+    expect(p.score).toBe(18);
+    expect(p.breakdown.rows).toEqual([]);
+    noNaN(p);
   });
 });
 
 describe('готовність до турніру', () => {
-  it('порожня чернетка: бракує імені, очок, шляху, зброї, слотів броні й анкети; порожні необовʼязкові слоти і джин — лише нагадування', () => {
+  it('порожня чернетка: бракує імені, очок, шляху, зброї й слотів броні — без анкети; порожні необовʼязкові слоти і джин — лише нагадування', () => {
     const { blockers, notes } = issues(emptyDoc());
     expect(blockers).toEqual([
       'імʼя персонажа',
       'вільні очки атрибутів: 520',
       'шлях (Мудрець чи Демон) — з 89 рівня',
-      'зброя в Головному',
-      'порожні слоти: нагрудник, поножі, взуття, браслети',
-      'анкета для турнірів: бракує грейд зброї, сет броні, трактат, джин, кільце 1, кільце 2',
+      'зброя',
+      'порожні слоти броні: нагрудник, поножі, взуття, браслети',
     ]);
+    expect(blockers.join(' ')).not.toContain('анкет');
     expect(notes).toEqual(['порожні слоти: шолом, накидка, намисто, пояс, кільце (л), кільце (п)', 'джина не заповнено — за нього 0 балів']);
   });
 
-  it('заповнений персонаж — жодного блокера; шлях до 89 рівня не потрібен', () => {
+  it('заповнений персонаж — жодного блокера без анкети; стара анкета нічого не додає; шлях до 89 рівня не потрібен', () => {
     expect(issues(ready()).blockers).toEqual([]);
+    expect(issues({ ...ready(), sheet: OLD_SHEET }).blockers).toEqual([]);
     const low = { ...emptyDoc(), name: 'x', level: 1 };
     expect(issues(low).blockers.some((b) => b.startsWith('шлях'))).toBe(false);
   });
 
-  it('анкета для турнірів: без неї «не готовий» — бракує лише незаповнених полів; «зброя/броня на ляльці» не дублюються', () => {
-    const bare: CharacterDoc = { ...docFrom('typical-js'), name: 'Тайфорн', path: 'rs' };
-    const all = issues(bare).blockers;
-    expect(all).toEqual(['анкета для турнірів: бракує грейд зброї, сет броні, трактат, джин, кільце 1, кільце 2']);
-    const part = issues({ ...bare, sheet: { weaponGrade: 'r9', tract: 't6', ring1: 'moon', ring2: 'moon' } }).blockers;
-    expect(part).toEqual(['анкета для турнірів: бракує сет броні, джин']);
-    // зброю знято: «зброя в Головному» — один раз, без «зброя на ляльці» з анкети
-    const main = { ...bare.main };
+  it('зброя: блокує лише коли її немає ніде; зброя тільки в сеті — нагадування, що рахується вона', () => {
+    const base = ready();
+    const main = { ...base.main };
     delete main.ta;
-    const noWeapon = issues({ ...bare, main }).blockers;
-    expect(noWeapon.filter((b) => b.includes('зброя'))).toEqual(['зброя в Головному']);
-    expect(noWeapon.join(' ')).not.toContain('на ляльці');
+    const noWeapon = issues({ ...base, main });
+    expect(noWeapon.blockers).toEqual(['зброя']);
+    expect(noWeapon.blockers.join(' ')).not.toContain('на ляльці');
+    // та сама зброя лише в сеті: заявку подати можна, у плашці — примітка скору
+    const { doc: withSet, setId } = createSet({ ...base, main }, 'pz');
+    const inSet = equip(withSet, setId!, 'ta', base.main.ta!);
+    const r = issues(inSet);
+    expect(r.blockers).toEqual([]);
+    expect(r.notes).toContain('зброї в Головному немає — рахується зброя із сету «ПЗ»');
   });
 
   it('броня — за порожніми слотами rv/tg/rx/mj Головного, а не за середньою точкою', () => {
@@ -137,9 +146,9 @@ describe('готовність до турніру', () => {
     delete main.rv;
     const one = { ...base, main };
     expect(dollFacts(one, rules, lookup).armorRefine).not.toBeNull(); // решта речей із точкою на місці
-    expect(issues(one).blockers).toEqual(['порожній слот: нагрудник']);
+    expect(issues(one).blockers).toEqual(['порожній слот броні: нагрудник']);
     delete main.mj;
-    expect(issues({ ...base, main }).blockers).toEqual(['порожні слоти: нагрудник, браслети']);
+    expect(issues({ ...base, main }).blockers).toEqual(['порожні слоти броні: нагрудник, браслети']);
     // намисто чи пояс — не броня: порожній слот лише в нагадуваннях
     const opt = { ...base.main };
     delete opt.vx;
@@ -165,23 +174,33 @@ describe('готовність до турніру', () => {
     const main = { ...base.main };
     delete main.ft;
     delete main.wy;
-    const doc: CharacterDoc = { ...base, main, genie: { level: 10, luck: 0, skills: [10001, 10151] }, sheet: { ...SHEET, shg: true } };
+    const doc: CharacterDoc = { ...base, main, genie: { level: 10, luck: 0, skills: [10001, 10151] }, sheet: { ...OLD_SHEET, shg: true } };
     const { blockers, notes } = issues(doc);
     expect(blockers).toEqual([]);
     expect(notes).toContain('порожні слоти: шолом, накидка');
     expect(notes).not.toContain('джина не заповнено — за нього 0 балів');
     expect(notes).toContain('джин: у джина буває лише одне початкове вміння');
-    expect(notes.some((n) => n.startsWith('в анкеті стояла галочка ШГ'))).toBe(true);
-    expect(notes.some((n) => n.startsWith('в анкеті стояла галочка Вознєс'))).toBe(false); // галочки Вознєса не було
+    expect(notes.some((n) => n.startsWith('у старій анкеті стояла галочка ШГ'))).toBe(true);
+    expect(notes.some((n) => n.startsWith('у старій анкеті стояла галочка Вознєс'))).toBe(false); // галочки Вознєса не було
     // «Шлем героя» надіто (фікстура) — нагадування немає
-    const worn = { ...base, sheet: { ...SHEET, shg: true, voznes: true } };
+    const worn = { ...base, sheet: { ...OLD_SHEET, shg: true, voznes: true } };
     expect(issues(worn).notes.some((n) => n.includes('галочка'))).toBe(false);
   });
 
-  it('gradeNotes («зараховано як …») поки не показуються — у заявку йдуть грейди з анкети', () => {
+  it('нерозпізнані речі (gradeNotes) і примітки скору — у нагадуваннях, без дублів', () => {
     const doc = ready();
     const facts = dollFacts(doc, rules, lookup);
-    const { notes } = readinessIssues(doc, hydrate(doc, lookup), { ...facts, gradeNotes: ['Зброя: лялька не розпізнала «x» — зараховано як «y»'] }, rules);
-    expect(notes.join(' ')).not.toContain('зараховано як');
+    // кільця фікстури (ранг 17) лялька не впізнає — зараховано «Луна і нижче»: з DollFacts, а не вдруге зі scoreItems
+    const { notes } = issues(doc);
+    const rings = notes.filter((n) => n.includes('не розпізнала'));
+    expect(rings).toEqual(facts.gradeNotes);
+    expect(rings).toHaveLength(2);
+    expect(rings[0]).toMatch(/^Кільце 1: лялька не розпізнала «.+» — зараховано як «Луна і нижче»$/);
+    // інші примітки скору (не про грейди) — теж, кожна один раз
+    const items = { ...scoreItems(doc, rules, lookup), warn: ['«Шлем героя» у 2 екземплярах', '«Шлем героя» у 2 екземплярах'] };
+    const dup = readinessIssues(doc, hydrate(doc, lookup), facts, items).notes.filter((n) => n.includes('екземплярах'));
+    expect(dup).toEqual(['«Шлем героя» у 2 екземплярах']);
+    // без результату скору — лише gradeNotes
+    expect(readinessIssues(doc, hydrate(doc, lookup), facts).notes.filter((n) => n.includes('не розпізнала'))).toEqual(facts.gradeNotes);
   });
 });

@@ -669,3 +669,186 @@ html[data-theme='light'] .doll-m-note { background: rgba(120, 84, 38, 0.05); }
 .doll-tip-act:disabled { opacity: 0.45; cursor: not-allowed; }
 .doll-tip-act:disabled:hover { border-color: var(--doll-tip-line); }
 .doll-tip-actnote { flex: 1 1 100%; font-size: 12px; line-height: 1.4; color: var(--doll-tip-mute); }
+
+/* ── Вікно джина (xl + split) ───────────────────────────────────────── */
+/* Смуга керування: вид, рівень, удача, пігулка балів. Не стискається. */
+.doll-gw-bar {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+.doll-gw-l { font-size: 13px; color: var(--text-dim); }
+.doll-gw-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.doll-gw-kind {
+  min-height: 30px; padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-dim); font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.doll-gw-kind:hover:not(:disabled) { border-color: var(--accent-2); color: var(--text); }
+.doll-gw-kind.is-on { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-3-rgb), 0.08); }
+.doll-gw-kind:disabled { cursor: default; opacity: 0.7; }
+.doll-gw-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.doll-gw-num { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
+.doll-gw-step { display: inline-flex; align-items: stretch; border: 1px solid var(--line-2); border-radius: var(--radius); overflow: hidden; }
+.doll-gw-step button {
+  width: 26px; padding: 0; border: 0; background: rgba(255, 255, 255, 0.03);
+  color: var(--accent); font: 700 15px/1 system-ui, sans-serif; cursor: pointer;
+}
+html[data-theme='light'] .doll-gw-step button { background: rgba(255, 255, 255, 0.35); }
+.doll-gw-step button:disabled { color: var(--text-mute); opacity: 0.5; cursor: default; }
+.doll-gw-step button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Поле між кроками: без своєї рамки (поля вікон ляльки задані через :where, тож тут вага звичайна). */
+.doll-modal .doll-gw-step input[type='number'] {
+  width: 46px; height: 30px; min-height: 0; padding: 0 2px; border: 0; border-radius: 0;
+  text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; background-color: var(--bg-2);
+}
+.doll-modal .doll-gw-step input[type='number'].luck { color: var(--accent-3); }
+.doll-modal .doll-gw-step input[type='number']:focus { box-shadow: inset 0 0 0 2px rgba(var(--accent-3-rgb), 0.35); }
+.doll-gw-max { font-size: 11.5px; color: var(--text-mute); white-space: nowrap; }
+.doll-gw-pts { margin-left: auto; }
+.doll-gw-notice { flex: none; margin: 8px 14px 0; }
+
+/* Тіло: ліва панель + картка вміння 400 px; кожна скролиться сама. */
+.doll-gw-body {
+  flex: 1 1 auto; min-height: 0; display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px; grid-template-rows: minmax(0, 1fr) auto;
+}
+.doll-gw-left {
+  grid-column: 1; grid-row: 1 / span 2;
+  min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.doll-gw-left > * { flex: none; }
+.doll-gw-sec {
+  display: flex; align-items: center; gap: 10px; min-height: 24px; box-sizing: border-box; padding: 2px 14px;
+  background: var(--bg-3); font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent);
+}
+.doll-gw-sec i { margin-left: auto; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-mute); }
+.doll-gw-img { display: block; width: 32px; height: 32px; background-repeat: no-repeat; image-rendering: pixelated; }
+.doll-gw-build { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; }
+/* 8 × 56 + 7 × 6 = 490 px — влазить в один ряд і зі смугою прокрутки лівої панелі. */
+.doll-gw-bslot {
+  width: 56px; padding: 0; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font: inherit; font-size: 10.5px; font-weight: 500; line-height: 1.2; color: var(--text-dim); cursor: pointer;
+}
+.doll-gw-bslot .doll-m-cell { width: 40px; height: 40px; }
+.doll-gw-bslot:hover .doll-m-cell, .doll-gw-bslot:focus-visible .doll-m-cell { border-color: var(--doll-tip-accent); }
+.doll-gw-bslot:focus-visible { outline: none; }
+.doll-gw-bslot.is-empty { cursor: default; color: var(--text-mute); }
+.doll-gw-bslot.is-empty .doll-m-cell { border-style: dashed; background: transparent; }
+.doll-gw-bslot.is-empty.is-short { opacity: 0.55; }
+.doll-gw-bslot-n { height: 26px; overflow: hidden; text-align: center; }
+.doll-gw-sums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0 14px; }
+/* Стихії — на темній «ігровій» поверхні: їхні кольори (як кольори грейдів) на пергаменті не читаються. */
+.doll-gw-els {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 8px 14px 10px; padding: 6px;
+  background: var(--doll-tip-bg); border: 1px solid var(--doll-tip-line); border-radius: var(--radius);
+}
+.doll-gw-el {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; min-height: 24px; box-sizing: border-box;
+  padding: 0 8px; border-radius: var(--radius-pill); border: 1px solid var(--doll-tip-line); background: rgba(255, 255, 255, 0.03);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.doll-gw-el > span { overflow: hidden; text-overflow: ellipsis; }
+.doll-gw-el.el-0 { color: #d4c84a; }
+.doll-gw-el.el-1 { color: #5fbf5f; }
+.doll-gw-el.el-2 { color: #c88a56; }
+.doll-gw-el.el-3 { color: #6f9fe8; }
+.doll-gw-el.el-4 { color: #e06060; }
+.doll-gw-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; }
+.doll-gw-search { flex: 1 1 160px; }
+.doll-gw-avail { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+/* Сітка плиток: скільки влазить по 32 px з кроком 8 — колонки рахує CSS, клавіатура читає їх з розмітки. */
+.doll-gw-grid { display: grid; grid-template-columns: repeat(auto-fill, 32px); gap: 8px; justify-content: center; padding: 0 14px; }
+.doll-gw-tile {
+  position: relative; box-sizing: border-box; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 0;
+  background-color: #14181f; background-repeat: no-repeat; image-rendering: pixelated; cursor: pointer; outline: none;
+}
+.doll-gw-tile:hover { box-shadow: 0 0 0 1px var(--doll-tip-accent); }
+.doll-gw-tile.is-cur { box-shadow: 0 0 0 2px var(--doll-tip-strong); }
+.doll-gw-tile.is-picked { box-shadow: inset 0 0 0 3px rgb(var(--doll-acc-rgb)); }
+.doll-gw-tile.is-picked.is-cur { box-shadow: inset 0 0 0 3px rgb(var(--doll-acc-rgb)), 0 0 0 2px var(--doll-tip-strong); }
+.doll-gw-tile.is-blocked { opacity: 0.28; }
+.doll-gw-tile.is-blocked.is-cur { opacity: 0.55; }
+.doll-gw-tile:focus-visible { box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(var(--accent-3-rgb), 0.3); }
+.doll-gw-mark {
+  position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); color: #1a1205; font: 800 10px/14px system-ui, sans-serif; text-align: center; pointer-events: none;
+}
+.doll-gw-none { grid-column: 1 / -1; margin: 0; padding: 10px 0; text-align: center; }
+.doll-gw-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 14px; font-size: 11.5px; color: var(--text-mute); }
+.doll-gw-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.doll-gw-legend i { width: 12px; height: 12px; box-sizing: border-box; background: #14181f; }
+.doll-gw-legend i.is-picked { border: 3px solid rgb(var(--doll-acc-rgb)); }
+.doll-gw-legend i.is-cur { border: 2px solid var(--doll-tip-strong); }
+.doll-gw-legend i.is-blocked { opacity: 0.4; border: 1px solid var(--text-mute); }
+
+/* Картка вміння: тіло (скролиться) і низ із кнопкою — права колонка сітки. */
+.doll-gw-card-body {
+  grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  border-left: 1px solid var(--line-2); background: var(--bg-2);
+}
+.doll-gw-head { display: flex; align-items: center; gap: 12px; }
+.doll-gw-hcell { width: 46px; height: 46px; border-color: var(--doll-tip-accent); }
+.doll-gw-head-t { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.doll-gw-name { font-size: 14.5px; font-weight: 700; color: var(--accent-3); overflow-wrap: anywhere; }
+.doll-gw-sub { font-size: 12px; color: var(--text-mute); }
+.doll-gw-lvls { display: flex; flex-direction: column; gap: 5px; }
+.doll-gw-hint { font-size: 11.5px; color: var(--text-mute); }
+.doll-gw-lvlrow { display: flex; flex-wrap: wrap; gap: 4px; }
+.doll-gw-lvlrow button {
+  width: 30px; height: 28px; padding: 0; border: 1px solid var(--line-2); border-radius: var(--radius); background: transparent;
+  color: var(--text-dim); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.doll-gw-lvlrow button:hover { border-color: var(--accent-2); color: var(--text); }
+.doll-gw-lvlrow button.is-on { border-color: var(--accent); color: var(--accent-3); background: rgba(var(--accent-3-rgb), 0.1); }
+.doll-gw-lvlrow button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.doll-gw-facts { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 12.5px; color: var(--text-dim); }
+.doll-gw-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.doll-gw-facts dt { color: var(--text-mute); white-space: nowrap; }
+.doll-gw-facts dd { margin: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; font-weight: 600; color: var(--text); text-align: right; }
+.doll-gw-facts dd.good { color: var(--good); }
+.doll-gw-facts dd.bad { color: var(--doll-bad-text, var(--bad)); }
+.doll-gw-facts .doll-gw-el { min-height: 20px; padding: 0 7px; font-size: 11.5px; background: var(--doll-tip-bg); }
+/* Опис вміння — на темній «ігровій» поверхні: тони тексту — кольори гри, як у Хелпері. */
+.doll-gtext {
+  padding: 8px 10px; background: var(--doll-tip-bg); border: 1px solid var(--doll-tip-line); border-radius: var(--radius);
+  color: var(--doll-tip-text); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.doll-gtext .doll-m-bad { color: var(--doll-bad-text); }
+.doll-gtext .btn { margin-top: 8px; }
+.doll-gtext-label { color: var(--doll-tip-accent); }
+.doll-gtext-num { color: #7fdcef; font-weight: 600; }
+.doll-gtext-genie { color: #e3a07f; }
+.doll-gtext-dark { color: #d061d6; }
+.doll-gtext-warn { color: #ff6b6b; }
+.doll-gw-after { display: flex; flex-direction: column; }
+.doll-gw-after-h { padding-bottom: 4px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.doll-gw-after-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 8px; border-radius: var(--radius); font-size: 13px; color: var(--text-dim); }
+.doll-gw-after-row:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
+html[data-theme='light'] .doll-gw-after-row:nth-child(even) { background: rgba(0, 0, 0, 0.04); }
+.doll-gw-after-row b { color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+.doll-gw-after-row b.good { color: var(--good); }
+.doll-gw-after-row b.bad { color: var(--doll-bad-text, var(--bad)); }
+.doll-gw-foot {
+  grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 14px;
+  border-top: 1px solid var(--line-2); border-left: 1px solid var(--line-2); background: var(--bg-2);
+}
+.doll-gw-act { flex: 1 1 auto; min-height: 38px; }
+.doll-gw-keys, .doll-gw-why { flex: 1 1 140px; font-size: 11.5px; line-height: 1.35; color: var(--text-mute); }
+.doll-gw-why { color: var(--doll-bad-text, var(--bad)); }
+
+/* Вузький екран: одна колонка — сітка зверху, картка під нею, кнопка прилипає до низу; скролиться все тіло. */
+@media (max-width: 900px) {
+  .doll-gw-body { display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  .doll-gw-left { flex: none; overflow: visible; }
+  .doll-gw-card-body { flex: none; overflow: visible; border-left: 0; border-top: 1px solid var(--line-2); }
+  /* Прилипає до низу самого тіла вікна (воно й скролиться), а не до картки під сіткою. */
+  .doll-gw-foot { position: sticky; bottom: 0; z-index: 1; margin-top: auto; border-left: 0; }
+  .doll-gw-sums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .doll-gw-pts { margin-left: 0; }
+}
+@media (pointer: coarse) {
+  .doll-gw-step button { width: 36px; }
+  .doll-gw-kind { min-height: 36px; }
+  .doll-gw-lvlrow button { width: 36px; height: 36px; }
+}

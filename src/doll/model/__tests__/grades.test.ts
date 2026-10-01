@@ -168,12 +168,12 @@ describe('грейди в dollFacts', () => {
     expect(f.gradeNotes).toEqual([]);
   });
 
-  it('трактат — найкращий з Головного й усіх сетів; решта — лише з Головного', () => {
+  it('трактат і зброя — найкращі з Головного й усіх сетів; кільця — лише з Головного', () => {
     const items = [inst('b7', 'qn', 38), inst('b9', 'qn', 109), inst('b6', 'qn', 105), inst('w', 'ta', 1900), inst('r', 'oq', 184)];
     const inSet = dollFacts(mkDoc({ items, main: { qn: 'b7' }, sets: [mkSet('s1', { qn: 'b9', ta: 'w', cr: 'r' })] }), rules, lookup);
     expect(inSet.tract).toBe('emperor');
-    // Зброя й кільце лише в сеті — у грейди не йдуть.
-    expect([inSet.weaponGrade, inSet.ring1]).toEqual([null, 'moon']);
+    // Зброя лише в сеті — рахується (у скорі v2 головна зброя — найдорожча, де б не лежала); кільце в сеті — ні.
+    expect([inSet.weaponGrade, inSet.ring1]).toEqual(['r9', 'moon']);
     expect(dollFacts(mkDoc({ items, main: { qn: 'b7' }, sets: [mkSet('s1', { qn: 'b6' })] }), rules, lookup).tract).toBe('t7');
     expect(dollFacts(mkDoc({ items, sets: [mkSet('s1', { qn: 'b6' })] }), rules, lookup).tract).toBe('t6');
     // Заявка власника 25.09: у Головному «Феникс летит к рассвету» (6), у Спів-сеті «Девять кудзу» (7) —

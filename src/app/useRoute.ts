@@ -6,7 +6,8 @@
 // а не фіксований список вкладок).
 // =========================================================
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { confirmLeave } from './leaveGuard';
 
 export const APP_BASE: string = (() => {
   const b = import.meta.env.BASE_URL || '/';
@@ -80,20 +81,58 @@ function samePath(a: Route, b: Route): boolean {
   return routeUrl(a) === routeUrl(b);
 }
 
-export function useRoute(): [Route, (route: Route) => void] {
+// ── Застереження перед відходом (leaveGuard) ──────────────────────
+// Перед переходом на іншу адресу роутер питає confirmLeave(): сторінка з
+// незбереженими змінами показує window.confirm, «Скасувати» лишає її на місці.
+// Для кліків (navigate) це просто «не робити pushState». Для «Назад / Вперед»
+// браузер уже змінив адресу до popstate, тож при «Скасувати» повертаємо її
+// pushState-ом на останню відому адресу сторінки (lastHref): запис історії
+// наче й не покидали, а маршрут не міняється. Напрямок (назад чи вперед) для
+// цього знати не треба — на відміну від history.go(-delta) з номерами записів,
+// тут нема другого popstate, який довелося б пропускати.
+
+/** Адреса поточного запису історії — куди повертати після «Скасувати». */
+let lastHref = '';
+
+/** Сторінка, що сама міняє адресу replaceState-ом (вкладка сету ?set=),
+ * каже про це роутеру — інакше після «Скасувати» повернення втратить цю зміну. */
+export function noteHistoryChange(): void {
+  lastHref = location.href;
+}
+
+/** Обробник popstate: без guard чи після підтвердження — застосувати маршрут
+ * з адреси; інакше повернути адресу сторінки, маршрут не чіпати. */
+export function handlePopState(apply: (route: Route) => void): void {
+  if (!confirmLeave()) {
+    history.pushState(null, '', lastHref);
+    return;
+  }
+  noteHistoryChange();
+  apply(parsePath());
+}
+
+/** [маршрут, navigate]; navigate повертає false, коли сторінка не відпустила. */
+export function useRoute(): [Route, (route: Route) => boolean] {
   const [route, setRouteState] = useState<Route>(parsePath);
+  const routeRef = useRef(route);
+  routeRef.current = route;
 
   useEffect(() => {
-    const onPop = () => setRouteState(parsePath());
+    noteHistoryChange();
+    const onPop = () => handlePopState(setRouteState);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const navigate = useCallback((next: Route) => {
-    setRouteState((cur) => {
-      if (!samePath(cur, next)) history.pushState(null, '', routeUrl(next));
-      return next;
-    });
+  const navigate = useCallback((next: Route): boolean => {
+    // Та сама адреса — не перехід, guard не питаємо (нічого не губиться).
+    if (!samePath(routeRef.current, next)) {
+      if (!confirmLeave()) return false;
+      history.pushState(null, '', routeUrl(next));
+      noteHistoryChange();
+    }
+    setRouteState(next);
+    return true;
   }, []);
 
   return [route, navigate];

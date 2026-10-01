@@ -9,7 +9,8 @@
 // «Інвентар», посередині «Характеристики» зі смужкою станів (на вкладці сету
 // — ще «Проти Головного») і «Перевірка урону», праворуч «Готовність», «Атрибути»,
 // «Пасивки класу», «Джин» і плашка стану. Колонки сходинками за шириною
-// САМОГО редактора (@container, doll.css): три → дві → одна.
+// САМОГО редактора (@container, doll.css): три → дві → одна. Слот «Джинн» на
+// фігурі й картка «Джин» відкривають одне вікно джина (modals/GenieModal).
 //
 // Екран «завантажую каталог» — лише перший раз. Коли пізніше довантажується
 // нова категорія (імпорт, нова річ), редактор не зникає: невідомі поки речі
@@ -35,10 +36,12 @@ import { BuffCfgModal } from './modals/BuffCfgModal';
 import { BuffPickModal } from './modals/BuffPickModal';
 import { DeleteSetModal } from './modals/DeleteSetModal';
 import { EditorModal as ItemEditorModal } from './modals/EditorModal';
+import { GenieModal } from './modals/GenieModal';
 import { OpponentModal } from './modals/OpponentModal';
 import { PickerModal } from './modals/PickerModal';
 import { AttrsCard } from './panels/AttrsCard';
 import { DamageCheck } from './panels/DamageCheck';
+import { GenieCard } from './panels/GenieCard';
 import { PassivesCard } from './panels/PassivesCard';
 import { ReadinessCard } from './panels/ReadinessCard';
 import { SetDeltaPanel } from './panels/SetDeltaPanel';
@@ -61,7 +64,7 @@ export interface DollEditorProps {
   barEnd?: ReactNode;
   /** Дрібний рядок під смужкою: підказка сторінки, що заважає збереженню. */
   barNote?: ReactNode;
-  /** Між смужкою і колонками: повідомлення сторінки, конфлікт вкладок, панель імпорту, анкета. */
+  /** Між смужкою і колонками: повідомлення сторінки, конфлікт вкладок, панель імпорту. */
   top?: ReactNode;
 }
 
@@ -98,6 +101,9 @@ function ModalHost() {
       return <AddSetDialog />;
     case 'deleteSet':
       return <DeleteSetModal key={'delset:' + m.setId} setId={m.setId} />;
+    case 'genie':
+      // Один ключ: повторне відкриття з іншим вмінням міняє картку, а фільтри вікна лишаються.
+      return <GenieModal key="genie" initialRef={m.ref} />;
   }
 }
 
@@ -192,11 +198,11 @@ function EditorBody({ loading, error, retry }: { loading: boolean; error: string
           <div className="doll-col doll-col-side">
             {/* Порядок B3: «Готовність до турніру» (.doll-ready), «Атрибути» (.doll-attrs-card),
                 «Пасивки класу» (.doll-passives), «Джин» (.doll-genie), плашка стану (.doll-status).
-                Місце на телефоні задає клас картки (order у doll.css). Картку «Джин» додає
-                наступний крок — сюди, між пасивками й плашкою. */}
+                Місце на телефоні задає клас картки (order у doll.css). */}
             <ReadinessCard />
             <AttrsCard />
             <PassivesCard />
+            <GenieCard />
             <StatusPlate />
           </div>
         </div>

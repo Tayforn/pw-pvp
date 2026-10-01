@@ -276,19 +276,26 @@ html[data-theme='light'] .doll-delta .doll-delta-row.focus { background: rgba(va
 .doll-ready-id .badge.tier, .doll-ready-id .badge.tier:hover { cursor: default; filter: none; box-shadow: none; }
 /* Тир S — золотий текст медалей (--rank-gold-1), на пергаменті світлої теми його не видно */
 html[data-theme='light'] .doll-ready-id .badge.tier-S { color: var(--rank-gold-ink); }
-.doll-ready-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-/* Плитка в картці 328 px — лише ~86 px під підпис: «Живучість ×2,9» ледь вміщається
-   в рядок, тож відступ менший, а на вужчій картці підпис переноситься (множник не
-   ховається трикрапкою); число тоді тримається низу плитки, поруч рівно з сусідньою. */
-.doll-ready-tile {
-  display: flex; flex-direction: column; justify-content: space-between; gap: 1px; min-width: 0; padding: 5px 6px;
-  border: 1px solid var(--line); border-radius: var(--radius); background: rgba(var(--doll-acc-rgb), 0.04);
+/* Складові скору v2 — чипи «клас 8 · рівень 10 · речі 189 · джин 10» з переносом;
+   джин без заповненого блоку — жовтий (за нього 0). */
+.doll-ready-parts { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.doll-ready-part {
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 2px 7px; min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--radius-pill); background: rgba(var(--doll-acc-rgb), 0.04);
+  font-size: 11px; line-height: 1.4; color: var(--text-mute); white-space: nowrap;
 }
-.doll-ready-tile span { font-size: 10px; line-height: 1.35; color: var(--text-mute); overflow-wrap: anywhere; }
-.doll-ready-tile b { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.doll-ready-part b { font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.doll-ready-part.warn { color: var(--warn); border-color: rgba(var(--warn-rgb), 0.4); background: rgba(var(--warn-rgb), 0.08); }
+.doll-ready-part.warn b { color: var(--warn); }
 .doll-ready-why { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-dim); }
 .doll-ready-gear { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--text-mute); }
 .doll-ready-gear > span { color: var(--text-dim); font-weight: 600; }
+/* Розклад по речах (спільний .score-bd зі styles.css) — у картці дрібніший і без власного тла. */
+.doll-ready-bd { margin-top: 10px; min-width: 0; }
+.doll-ready-bd .score-bd { padding: 6px 10px; background: rgba(var(--doll-acc-rgb), 0.04); }
+.doll-ready-bd .score-bd > summary { font-size: 12.5px; }
+.doll-ready-bd .score-bd-body { font-size: 12px; }
+.doll-ready-bd .score-bd-row { grid-template-columns: 72px minmax(0, 1fr) auto; gap: 8px; font-size: 12px; }
 .doll-card p.doll-ready-note { margin: 8px 0 0; font-size: 11px; }
 
 /* ── Атрибути: рядки −/поле/+ і шкала збірки ───────────── */
@@ -419,4 +426,68 @@ html[data-theme='light'] .doll-psv-lvl button { background: rgba(255, 255, 255, 
 @media (prefers-reduced-motion: reduce) {
   .doll-stats .flash-up .doll-hero-v, .doll-stats .doll-stat.flash-up b,
   .doll-stats .flash-down .doll-hero-v, .doll-stats .doll-stat.flash-down b { animation: none; }
+}
+
+/* ── Джин (картка в правій колонці; підсумки .doll-genie-sum ділить і вікно джина) ── */
+.doll-genie-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Кнопка виду — на темній «ігровій» поверхні, як іконки пасивок. Без класу doll-icon:
+   димовий тест рахує такі іконки як надіті речі. */
+.doll-genie-kind {
+  flex: none; position: relative; width: 34px; height: 34px; padding: 0; overflow: hidden; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--doll-tip-bg);
+  color: var(--text-mute); font: 600 9px/1 system-ui, sans-serif; text-transform: uppercase;
+}
+.doll-genie-kind.is-empty { border-style: dashed; }
+.doll-genie-kind:hover { border-color: var(--accent); }
+.doll-genie-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.doll-genie-kind-img {
+  position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px;
+  background-repeat: no-repeat; image-rendering: pixelated;
+}
+.doll-genie-f { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-mute); white-space: nowrap; }
+.doll-genie-in {
+  width: 48px; height: 30px; box-sizing: border-box; padding: 0 4px; text-align: center;
+  font: inherit; font-size: 13.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums;
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius);
+  color-scheme: dark; appearance: textfield; -moz-appearance: textfield;
+}
+.doll-genie-in::-webkit-inner-spin-button,
+.doll-genie-in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.doll-genie-in::placeholder { color: var(--text-mute); font-weight: 500; }
+.doll-genie-in.luck { color: var(--accent-3); }
+.doll-genie-in:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--doll-acc-rgb), 0.15); }
+.doll-genie-in:disabled { opacity: 0.7; }
+html[data-theme='light'] .doll-genie-in { color-scheme: light; }
+.doll-genie-range {
+  margin-left: auto; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-pill);
+  border: 1px solid var(--accent); background: rgba(var(--doll-acc-rgb), 0.1); color: var(--accent);
+  font-size: 11.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.doll-genie-slots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.doll-genie-slot {
+  position: relative; flex: none; width: 32px; height: 32px; box-sizing: border-box; padding: 0; overflow: hidden;
+  border: 0; border-radius: 2px; background: var(--doll-tip-bg); box-shadow: 0 0 0 1px rgba(var(--doll-acc-rgb), 0.5);
+  color: var(--text-mute); font: 600 10px/1 system-ui, sans-serif; cursor: pointer;
+}
+.doll-genie-slot:hover { box-shadow: 0 0 0 1px var(--accent); }
+.doll-genie-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.doll-genie-slot.is-empty { border: 1px dashed var(--line-2); box-shadow: none; background: transparent; }
+.doll-genie-slot.is-empty:hover { border-color: var(--accent); }
+.doll-genie-slot.is-empty.is-short { opacity: 0.45; }
+.doll-genie-slot-img { position: absolute; left: 0; top: 0; background-repeat: no-repeat; image-rendering: pixelated; }
+.doll-genie-sums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.doll-genie-sum {
+  min-width: 0; box-sizing: border-box; padding: 4px 8px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: rgba(var(--doll-acc-rgb), 0.04);
+}
+.doll-genie-sum-k { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doll-genie-sum-v { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.doll-genie-sum-v span { font-size: 11px; font-weight: 500; color: var(--text-mute); }
+.doll-genie-sum.bad { border-color: rgba(var(--bad-rgb), 0.45); }
+.doll-genie-sum.bad .doll-genie-sum-v { color: var(--doll-bad-text, var(--bad)); }
+@media (pointer: coarse) {
+  .doll-genie-kind { width: 42px; height: 42px; }
+  .doll-genie-in { height: 36px; }
+  .doll-genie-slot { width: 36px; height: 36px; }
+  .doll-genie-slot-img { left: 2px; top: 2px; }
 }

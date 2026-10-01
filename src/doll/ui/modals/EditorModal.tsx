@@ -9,6 +9,9 @@
 // на сервері справді інші, «Замінити базу» ставить xr — і тоді рахуються
 // лише рядки x (адмін бачить таку річ позначеною).
 //
+// Для джина (pk) заточка й гравіювання нічого не означають — їх немає, а
+// замість них кнопка у вікно джина (рівень, удача, вид, вміння).
+//
 // Речі — один пул: правка з вкладки сету, коли річ надіта ще деінде, робить
 // копію (model/ops updateInstance). Редактор після першої такої правки
 // переходить на копію сам (локальний iid), не перевідкриваючи вікно — інакше
@@ -160,6 +163,7 @@ export function EditorModal({ cfgId: propCfg, iid: propIid }: { cfgId: string; i
   const cfgId = MAIN_ONLY_CATS.has(itemCat) ? CFG_MAIN : propCfg;
   const sockets = defaultSockets(itemCat);
   const isWeapon = itemCat === 'ta';
+  const isGenie = itemCat === 'pk';
 
   const [tab, setTab] = useState<Tab>(() => (defaultSockets(model.items.get(propIid)?.inst.cat ?? '') > 0 ? 'gems' : 'addons'));
   const [notice, setNotice] = useState<string | null>(null);
@@ -274,7 +278,8 @@ export function EditorModal({ cfgId: propCfg, iid: propIid }: { cfgId: string; i
   const tabs: Array<{ id: Tab; label: string; hidden?: boolean }> = [
     { id: 'gems', label: 'Камені', hidden: sockets === 0 && !isWeapon },
     { id: 'addons', label: 'Характеристики' + (x.length ? ' · ' + x.length : '') },
-    { id: 'engrave', label: 'Гравіювання' + (e.length ? ' · ' + e.length : '') },
+    // Джин: вкладки гравіювання немає (лишається лише в старому документі, де воно вже вписане).
+    { id: 'engrave', label: 'Гравіювання' + (e.length ? ' · ' + e.length : ''), hidden: isGenie && e.length === 0 },
   ];
   const activeTab: Tab = tab === 'gems' && sockets === 0 && !isWeapon ? 'addons' : tab;
 
@@ -410,8 +415,24 @@ export function EditorModal({ cfgId: propCfg, iid: propIid }: { cfgId: string; i
       </div>
       {!item && <div className="doll-m-bad">У каталозі немає цієї речі ({itemCat} #{inst.id}) — стати не рахуються.</div>}
 
-      <div className="doll-ed-refine">
-        <span className="doll-ed-refine-l">Заточка</span>
+      {isGenie && (
+        <div className="doll-ed-hint">
+          Рівень, удача, вид і вміння джина — у вікні джина.{' '}
+          <button
+            type="button"
+            className="doll-ed-link"
+            onClick={() => {
+              tip.hideAll();
+              api.openGenie();
+            }}
+          >
+            Вміння джина
+          </button>
+        </div>
+      )}
+      {!isGenie && (
+        <div className="doll-ed-refine">
+          <span className="doll-ed-refine-l">Заточка</span>
         <button type="button" className="doll-ed-step" aria-label="Заточка −1" disabled={readOnly || refine <= 0} onClick={() => edit(() => ({ r: Math.max(0, refine - 1) }))}>
           −
         </button>
@@ -425,7 +446,8 @@ export function EditorModal({ cfgId: propCfg, iid: propIid }: { cfgId: string; i
         <button type="button" className="doll-ed-step" aria-label="Заточка +1" disabled={readOnly || refine >= 12} onClick={() => edit(() => ({ r: Math.min(12, refine + 1) }))}>
           +
         </button>
-      </div>
+        </div>
+      )}
 
       <div className="doll-ed-tabs" role="tablist" aria-label="Розділи речі">
         {tabs

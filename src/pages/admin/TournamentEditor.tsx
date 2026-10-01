@@ -253,7 +253,7 @@ export default function TournamentEditor({ initial, series, isSuperadmin, curren
               </div>
               {teamModeSel === 'balanced_random' && (
                 <p className="hint">
-                  Гравці реєструються поодинці й заповнюють коротку анкету спорядження — команди по {teamSize} формує система випадково, вирівнюючи гір-скор і класи.
+                  Гравці реєструються поодинці персонажем з ляльки (спорядження береться з неї) — команди по {teamSize} формує система випадково, вирівнюючи гір-скор і класи.
                 </p>
               )}
               {regInfo === null ? (

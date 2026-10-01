@@ -1,9 +1,11 @@
 // =========================================================
-// ЛЯЛЬКА — заявка персонажем (registration.ts): разом з анкетою (legacy) іде
-// скор v2 — itemPoints і item_breakdown за версією шкали турніру, з класом за
-// розміром команди, рівнем і джином; складові розкладу сходяться з
-// registrationScore. Бекенд персонажів і Supabase — заглушки, каталоги й
-// довідники — з диска через fetch (як у димовому тесті сторінки).
+// ЛЯЛЬКА — заявка персонажем (registration.ts): разом із legacy-колонками
+// грейдів (з ляльки, без ручної анкети) іде скор v2 — itemPoints і
+// item_breakdown за версією шкали турніру, з класом за розміром команди,
+// рівнем і джином; складові розкладу сходяться з registrationScore. Заявку
+// блокують лише відсутня зброя й порожній слот броні. Бекенд персонажів і
+// Supabase — заглушки, каталоги й довідники — з диска через fetch (як у
+// димовому тесті сторінки).
 // =========================================================
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -38,24 +40,25 @@ afterAll(() => {
 });
 
 const rules = rulesFor(BUILTIN_RULES_VERSION);
-/** Повна «Анкета для турнірів» — крок C ще бере грейди з неї (gearFromCharacter). */
-const SHEET = { weaponGrade: 'r9', armorSet: 'r9', tract: 'emperor', genie: 'g100', ring1: 'moon', ring2: 'moon' } as const;
+/** Блок джина з удачею 100 — 10 балів. */
+const GENIE_100 = { level: 105, luck: 100, skills: [] as number[] };
 function useDoc(doc: CharacterDoc): CharacterDoc {
   api.rec = { id: 'c1', name: doc.name, cls: doc.cls, level: doc.level, revision: 2, updatedAt: '2026-10-01T00:00:00Z', doc };
   return doc;
 }
 
 describe('characterForRegistration: скор v2 у заявці', () => {
-  // typical-js (лучник 105): 189.01 балів за речі (itemScore.test); клас 8 (3×3), рівень 10, джин g100 з анкети 10 → 217.
+  // typical-js (лучник 105): 189.01 балів за речі (itemScore.test); клас 8 (3×3), рівень 10, джин з удачею 100 — 10 → 217.
   it('itemPoints і розклад за поточною версією; sum = клас (3×3) + рівень + джин, сходиться з registrationScore', async () => {
-    const doc = useDoc({ ...docFrom('typical-js'), sheet: SHEET });
+    const doc = useDoc({ ...docFrom('typical-js'), genie: GENIE_100 });
     const r = await characterForRegistration('c1');
     const expected = scoreItems(doc, rules, lookup);
     expect(r.itemPoints).toBe(expected.itemPoints);
     expect(r.itemPoints).toBe(189.01);
     expect(r.rulesVersion).toBe(BUILTIN_RULES_VERSION);
     expect(r.blockReason).toBeNull();
-    expect(r.result.gear).not.toBeNull();
+    // legacy-колонки — з ляльки: грейди з речей, джин з блоку джина
+    expect(r.result.gear).toMatchObject({ charClass: 'archer', weaponGrade: 'r9', armorSet: 'r9', tract: 'emperor', ring1: 'moon', ring2: 'moon', genie: 'g100' });
     const b = r.itemBreakdown;
     expect(b.v).toBe(1);
     expect(b.ver).toBe(BUILTIN_RULES_VERSION);
@@ -75,7 +78,7 @@ describe('characterForRegistration: скор v2 у заявці', () => {
   });
 
   it('версія турніру й розмір команди: клас — за ними; невідома версія — поточна', async () => {
-    useDoc({ ...docFrom('typical-js'), sheet: SHEET });
+    useDoc({ ...docFrom('typical-js'), genie: GENIE_100 });
     const six = normalizeRules({ classPointsBySize: { ...rules.classPointsBySize, '6': { ...rules.classPointsBySize['6'], archer: 2 } } });
     registerRules({ version: 'balance-v9.9', note: 'тест', createdAt: '2026-10-01T00:00:00Z', builtin: false }, six, false);
     const r = await characterForRegistration('c1', { rulesVersion: 'balance-v9.9', teamSize: 6 });
@@ -88,22 +91,42 @@ describe('characterForRegistration: скор v2 у заявці', () => {
     expect(unknown.itemBreakdown.sum.cls).toBe(8);
   });
 
-  it('без анкети — заявку не подати, але бали за речі й розклад є (джин 0 — не заповнено)', async () => {
+  it('без блоку джина заявка подається з джином 0; старий doc.sheet.genie — запасний шлях', async () => {
     useDoc(docFrom('typical-js'));
     const r = await characterForRegistration('c1');
-    expect(r.result.gear).toBeNull();
-    expect(r.blockReason).toBe('Заявку не подати: не заповнена анкета: грейд зброї, сет броні, трактат, джин, кільце 1, кільце 2.');
+    expect(r.blockReason).toBeNull();
+    expect(r.result.gear?.genie).toBe('g60');
     expect(r.itemPoints).toBe(189.01);
     expect(r.itemBreakdown.sum.genie).toBe(0);
-    expect(registrationScore({ gear: r.result.gear, itemPoints: r.itemPoints }, rules, 3)).toBeNull();
-    // без зброї в Головному — це перша причина
+    expect(registrationScore({ gear: r.result.gear, itemPoints: r.itemPoints }, rules, 3)).toBe(207);
+    // стара анкета: лише джин, грейди в ній ігноруються
+    useDoc({ ...docFrom('typical-js'), sheet: { weaponGrade: 'other', armorSet: 'other', tract: 't1_3', genie: 'g81_90', ring1: 'r9r1', ring2: 'r9r1' } });
+    const old = await characterForRegistration('c1');
+    expect(old.result.gear).toMatchObject({ weaponGrade: 'r9', armorSet: 'r9', tract: 'emperor', ring1: 'moon', ring2: 'moon', genie: 'g81_90' });
+    expect(old.itemBreakdown.sum.genie).toBe(rules.genie.g81_90);
+    expect(old.itemPoints).toBe(189.01);
+  });
+
+  it('блокують лише відсутня зброя (ніде) і порожній слот броні Головного; бали за речі й розклад є і тоді', async () => {
     const base = docFrom('typical-js');
     const main = { ...base.main };
     delete main.ta;
-    useDoc({ ...base, main, sheet: SHEET });
+    useDoc({ ...base, main });
     const noWeapon = await characterForRegistration('c1');
-    expect(noWeapon.blockReason).toBe('Заявку не подати: у персонажа немає зброї в Головному.');
+    expect(noWeapon.result.gear).toBeNull();
+    expect(noWeapon.blockReason).toBe('Заявку не подати: у персонажа немає зброї (ні в Головному, ні в сеті).');
+    expect(noWeapon.blockReason).not.toContain('анкет');
     expect(noWeapon.itemPoints).toBeLessThan(189.01);
+    expect(noWeapon.itemBreakdown.rows.length).toBeGreaterThan(5);
+    expect(registrationScore({ gear: noWeapon.result.gear, itemPoints: noWeapon.itemPoints }, rules, 3)).toBeNull();
+    // зброя лише в сеті — заявку подати можна
+    useDoc({ ...base, main, sets: [{ id: 's0000a', name: 'ПЗ', kind: 'pz', slots: { ta: base.main.ta! } }] });
+    expect((await characterForRegistration('c1')).blockReason).toBeNull();
+    // порожній слот броні Головного
+    const noArmor = { ...base.main };
+    delete noArmor.rv;
+    useDoc({ ...base, main: noArmor });
+    expect((await characterForRegistration('c1')).blockReason).toBe('Заявку не подати: у Головному порожній слот броні: нагрудник.');
   });
 
   it('пошкоджений документ — помилка з поясненням', async () => {
@@ -113,10 +136,12 @@ describe('characterForRegistration: скор v2 у заявці', () => {
 });
 
 describe('submitBlockReason', () => {
-  it('зброя/броня на ляльці — окремо від полів анкети; порожній список — null', () => {
+  it('рядки dollMissing → одне речення без слова «анкета»; порожній список — null', () => {
     expect(submitBlockReason([])).toBeNull();
-    expect(submitBlockReason(['зброя на ляльці', 'броня на ляльці'])).toBe('Заявку не подати: у персонажа немає зброї і броні в Головному.');
-    expect(submitBlockReason(['джин'])).toBe('Заявку не подати: не заповнена анкета: джин.');
-    expect(submitBlockReason(['зброя на ляльці', 'грейд зброї', 'джин'])).toBe('Заявку не подати: у персонажа немає зброї в Головному (або не заповнена анкета: грейд зброї, джин).');
+    expect(submitBlockReason(['зброя'])).toBe('Заявку не подати: у персонажа немає зброї (ні в Головному, ні в сеті).');
+    expect(submitBlockReason(['порожній слот броні: нагрудник'])).toBe('Заявку не подати: у Головному порожній слот броні: нагрудник.');
+    expect(submitBlockReason(['зброя', 'порожні слоти броні: нагрудник, поножі'])).toBe(
+      'Заявку не подати: у персонажа немає зброї (ні в Головному, ні в сеті); у Головному порожні слоти броні: нагрудник, поножі.',
+    );
   });
 });

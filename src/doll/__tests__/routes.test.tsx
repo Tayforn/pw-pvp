@@ -7,7 +7,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ROUTE_ACCESS, canOpen } from '../../app/access';
-import { routeUrl, useRoute, type Route } from '../../app/useRoute';
+import { confirmLeave, setLeaveGuard } from '../../app/leaveGuard';
+import { handlePopState, noteHistoryChange, routeUrl, useRoute, type Route } from '../../app/useRoute';
 import Sidebar from '../../components/Sidebar';
 
 const GUEST = { member: false, admin: false };
@@ -26,6 +27,7 @@ function parse(pathname: string): Route {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setLeaveGuard(null);
 });
 
 describe('маршрути персонажа', () => {
@@ -66,5 +68,99 @@ describe('маршрути персонажа', () => {
     expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Персонаж/);
     expect(html.match(/class="tab active"/g)).toHaveLength(1);
     expect(html).not.toContain('Адмінка');
+  });
+});
+
+// ── Застереження перед відходом (leaveGuard) ──────────────────────
+// Сторінка з незбереженими змінами реєструє guard; роутер питає window.confirm
+// перед кліком по меню (navigate) і перед «Назад / Вперед» (handlePopState):
+// «Скасувати» лишає маршрут і адресу, «ОК» — переходить.
+
+const HREF = 'http://localhost';
+
+/** Сторінка на pathname + стаби history/confirm; повертає navigate роутера й моки. */
+function routerAt(pathname: string, answer: boolean) {
+  const pushState = vi.fn();
+  const confirm = vi.fn(() => answer);
+  vi.stubGlobal('location', { pathname, search: '', hash: '', href: HREF + pathname });
+  vi.stubGlobal('history', { pushState, replaceState: vi.fn(), state: null });
+  vi.stubGlobal('window', { confirm });
+  let navigate!: (r: Route) => boolean;
+  function Probe() {
+    navigate = useRoute()[1];
+    return null;
+  }
+  renderToStaticMarkup(<Probe />);
+  // у застосунку це робить ефект useRoute при монтуванні (ефекти в SSR не виконуються)
+  noteHistoryChange();
+  return { navigate, pushState, confirm };
+}
+
+describe('застереження про незбережені зміни при переході', () => {
+  it('без guard перехід мовчазний: pushState на нову адресу, confirm не питають', () => {
+    const { navigate, pushState, confirm } = routerAt('/characters/k7', false);
+    expect(navigate({ name: 'rules' })).toBe(true);
+    expect(pushState).toHaveBeenCalledWith(null, '', '/rules');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(confirmLeave()).toBe(true);
+  });
+
+  it('guard з текстом: «Скасувати» — лишаємось (без pushState), «ОК» — переходимо', () => {
+    const stay = routerAt('/characters/k7', false);
+    setLeaveGuard(() => 'Є незбережені зміни. Піти зі сторінки без збереження?');
+    expect(stay.navigate({ name: 'characters' })).toBe(false);
+    expect(stay.confirm).toHaveBeenCalledWith('Є незбережені зміни. Піти зі сторінки без збереження?');
+    expect(stay.pushState).not.toHaveBeenCalled();
+
+    const go = routerAt('/characters/k7', true);
+    setLeaveGuard(() => 'Є незбережені зміни. Піти зі сторінки без збереження?');
+    expect(go.navigate({ name: 'characters' })).toBe(true);
+    expect(go.confirm).toHaveBeenCalledTimes(1);
+    expect(go.pushState).toHaveBeenCalledWith(null, '', '/characters');
+  });
+
+  it('guard мовчить (null) — перехід без питання; та сама адреса — не перехід, guard не питають', () => {
+    const { navigate, pushState, confirm } = routerAt('/characters/k7', false);
+    setLeaveGuard(() => null);
+    expect(navigate({ name: 'rules' })).toBe(true);
+    expect(pushState).toHaveBeenCalledTimes(1);
+    setLeaveGuard(() => 'не відпускаю');
+    expect(navigate({ name: 'character', id: 'k7' })).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(pushState).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Назад» браузера: «Скасувати» повертає адресу сторінки pushState-ом і не міняє маршрут; «ОК» — застосовує адресу', () => {
+    // сторінка персонажа на вкладці сету ?set=… — саме цю адресу треба повернути
+    const pushState = vi.fn();
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('history', { pushState, replaceState: vi.fn(), state: null });
+    vi.stubGlobal('window', { confirm });
+    vi.stubGlobal('location', { pathname: '/characters/k7', search: '?set=abc123', hash: '', href: HREF + '/characters/k7?set=abc123' });
+    noteHistoryChange(); // сторінка змінила ?set= replaceState-ом і сказала про це роутеру
+    setLeaveGuard(() => 'Є незбережені зміни. Піти зі сторінки без збереження?');
+    // браузер уже перейшов на /rules і кинув popstate
+    vi.stubGlobal('location', { pathname: '/rules', search: '', hash: '', href: HREF + '/rules' });
+    const apply = vi.fn();
+    handlePopState(apply);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(apply).not.toHaveBeenCalled();
+    expect(pushState).toHaveBeenCalledWith(null, '', HREF + '/characters/k7?set=abc123');
+
+    confirm.mockReturnValue(true);
+    handlePopState(apply);
+    expect(apply).toHaveBeenCalledWith({ name: 'rules' });
+    expect(pushState).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Назад» без guard — маршрут з адреси, confirm не питають', () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('history', { pushState: vi.fn(), replaceState: vi.fn(), state: null });
+    vi.stubGlobal('window', { confirm });
+    vi.stubGlobal('location', { pathname: '/characters', search: '', hash: '', href: HREF + '/characters' });
+    const apply = vi.fn();
+    handlePopState(apply);
+    expect(apply).toHaveBeenCalledWith({ name: 'characters' });
+    expect(confirm).not.toHaveBeenCalled();
   });
 });

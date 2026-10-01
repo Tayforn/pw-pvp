@@ -1,11 +1,13 @@
 // =========================================================
 // Анкета спорядження для балансного фул-рандому — контрольований
-// компонент, спільний для форми заявки гравця (RegisterPage) і модалки
-// «✎» адміна (RegistrationsPanel). Компактний, на один екран десктопа:
-// 8 select-ів + чекбокс ПЗ-зброї + 3 чекбокси спецсетів + згорнутий блок
-// із двома числовими полями (ПА/ПЗ з вікна персонажа — калібрування,
-// у v1.0 на бали не впливають). Балів не зберігає — лише показує
-// орієнтовний гір-скор за таблицями gearRules.
+// компонент для модалки «✎» адміна (RegistrationsPanel): правка старих
+// заявок без балів за речі (legacy-колонки грейдів). Гравець анкету більше
+// не заповнює — заявка йде персонажем з ляльки, грейди лялька визначає з
+// надітих речей (src/doll/model/sheet.ts). Компактний, на один екран
+// десктопа: 8 select-ів + чекбокс ПЗ-зброї + 3 чекбокси спецсетів +
+// згорнутий блок із двома числовими полями (ПА/ПЗ з вікна персонажа —
+// калібрування, у v1.0 на бали не впливають). Балів не зберігає — лише
+// показує орієнтовний гір-скор за таблицями gearRules.
 //
 // Верстка: у кожному .field-row підписи полів — в один рядок (див.
 // .gear-fields у styles.css), а підказки стоять ПІД рядком, а не всередині
@@ -41,10 +43,6 @@ interface Props {
    * тимчасово вимкнено; анкета тоді завжди віддає specialSets=[] і без каменів.
    * Адмінка показує їх і далі (можна прибрати в старих заявках). */
   hideSpecialSets?: boolean;
-  /** Анкета персонажа: усе, що знає лялька (клас, рівень, збірка, точки, камені,
-   * ПЗ-зброя, свап-сети, ШГ і Вознєс), вона рахує сама — тут лише грейди, яких
-   * у каталозі немає: зброя, сет броні, кільця, трактат, джин. */
-  fromDoll?: boolean;
 }
 
 /** Анкета заповнена — усі 10 полів на місці. Чекбокси ніколи не null:
@@ -105,7 +103,7 @@ function RefineSelect({ label, value, onChange }: { label: string; value: number
   );
 }
 
-export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize, hideSpecialSets, fromDoll }: Props) {
+export default function GearFields({ value, onChange, attackLevel, defenseLevel, onExtraChange, rulesVersion, showScore, teamSize, hideSpecialSets }: Props) {
   // Підписка на реєстр версій: коли шкала з БД довантажиться (або адмін
   // збереже нову), живий гір-скор і список сетів перемалюються.
   useRules();
@@ -166,26 +164,6 @@ export default function GearFields({ value, onChange, attackLevel, defenseLevel,
       )}
     </>
   );
-
-  // Анкета персонажа: лише грейди (точки, камені, збірку, сети рахує лялька).
-  if (fromDoll) {
-    return (
-      <div className="gear-fields" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="field-row">
-          <OptionSelect label="Грейд зброї" value={value.weaponGrade} options={WEAPON_GRADE_ORDER} labels={WEAPON_GRADE_LABELS} onChange={(v) => patch({ weaponGrade: v })} />
-          <OptionSelect label="Сет броні" value={value.armorSet} options={armorSets} labels={ARMOR_SET_LABELS} onChange={(v) => patch({ armorSet: v })} />
-        </div>
-        <div className="field-row">
-          <OptionSelect label="Кільце 1 (ліве)" value={value.ring1 ?? undefined} options={RING_ORDER} labels={RING_LABELS} onChange={(v) => patch({ ring1: v ?? null })} />
-          <OptionSelect label="Кільце 2 (праве)" value={value.ring2 ?? undefined} options={RING_ORDER} labels={RING_LABELS} onChange={(v) => patch({ ring2: v ?? null })} />
-        </div>
-        <div className="field-row">
-          <OptionSelect label="Трактат" value={value.tract} options={TRACT_ORDER} labels={TRACT_LABELS} onChange={(v) => patch({ tract: v })} />
-          <OptionSelect label="Джин" value={value.genie} options={GENIE_ORDER} labels={GENIE_LABELS} onChange={(v) => patch({ genie: v })} />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="gear-fields" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

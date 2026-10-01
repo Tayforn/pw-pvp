@@ -4,6 +4,9 @@
 // редактор речі; ПКМ — меню; наведення — тултіп речі. На тачі тап по надітій
 // речі — закріплений тултіп з описом і діями («Зняти / Редагувати / Копія /
 // Обрати іншу»). Джинн і політ на вкладці сету — лише з Головного, їх тут не міняють.
+// Слот «Джинн» (pk) — виняток: будь-який клік (і на вкладці сету, і в readOnly)
+// відкриває вікно джина — там вид, рівень, удача й вміння; у меню ПКМ замість
+// «Редагувати» — «Вміння джина».
 //
 // Спільні для слота й інвентаря дрібниці (назва, бейджі, фокус із клавіатури)
 // живуть тут, а InventoryCell їх імпортує; вміст тултіпа речі дає tip/ItemTip.
@@ -107,8 +110,11 @@ export default function SlotCell({ slot, h, inherited = false, bad = false, dnd,
   const lastPointer = useRef('');
   const label = SLOT_LABEL[slot] || slot;
 
+  const isGenie = slot === 'pk';
+
   const content = (): TipContent => {
     if (h) return instTipContent(h, build);
+    if (isGenie) return { kind: 'text', text: label + (readOnly ? ' — порожньо' : ' — клікни, щоб зібрати джина') };
     if (inherited) return { kind: 'text', text: label + ' — порожньо в Головному; у сеті не міняється' };
     return { kind: 'text', text: label + (readOnly ? ' — порожньо' : ' — клікни, щоб обрати річ') };
   };
@@ -121,7 +127,7 @@ export default function SlotCell({ slot, h, inherited = false, bad = false, dnd,
   const menuItems: Array<MenuItem & TipAction> = h
     ? [
         { label: 'Зняти в інвентар', onClick: () => api.apply((d) => unequip(d, cfgId, slot)) },
-        { label: 'Редагувати', onClick: () => api.openItemEditor(cfgId, h.inst.i) },
+        isGenie ? { label: 'Вміння джина', onClick: () => api.openGenie() } : { label: 'Редагувати', onClick: () => api.openItemEditor(cfgId, h.inst.i) },
         {
           label: 'Копія',
           onClick: () =>
@@ -136,6 +142,12 @@ export default function SlotCell({ slot, h, inherited = false, bad = false, dnd,
     : [];
 
   const primary = (el: HTMLElement) => {
+    // Джин спільний для всіх сетів і має своє вікно (у перегляді — теж, лише без змін).
+    if (isGenie) {
+      tip.hideAll();
+      api.openGenie();
+      return;
+    }
     if (inherited || readOnly) {
       tip.toggle(el, content());
       return;

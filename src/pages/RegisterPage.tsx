@@ -49,12 +49,12 @@ export default function RegisterPage() {
   // Версії шкали з бази — скор і тир персонажа рахуються за версією турніру.
   useRules();
   const [members, setMembers] = useState<string[]>([]);
-  // Анкета спорядження — лише для балансного фул-рандому.
+  // Спорядження для legacy-колонок заявки (з ляльки) — лише для балансного фул-рандому.
   const [gear, setGear] = useState<Partial<PlayerGear>>({});
   const [attackLevel, setAttackLevel] = useState<number | null>(null);
   const [defenseLevel, setDefenseLevel] = useState<number | null>(null);
   // Фул-рандом — лише персонажем з ляльки (рішення власника 25.09.2026: «все має
-  // йти через ляльку»); ручної анкети більше немає. '' — персонажа не обрано.
+  // йти через ляльку»); ручних полів спорядження немає. '' — персонажа не обрано.
   const [chars, setChars] = useState<CharacterSummary[] | null>(null);
   const [charId, setCharId] = useState('');
   const [charLoad, setCharLoad] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; data?: CharacterForRegistration; err?: string }>({ status: 'idle' });
@@ -82,7 +82,7 @@ export default function RegisterPage() {
 
   const tournament = pinnedId ? pinned : tournaments.find((t) => t.id === tournamentId);
   // Балансний фул-рандом — теж командний турнір, але заявка індивідуальна
-  // (нік + анкета спорядження); «готові команди» — назва + N ніків, як було.
+  // (нік + спорядження з ляльки); «готові команди» — назва + N ніків, як було.
   const isBalanced = tournament ? isBalancedRandom(tournament) : false;
   const isTeam = !!tournament?.teamSize && !isBalanced;
 
@@ -94,7 +94,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     setMembers(tournament?.teamSize ? Array.from({ length: tournament.teamSize }, () => '') : []);
-    // Анкета прив'язана до турніру — при зміні вибору починаємо з чистої.
+    // Спорядження привʼязане до турніру — при зміні вибору починаємо з чистого.
     clearGear();
     // Збережений нік — лише для індивідуальної заявки: у fixed-командному
     // турнірі це поле — назва команди, свій нік туди підставляти не можна
@@ -113,7 +113,7 @@ export default function RegisterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discordMe, isTeam]);
 
-  // Персонажі учасника клану — лише для фул-рандому (там потрібна анкета).
+  // Персонажі учасника клану — лише для фул-рандому (там заявка персонажем).
   useEffect(() => {
     if (!discordMe || !isBalanced || chars) return;
     let alive = true;
@@ -124,7 +124,7 @@ export default function RegisterPage() {
     return () => { alive = false; };
   }, [discordMe, isBalanced, chars]);
 
-  // Інший турнір — анкету скинуто (clearGear вище), тож і вибір персонажа теж.
+  // Інший турнір — спорядження скинуто (clearGear вище), тож і вибір персонажа теж.
   useEffect(() => {
     setCharId('');
     setCharLoad({ status: 'idle' });
@@ -166,7 +166,7 @@ export default function RegisterPage() {
   }, [charData]);
 
   const membersValid = !isTeam || members.every((m) => m.trim());
-  // Фул-рандом — лише персонажем із заповненою анкетою персонажа.
+  // Фул-рандом — лише персонажем, на якому є зброя й броня (gear з ляльки повний).
   const gearValid = !isBalanced || (!!charData?.result.gear && isGearComplete(gear));
   // Клієнтська перевірка — доповнює серверний unique-індекс (той блокує лише
   // повтор ТОГО САМОГО нікнейму); ця блокує ще одну заявку з ІНШИМ нікнеймом
@@ -276,8 +276,8 @@ export default function RegisterPage() {
           <p className="hint" style={{ margin: 0 }}>З цього браузера вже подано заявку на цей турнір.</p>
         </div>
       ) : (
-        // 560 для анкети: при 480 внутрішня ширина менша за потрібну парі полів
-        // .field-row — пари переносились би в стовпчик навіть на десктопі.
+        // 560 для фул-рандому: картці персонажа з розкладом по речах при 480 тісно
+        // (рядки розкладу переносились би навіть на десктопі).
         <form className="card" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: isBalanced ? 560 : 480 }}>
           {pinnedId ? (
             <div className="field">

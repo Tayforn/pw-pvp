@@ -8,12 +8,18 @@
 //
 // Вкладка сету тримається в ?set=<id>: F5 і посилання відкривають той самий
 // сет, а маршрут лишається один.
+//
+// Незбережені зміни (правки збереженого персонажа; правки чернетки, коли її
+// запис у браузер зупинено чи зламано) не губляться мовчки: сторінка ставить
+// leaveGuard (app/leaveGuard.ts) — роутер питає підтвердження перед переходом
+// по меню сайту й «Назад / Вперед», браузер — перед закриттям вкладки.
 // =========================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLeaveGuard } from '../app/leaveGuard';
 import PageMeta from '../app/PageMeta';
 import { useMe } from '../app/useMe';
-import type { Route } from '../app/useRoute';
+import { noteHistoryChange, type Route } from '../app/useRoute';
 import {
   CharacterApiError, archiveCharacter, createCharacter, getCharacter, listCharacters, updateCharacter,
   type CharacterRecord, type CharacterSummary,
@@ -24,7 +30,6 @@ import { CFG_MAIN } from '../doll/model/hydrate';
 import { mergeImported } from '../doll/model/importCalc';
 import { clsLabel } from '../doll/ui/CharBar';
 import DollEditor from '../doll/ui/DollEditor';
-import SheetCard from '../doll/ui/SheetCard';
 
 const SET_PARAM = 'set';
 
@@ -42,7 +47,11 @@ function writeSetParam(id: string): void {
     const url = new URL(location.href);
     if (id === CFG_MAIN) url.searchParams.delete(SET_PARAM);
     else url.searchParams.set(SET_PARAM, id);
-    if (url.href !== location.href) history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    if (url.href !== location.href) {
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      // Роутер повертає на цю адресу після «Скасувати» в застереженні — хай знає нову.
+      noteHistoryChange();
+    }
   } catch {
     /* без History API вкладка просто не переживе F5 */
   }
@@ -176,12 +185,11 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   const blockers = useMemo(() => saveBlockers(doc), [doc]);
   const hasWork = doc.items.length > 0 || doc.sets.length > 0 || !!doc.name;
   // Чернетка в браузері не записана: конфлікт вкладок (запис зупинено), запис не вдався або
-  // сховища немає — вихід до списку втратить зміни цієї вкладки, тож питаємо (як toList у профілі).
+  // сховища немає — будь-який відхід (меню сайту, «Назад», закриття вкладки) втратить зміни
+  // цієї вкладки, тож сторінка не відпускає без підтвердження (як збережений персонаж із правками).
   const unsaved = hasWork && (conflict || saveState === 'held' || saveState === 'failed' || saveState === 'off');
-  const toList = () => {
-    if (unsaved && !window.confirm('Зміни в цій вкладці не збережено в браузері. Вийти до списку?')) return;
-    onNavigate?.({ name: 'characters' });
-  };
+  const releaseGuard = useLeaveGuard(unsaved ? 'Зміни в цій вкладці не збережено в браузері. Піти зі сторінки?' : null);
+  const toList = () => onNavigate?.({ name: 'characters' });
 
   const resetDraft = () => {
     if (!window.confirm('Скинути чернетку? Усі речі, сети й налаштування персонажа буде видалено з цього браузера.')) return;
@@ -213,8 +221,9 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
     setSaving(true);
     try {
       const rec = await createCharacter({ ...doc, name: doc.name.trim() });
-      // Персонаж тепер на сервері — чернетка «нового» більше не потрібна.
+      // Персонаж тепер на сервері — чернетка «нового» більше не потрібна, застереження теж.
       clearDraft(key);
+      releaseGuard();
       onNavigate?.({ name: 'character', id: rec.id });
     } catch (e) {
       if (e instanceof CharacterApiError && e.code === 'unauthorized') {
@@ -282,7 +291,6 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
       )}
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
       {importOpen && <ImportPanel hasWork={hasWork} onImport={importDoc} onClose={() => setImportOpen(false)} />}
-      <SheetCard doc={doc} onChange={setDoc} />
     </>
   );
 
@@ -325,8 +333,8 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
   const [activeCfg, setActiveCfg] = useActiveCfg();
   // Редактор повертає новий обʼєкт на кожну зміну, тож «змінено» = не той самий обʼєкт, що збережено.
   const dirty = savedDoc !== null && doc !== savedDoc;
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
+  // Незбережені зміни: підтвердження перед переходом по сайту, «Назад» і закриттям вкладки.
+  const releaseGuard = useLeaveGuard(dirty ? 'Є незбережені зміни. Піти зі сторінки без збереження?' : null);
 
   const applyRecord = useCallback((rec: CharacterRecord): boolean => {
     const got = docFromRecord(rec);
@@ -358,17 +366,6 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
     }
     void load();
   }, [me, meLoading, load]);
-
-  // Незбережені зміни: попередити при закритті чи оновленні вкладки.
-  useEffect(() => {
-    const onBefore = (e: BeforeUnloadEvent) => {
-      if (!dirtyRef.current) return;
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBefore);
-    return () => window.removeEventListener('beforeunload', onBefore);
-  }, []);
 
   const blockers = useMemo(() => saveBlockers(doc), [doc]);
 
@@ -415,6 +412,8 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
     setBusy(true);
     try {
       await archiveCharacter(id);
+      // Персонажа вже немає — правки до нього втрачати нема чого, застереження не питаємо.
+      releaseGuard();
       onNavigate?.({ name: 'characters' });
     } catch (e) {
       setBusy(false);
@@ -422,10 +421,8 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
     }
   };
 
-  const toList = () => {
-    if (dirty && !window.confirm('Є незбережені зміни. Вийти до списку без збереження?')) return;
-    onNavigate?.({ name: 'characters' });
-  };
+  // Застереження про незбережені зміни покаже роутер (leaveGuard) — тут лише перехід.
+  const toList = () => onNavigate?.({ name: 'characters' });
 
   if (state.kind === 'loading') return <p className="hint">Завантажую персонажа…</p>;
   if (state.kind === 'error') {
@@ -489,7 +486,6 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
         </div>
       )}
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
-      <SheetCard doc={doc} onChange={setDocState} />
     </>
   );
 

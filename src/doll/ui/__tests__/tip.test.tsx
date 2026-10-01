@@ -6,12 +6,18 @@
 //  • вікна рендеряться в справжньому EditorProvider і показують те, що
 //    вимагає контракт: банер копії на вкладці сету, секцію «З інвентаря»,
 //    стани каталогу;
-//  • чисті помічники редактора (гнізда, «Замінити/Повернути базу», кроки рівня бафа).
+//  • чисті помічники редактора (гнізда, «Замінити/Повернути базу», кроки рівня бафа);
+//  • вікно джина: плитки сітки зі станами, картка вміння, фільтри, лише перегляд.
 // =========================================================
 
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Вікно джина бере бали за джина зі шкали (rulesStore → Supabase) — у тестах без мережі лишається вбудована.
+vi.mock('../../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) } }));
+import { CLASS_LABELS } from '../../../data/gearRules';
+import { GENIE_SKILLS, clsBit, whyBlocked } from '../../../data/genie';
 import { SLOTS, buffHasSides, buffMaxLevel } from '../../core/constants';
 import { readJson } from '../../core/__tests__/testData';
 import { getBuffById, getBuffs } from '../../core/refdata';
@@ -21,6 +27,7 @@ import { catItems, ensureCats } from '../../data/catalog';
 import type { CharacterDoc } from '../../model/doc';
 import { CFG_MAIN, hydrate } from '../../model/hydrate';
 import { createSet, duplicateInstance, effectiveBuffLvl, equip, setBuffSide, stepBuffLvl, updateInstance } from '../../model/ops';
+import { CLS_CHAR } from '../../model/sheet';
 import { buildBuffTipModel, buildTipModel, type TipModel } from '../../model/tipModel';
 import { calcState, docFrom, loadRef, lookup } from '../../model/__tests__/testDoc';
 import { EditorProvider } from '../EditorContext';
@@ -28,6 +35,7 @@ import { BuffCfgModal } from '../modals/BuffCfgModal';
 import { BuffPickModal, buffPickRows, PICK_CLASSES } from '../modals/BuffPickModal';
 import { DeleteSetModal } from '../modals/DeleteSetModal';
 import { EditorModal, replaceBasePatch, restoreBasePatch, STAT_OPTIONS } from '../modals/EditorModal';
+import { classText, genieBlockText, genieGridRows, GenieModal, kindShort, onLand, terrainText } from '../modals/GenieModal';
 import { OpponentModal, parseOppNum } from '../modals/OpponentModal';
 import { isNoopPatch, keyStats, PickerModal, withSocket } from '../modals/PickerModal';
 import { BuffTip } from '../tip/BuffTip';
@@ -82,7 +90,7 @@ beforeAll(async () => {
     const name = String(url).split('/').pop()!.replace(/[?#].*$/, '').replace(/\.json$/, '');
     return { ok: true, status: 200, json: async () => readJson(name) };
   });
-  await ensureCats(['ta', 'ob', 'wdf', 'crystal']);
+  await ensureCats(['ta', 'ob', 'wdf', 'crystal', 'pk']);
 });
 afterAll(() => {
   vi.unstubAllGlobals();
@@ -277,12 +285,164 @@ describe('редактор речі', () => {
     expect(restoreBasePatch(item, { ...inst, xr: true, x: edited })).toEqual({ patch: { xr: false, x: [] }, lossy: true });
   });
 
+  it('джин (pk): без «Заточки» й «Гравіювання», з кнопкою у вікно джина', () => {
+    const doc = docFrom('typical-by');
+    const html = renderIn(doc, <EditorModal cfgId={CFG_MAIN} iid={doc.main.pk!} />);
+    const text = visible(html);
+    expect(text).not.toContain('Заточка');
+    expect(text).not.toContain('Гравіювання');
+    expect(text).toContain('Вміння джина');
+    expect(text).toContain('Характеристики');
+    // старий документ, де в джина вже вписане гравіювання, його не ховає
+    const engraved = updateInstance(doc, CFG_MAIN, doc.main.pk!, { e: [{ t: 'hp', v: 10 }] }).doc;
+    expect(visible(renderIn(engraved, <EditorModal cfgId={CFG_MAIN} iid={doc.main.pk!} />))).toContain('Гравіювання · 1');
+  });
+
   it('список характеристик — коди без дублів, спершу коди Хелпера', () => {
     const codes = STAT_OPTIONS.map((o) => o.code);
     expect(new Set(codes).size).toBe(codes.length);
     expect(codes[0]).toBe('ld_min');
     expect(codes).toContain('ae_eg');
     expect(codes).not.toContain('mana');
+  });
+});
+
+describe('вікно джина', () => {
+  /** Дешеві вміння 1-го рівня (як у genie.test): 8 штук → джин від 100 рівня й удачі 91. */
+  const CHEAP = [10001, 9681, 9751, 9791, 9941, 9601, 9581, 9741];
+  const EMPTY_G = { level: 1, luck: 0, skills: [] as number[] };
+  const fullDoc = (): CharacterDoc => ({ ...docFrom('typical-by'), genie: { level: 100, luck: 91, skills: CHEAP } });
+
+  it('без джина: вікно xl з двома панелями, 81 плитка «на суші», вид з каталогу pk, пігулка «не заповнено»', () => {
+    const doc = docFrom('typical-by');
+    const html = renderIn(doc, <GenieModal />);
+    const text = visible(html);
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('doll-modal-xl doll-modal-split doll-modal-genie');
+    expect(text).toContain('Джин');
+    expect(text).toContain('Збірка · 0 / 8');
+    expect((html.match(/class="doll-gw-tile/g) || []).length).toBe(81);
+    expect(text).toContain('Усі вміння · 81 на суші');
+    // вид: 5 речей каталогу + «без джина»; у фікстурі надіта «Душа Тай Инь»
+    expect((html.match(/class="doll-gw-kind(?: is-on)?"/g) || []).length).toBe(6);
+    expect(html).toMatch(/class="doll-gw-kind is-on" aria-pressed="true"[^>]*>Тай Инь</);
+    expect(text).toContain('без джина');
+    expect(text).toContain('не заповнено · 0 у скор');
+    expect(text).not.toContain('макс.'); // підказка «макс. удачі» лише для заповненого джина
+    // можна додати стільки, скільки правила пускають на 1 рівні з удачею 0
+    const avail = GENIE_SKILLS.filter((s) => onLand(s) && !whyBlocked(s.ref, EMPTY_G, clsBit('by'))).length;
+    expect(avail).toBeGreaterThan(0);
+    expect(text).toContain('можна додати: ' + avail);
+    expect(html).toMatch(/aria-checked="true"[^>]*>Суша</);
+    expect(text).toContain('Усі 91');
+    expect(text).toContain('лише доступні');
+    expect(html).toContain('aria-label="Пошук вміння"');
+    expect(text).toContain('Обери вміння в сітці');
+    expect(text).toContain('Скинути вміння');
+    expect(text).toContain('Готово');
+    // одна плитка з tabIndex 0 (перша), решта −1
+    expect((html.match(/tabindex="0"/g) || []).length).toBe(1);
+    expect((html.match(/tabindex="-1"/g) || []).length).toBe(81); // 80 плиток + корінь вікна
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+  });
+
+  it('фільтри сітки: суша 81 / усі 91, пошук за назвою, «лише доступні» за правилами (збірка лишається)', () => {
+    const bit = clsBit('by');
+    expect(genieGridRows({ terrain: 'land', q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(81);
+    expect(genieGridRows({ terrain: 'all', q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(91);
+    expect(genieGridRows({ terrain: 'all', q: 'жало', onlyAvail: false, cfg: EMPTY_G, bit }).map((s) => s.ref)).toEqual([10001]);
+    const avail = genieGridRows({ terrain: 'all', q: '', onlyAvail: true, cfg: EMPTY_G, bit });
+    expect(avail.every((s) => !whyBlocked(s.ref, EMPTY_G, bit))).toBe(true);
+    expect(avail.length).toBeGreaterThan(0);
+    expect(avail.length).toBeLessThan(91);
+    const full = { level: 100, luck: 91, skills: CHEAP };
+    expect(genieGridRows({ terrain: 'all', q: '', onlyAvail: true, cfg: full, bit }).map((s) => s.ref).sort()).toEqual([...CHEAP].sort());
+  });
+
+  it('повна збірка і відкрите вміння: плитки «у збірці» з ✓, поточна — aria-current і tabIndex 0, решта недоступні з причиною; картка «Якщо прибрати»', () => {
+    const html = renderIn(fullDoc(), <GenieModal initialRef={9581} />);
+    const text = visible(html);
+    expect(text).toContain('Збірка · 8 / 8');
+    expect((html.match(/class="doll-gw-mark"/g) || []).length).toBe(8);
+    expect((html.match(/aria-pressed="true" aria-current="true"/g) || []).length).toBe(1);
+    expect(html).toMatch(/class="doll-gw-tile is-picked is-cur"[^>]*aria-label="Одужання — у збірці"/);
+    expect((html.match(/class="doll-gw-tile is-blocked"/g) || []).length).toBe(81 - 8);
+    expect(html).toMatch(/aria-disabled="true"/);
+    expect(html).toMatch(/aria-label="[^"]+ — не додати: у джина лише 8 вмінь — спершу прибери якесь"/);
+    expect((html.match(/tabindex="0"/g) || []).length).toBe(1);
+    expect(html).toMatch(/is-cur"[^>]*tabindex="0"/);
+    // смуга: бали за удачею, 8 слотів збірки з назвами, підсумки без порушень
+    expect(text).toContain('91–99 · +8 у скор');
+    expect((html.match(/class="doll-gw-bslot"/g) || []).length).toBe(8);
+    expect(text).toContain('Умінь 8 / 8');
+    expect(text).toContain('Мін. рівень 100 є 100');
+    expect(text).toContain('Спорідненість 6 з 21 вільно 15');
+    expect(text).toContain('макс. 100');
+    expect(html).not.toContain('doll-genie-sum bad');
+    // картка
+    expect(text).toContain('Одужання');
+    expect(text).toContain('Вміння джина · 10 рівнів');
+    expect(text).toContain('Рівень джина від 5');
+    expect(text).toContain('Спорідненість Вода 1');
+    expect(text).toContain('Якщо прибрати');
+    expect(text).toContain('Умінь 7 / 8');
+    expect(text).toContain('Прибрати з джина');
+    expect(text).toContain('Завантажую опис'); // тексти вмінь — лише за fetch у вікні, у статичному рендері їх нема
+    expect(html).toMatch(/aria-pressed="true"[^>]*>1<\/button>/); // рівень 1 для чисел
+    expect(html).toMatch(/<button[^>]*>Скинути вміння<\/button>/);
+    expect(html).not.toMatch(/disabled=""[^>]*>Скинути вміння/);
+    expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
+  });
+
+  it('недоступне вміння в картці: причина й вимкнена кнопка; клас і місцевість — у фактах', () => {
+    const doc: CharacterDoc = { ...docFrom('typical-by'), genie: { level: 1, luck: 0, skills: [] } };
+    const html = renderIn(doc, <GenieModal initialRef={10401} />); // «Шипи гніву» — від 60 рівня, лише суша
+    const text = visible(html);
+    expect(text).toContain('Шипи гніву');
+    expect(text).toContain('Якщо додати');
+    expect(html).toMatch(/disabled=""[^>]*>Додати в джина/);
+    expect(text).toContain('не додати: треба рівень джина 60, є 1');
+    expect(html).toMatch(/class="doll-gw-tile is-cur is-blocked"/);
+    expect(text).toContain('Місцевість лише суша');
+    expect(text).toContain('Рівень джина від 60');
+    // класове вміння мага у воїна
+    const mage = visible(renderIn(doc, <GenieModal initialRef={10331} />)); // «Зірка майстра» — лише маг
+    expect(mage).toContain('Клас Маг');
+    expect(mage).toContain('не додати: не для цього класу');
+  });
+
+  it('лише перегляд: без «Додати», «Прибрати» і «Скинути вміння»; «Закрити» у шапці й унизу; вид і поля вимкнені', () => {
+    const html = renderIn(fullDoc(), <GenieModal initialRef={9581} />, CFG_MAIN, true);
+    const text = visible(html);
+    expect(text).not.toContain('Додати в джина');
+    expect(text).not.toContain('Прибрати з джина');
+    expect(text).not.toContain('Скинути вміння');
+    expect((html.match(/>Закрити</g) || []).length).toBe(2);
+    expect(text).toContain('лише перегляд');
+    expect(html).toMatch(/aria-label="Рівень джина" disabled=""/);
+    expect(html).toMatch(/aria-label="Удача джина" disabled=""/);
+    expect((html.match(/class="doll-gw-kind[^"]*" aria-pressed="(?:true|false)" title="[^"]*" disabled=""/g) || []).length).toBe(5);
+    expect(html).not.toMatch(/aria-label="Вищий рівень джина"(?! disabled)/);
+    expect(html).toMatch(/aria-label="Відкрити: Одужання"/);
+  });
+
+  it('тексти причин, класів і місцевості; коротка назва виду', () => {
+    expect(genieBlockText({ code: 'full', need: 8, have: 8 })).toContain('8 вмінь');
+    expect(genieBlockText({ code: 'initial' })).toContain('початкове');
+    expect(genieBlockText({ code: 'class' })).toBe('не для цього класу');
+    expect(genieBlockText({ code: 'level', need: 90, have: 80 })).toBe('треба рівень джина 90, є 80');
+    expect(genieBlockText({ code: 'luck', need: 91, have: 50 })).toBe('треба удачу 91, є 50');
+    expect(genieBlockText({ code: 'unknown' })).toContain('немає в таблиці');
+    expect(classText(0)).toBe('');
+    expect(classText(clsBit('by') | clsBit('ya'))).toBe(CLASS_LABELS[CLS_CHAR.by] + ', ' + CLASS_LABELS[CLS_CHAR.ya]);
+    expect(terrainText(0)).toBe('');
+    expect(terrainText(0x8000)).toBe('лише вода');
+    expect(terrainText(0x4000 | 0x10000)).toBe('лише суша і повітря');
+    expect(kindShort('Душа Тай Чин')).toBe('Тай Чин');
+    expect(kindShort("Прическа 'Тао Лі'")).toBe('Тао Лі');
+    expect(onLand(GENIE_SKILLS.find((s) => s.ref === 10141)!)).toBe(false); // «Ловкость ветра» — лише повітря
+    expect(GENIE_SKILLS.filter(onLand)).toHaveLength(81);
   });
 });
 

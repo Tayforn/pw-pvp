@@ -36,7 +36,9 @@ export type EditorModal =
   | { kind: 'buffPick'; tab?: BuffPickTab }
   | { kind: 'opponent' }
   | { kind: 'addSet' }
-  | { kind: 'deleteSet'; setId: string };
+  | { kind: 'deleteSet'; setId: string }
+  /** Вікно джина; ref — вміння, яке одразу відкрити в картці (слот у картці «Джин»). */
+  | { kind: 'genie'; ref?: number };
 
 /** Як рахувати характеристики на панелі: «Чисті» — як скор (лише пасивки класу,
  * без бафів), «У бою» — з бафами й дебафами документа. Стан перегляду, не документа. */
@@ -58,6 +60,8 @@ export interface EditorApi {
   openAddSet(): void;
   /** Питання «Видалити сет?» (з вибором прибрати й речі, що ніде більше не надіті). */
   openDeleteSet(setId: string): void;
+  /** Вікно джина (рівень, удача, вид і збірка вмінь); ref — яке вміння показати в картці. */
+  openGenie(ref?: number): void;
   closeModal(): void;
   modal: EditorModal;
   /** «Чисті / У бою» — памʼятається в браузері (localStorage), типово «Чисті». Працює й у readOnly. */
@@ -205,6 +209,7 @@ export function EditorProvider({ doc, model, onChange, readOnly, activeCfg, onAc
       openOpponent: () => open({ kind: 'opponent' }),
       openAddSet: () => open({ kind: 'addSet' }),
       openDeleteSet: (setId) => open({ kind: 'deleteSet', setId }),
+      openGenie: (ref) => open(ref != null ? { kind: 'genie', ref } : { kind: 'genie' }),
       closeModal,
       modal,
       statsMode,
