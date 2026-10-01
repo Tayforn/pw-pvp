@@ -46,7 +46,7 @@ vi.mock('../../app/supabaseClient', () => ({
 }));
 
 import {
-  LIVE_DUPLICATE_TEXT, fetchPlayerStatusByNickname, findLiveRegistration, isMissingColumnError, likePattern, registrationFromRow, setRegistrationStatus, submitRegistration,
+  ACCOUNT_DUPLICATE_TEXT, LIVE_DUPLICATE_TEXT, fetchPlayerStatusByNickname, findLiveRegistration, isMissingColumnError, likePattern, registrationFromRow, setRegistrationStatus, submitRegistration,
   updateRegistrationItemPoints, type RegistrationRow,
 } from '../tournaments';
 import { isPastTournament, type ItemBreakdown } from '../types';
@@ -104,6 +104,10 @@ describe('registrationFromRow: item_points / item_breakdown (0032)', () => {
     expect(r.itemBreakdown).toBeNull();
     expect(r).toMatchObject({ id: 'r1', kind: 'player', gear: null, dollPower: null, scoreAdjust: 0, characterSnapshot: null });
     expect(registrationFromRow({ ...ROW, item_points: null, item_breakdown: null })).toMatchObject({ itemPoints: null, itemBreakdown: null });
+    // мітка акаунта (0035): є — рядок, немає чи порожня — null
+    expect(registrationFromRow({ ...ROW, account_tag: 'TAG-0123456789' }).accountTag).toBe('TAG-0123456789');
+    expect(registrationFromRow({ ...ROW, account_tag: '' }).accountTag).toBeNull();
+    expect(registrationFromRow(ROW).accountTag).toBeNull();
   });
 
   it('число — як є, numeric рядком — Number(); зламане чи від’ємне → null', () => {
@@ -393,6 +397,9 @@ describe('шлях гравця: причина відхилення (0033)', ()
     db.writes.length = 0;
     db.updateErrors.push({ code: '42703', message: 'column "reject_reason" does not exist' }, { message: 'violates unique constraint "registrations_tournament_nickname_uidx"' });
     await expect(setRegistrationStatus('r1', 'pending')).rejects.toThrow(LIVE_DUPLICATE_TEXT);
+    // у того самого Discord-акаунта вже є жива заявка (0035) — свій текст
+    db.updateErrors.push({ code: '23505', message: 'duplicate key value violates unique constraint "registrations_tournament_account_uidx"' });
+    await expect(setRegistrationStatus('r1', 'confirmed')).rejects.toThrow(ACCOUNT_DUPLICATE_TEXT);
     // інша помилка підтвердження — як є
     db.updateErrors.push({ code: '42501', message: 'new row violates row-level security policy' });
     await expect(setRegistrationStatus('r1', 'confirmed')).rejects.toMatchObject({ code: '42501' });

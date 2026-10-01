@@ -231,4 +231,17 @@ describe('розклад сервера вміщається в CHECK бази',
     expect(res.itemBreakdown.scorer).toBe('x'.repeat(40));
     expect(breakdownBytes(res.itemBreakdown)).toBeLessThanOrEqual(ITEM_BREAKDOWN_MAX_BYTES);
   });
+
+  it('мітки бекенда (nonce, sig) — у розкладі, обрізані до 64 символів, у межах розміру; без міток — полів немає', () => {
+    const tags = { nonce: 'n'.repeat(80), sig: 'S'.repeat(32) };
+    const res = scoreRegistration({ doc: snapshotJson, rulesRaw: RULES_RAW, rulesVersion: V122, scorer: 'pw-pvp@abc', tags });
+    if (!res.ok) throw new Error(res.blockReason);
+    expect(res.itemBreakdown).toMatchObject({ nonce: 'n'.repeat(64), sig: 'S'.repeat(32), server: true, checked: true });
+    expect('pid' in res.itemBreakdown).toBe(false);
+    expect(breakdownBytes(res.itemBreakdown)).toBeLessThanOrEqual(ITEM_BREAKDOWN_MAX_BYTES);
+    const bare = scoreRegistration({ doc: snapshotJson, rulesRaw: RULES_RAW, rulesVersion: V122 });
+    if (!bare.ok) throw new Error(bare.blockReason);
+    expect(Object.keys(bare.itemBreakdown)).not.toEqual(expect.arrayContaining(['nonce']));
+    expect('sig' in bare.itemBreakdown).toBe(false);
+  });
 });

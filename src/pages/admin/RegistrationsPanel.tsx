@@ -27,7 +27,7 @@ import { useEffect, useState } from 'react';
 import { errorMessage, reportError } from '../../app/errorMessage';
 import { routeUrl, type Route } from '../../app/useRoute';
 import type { PlayerGear, Registration, Tournament } from '../../data/types';
-import { isBalancedRandom } from '../../data/types';
+import { isBalancedRandom, isPastTournament } from '../../data/types';
 import { REJECT_REASON_MAX, deleteRegistration, fetchRegistrations, setRegistrationStatus, subscribeToTournamentChanges, updateRegistrationAdjust, updateRegistrationGear } from '../../data/tournaments';
 import { CLASS_LABELS, classPointsFor, gearSummary, gemMixLabel, registrationScore, rulesFor, tierFor } from '../../data/gearRules';
 import { genieFromSnapshot } from '../../data/genie';
@@ -65,12 +65,30 @@ export function unverifiedTitle(r: Pick<Registration, 'itemPoints' | 'itemBreakd
 }
 /** Нік відхиленої заявки вже тримає жива — підтвердити її не дасть унікальний індекс (0033). */
 const LIVE_TWIN_TITLE = 'Гравець подав заявку знову з цим ніком — підтвердь нову заявку, а цю видали';
+/** Двійник за Discord-акаунтом (0035): нік інший, а заявка — від того самого гравця. */
+const ACCOUNT_TWIN_TITLE = 'У цього гравця (той самий Discord-акаунт) уже є інша жива заявка — підтвердь її, а цю залиш відхиленою';
+
+/** Чому відхилену не можна підтвердити: нік тримає жива заявка чи той самий акаунт уже має живу. */
+export function liveTwinKind(r: Registration, rows: readonly Registration[]): 'nick' | 'account' | null {
+  if (r.status !== 'rejected') return null;
+  const live = rows.filter((x) => x.status !== 'rejected');
+  if (live.some((x) => x.nickname.toLowerCase() === r.nickname.toLowerCase())) return 'nick';
+  if (r.accountTag && live.some((x) => x.accountTag === r.accountTag)) return 'account';
+  return null;
+}
 
 /** Відхилені заявки, чий нік уже тримає жива (повторна подача після 0033; нік
- * унікальний серед не відхилених без урахування регістру) — «Підтвердити» для них немає. */
+ * унікальний серед не відхилених без урахування регістру) або чий Discord-акаунт уже
+ * має живу (0035: одна жива заявка з акаунта) — «Підтвердити» для них немає. */
 export function rejectedWithLiveTwin(rows: readonly Registration[]): Set<string> {
-  const live = new Set(rows.filter((r) => r.status !== 'rejected').map((r) => r.nickname.toLowerCase()));
-  return new Set(rows.filter((r) => r.status === 'rejected' && live.has(r.nickname.toLowerCase())).map((r) => r.id));
+  const liveRows = rows.filter((r) => r.status !== 'rejected');
+  const live = new Set(liveRows.map((r) => r.nickname.toLowerCase()));
+  const liveTags = new Set(liveRows.map((r) => r.accountTag).filter((t): t is string => !!t));
+  return new Set(
+    rows
+      .filter((r) => r.status === 'rejected' && (live.has(r.nickname.toLowerCase()) || (!!r.accountTag && liveTags.has(r.accountTag))))
+      .map((r) => r.id),
+  );
 }
 
 /**
@@ -483,6 +501,16 @@ export default function RegistrationsPanel({ tournament, onNavigate }: { tournam
                   з ляльки ✓
                 </span>
               )}
+              {/* Фул-рандом: «одна заявка з Discord-акаунта» тримає база (0035) лише для заявок із міткою
+                  акаунта; гість без входу (чи заявка, подана до 0035) мітки не має — дублі звір вручну. */}
+              {balanced && !isPastTournament(tournament) && r.kind === 'player' && r.characterSnapshot != null && !r.accountTag && (
+                <span
+                  className="badge mute"
+                  title="Подано без входу через Discord (гість) або до запуску правила «одна заявка з акаунта» — правило на цю заявку не діє, дублі однієї людини звір вручну."
+                >
+                  без Discord
+                </span>
+              )}
               {r.characterSnapshot != null && (
                 // Знімок ляльки в редакторі лише для перегляду (/admin/doll/:id) — справжнє
                 // посилання: з модифікаторами відкривається в новій вкладці браузера.
@@ -507,7 +535,9 @@ export default function RegistrationsPanel({ tournament, onNavigate }: { tournam
                 <button type="button" className="btn btn-ghost btn-sm" title={v2 ? 'Розклад по речах, перерахунок і корекція адміна' : 'Редагувати анкету спорядження'} onClick={() => setEditingId(r.id)}>✎</button>
               )}
               {liveTwin ? (
-                <span className="badge mute" title={LIVE_TWIN_TITLE}>є нова заявка</span>
+                <span className="badge mute" title={liveTwinKind(r, rows) === 'account' ? ACCOUNT_TWIN_TITLE : LIVE_TWIN_TITLE}>
+                  є нова заявка
+                </span>
               ) : r.status !== 'confirmed' && (
                 <button type="button" className="btn btn-ghost btn-sm" disabled={!!rc?.busy} onClick={() => confirmReg(r).catch(reportError)}>Підтвердити</button>
               )}

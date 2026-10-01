@@ -50,6 +50,7 @@ export interface RegistrationRow {
   item_points?: number | string | null; item_breakdown?: unknown;
   // 0033
   reject_reason?: string | null;
+  account_tag?: string | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -146,6 +147,7 @@ export const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Regi
     dollPower: validPower(r.doll_power),
     itemPoints: itemPointsOf(r.item_points), itemBreakdown: validBreakdown(r.item_breakdown),
     rejectReason: typeof r.reject_reason === 'string' && r.reject_reason.trim() ? r.reject_reason.trim() : null,
+    accountTag: typeof r.account_tag === 'string' && r.account_tag ? r.account_tag : null,
   };
 };
 const gearToRow = (g: PlayerGear) => ({
@@ -469,7 +471,10 @@ export const REJECT_REASON_MAX = 200;
 /** Підтвердити (повернути в живі) відхилену заявку не можна: після 0033 гравець подав
  * заявку знову з тим самим ніком, і нік серед живих заявок турніру вже зайнятий. */
 export const LIVE_DUPLICATE_TEXT = 'У турнірі вже є жива заявка з цим ніком — підтвердь її, а стару видали.';
+/** 0035: у того самого Discord-акаунта вже є інша жива заявка на турнір. */
+export const ACCOUNT_DUPLICATE_TEXT = 'У цього гравця (той самий Discord-акаунт) уже є інша жива заявка на турнір — підтвердь її, а цю залиш відхиленою.';
 
+const isAccountConflict = (e: { message?: string | null }): boolean => (e.message ?? '').includes('registrations_tournament_account_uidx');
 const isNicknameConflict = (e: { code?: string | null; message?: string | null }): boolean =>
   e.code === '23505' || (e.message ?? '').includes('registrations_tournament_nickname');
 
@@ -484,6 +489,7 @@ const isNicknameConflict = (e: { code?: string | null; message?: string | null }
  */
 export async function setRegistrationStatus(id: string, status: RegistrationStatus, rejectReason?: string | null): Promise<{ reasonSaved: boolean }> {
   const fail = (e: { code?: string | null; message?: string | null }): never => {
+    if (status !== 'rejected' && isAccountConflict(e)) throw new Error(ACCOUNT_DUPLICATE_TEXT);
     if (status !== 'rejected' && isNicknameConflict(e)) throw new Error(LIVE_DUPLICATE_TEXT);
     throw e;
   };

@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../app/supabaseClient', () => ({ supabase: {} }));
 
-const { confirmRegistration, rejectedWithLiveTwin } = await import('../RegistrationsPanel');
+const { confirmRegistration, liveTwinKind, rejectedWithLiveTwin } = await import('../RegistrationsPanel');
 const { BUILTIN_RULES_VERSION } = await import('../../../data/gearRules');
 import type { ItemBreakdown, Registration, Tournament } from '../../../data/types';
 
@@ -64,5 +64,22 @@ describe('rejectedWithLiveTwin', () => {
     ];
     expect([...rejectedWithLiveTwin(rows)]).toEqual(['old']);
     expect(rejectedWithLiveTwin([])).toEqual(new Set());
+  });
+
+  it('відхилена, коли в того самого Discord-акаунта (0035) уже є жива заявка з іншим ніком, — так; гості без мітки — ні', () => {
+    const rows = [
+      reg({ id: 'r1', status: 'rejected', nickname: 'Main', accountTag: 'TAG-A-000000000' }),
+      reg({ id: 'r2', status: 'pending', nickname: 'Twink', accountTag: 'TAG-A-000000000' }),
+      reg({ id: 'r3', status: 'rejected', nickname: 'Other', accountTag: 'TAG-B-000000000' }),
+      reg({ id: 'g1', status: 'rejected', nickname: 'Guest1', accountTag: null }),
+      reg({ id: 'g2', status: 'pending', nickname: 'Guest2', accountTag: null }),
+    ];
+    expect([...rejectedWithLiveTwin(rows)]).toEqual(['r1']);
+    // підказка в адмінці — за причиною
+    expect(liveTwinKind(rows[0], rows)).toBe('account');
+    expect(liveTwinKind(rows[2], rows)).toBeNull();
+    expect(liveTwinKind(rows[1], rows)).toBeNull();
+    const byNick = [reg({ id: 'a', status: 'rejected', nickname: 'Same', accountTag: 'TAG-A-000000000' }), reg({ id: 'b', status: 'pending', nickname: 'same' })];
+    expect(liveTwinKind(byNick[0], byNick)).toBe('nick');
   });
 });

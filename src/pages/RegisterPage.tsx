@@ -496,7 +496,7 @@ export default function RegisterPage() {
                 ))}
               </select>
               <small className="hint">
-                {chars && chars.length === 0 ? 'Збережених персонажів ще немає — створи його: ' : 'Спорядження підставиться з ляльки. '}
+                {chars && chars.length === 0 ? 'Збережених персонажів ще немає — створи його: ' : 'Спорядження підставиться з ляльки. Одна заявка з Discord-акаунта на турнір. '}
                 <a className="link" href={routeUrl({ name: 'characters' })} target="_blank" rel="noreferrer">
                   Мої персонажі
                 </a>
