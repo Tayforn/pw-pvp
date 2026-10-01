@@ -20,6 +20,11 @@
 // бо при рівній силі він розходиться сильніше. Бафи вимкнені — усе як до
 // появи сили: лише гір. Після затвердження сила рахується зі знімка
 // (teamStrengthFor) — у знімку її немає, а заміни міняють склад.
+//
+// Скор v2 (0032): поки серед підтверджених є заявки персонажем, чиї бали за
+// речі ще не перераховано зі знімка в адмінці («не перевірено» — рахував
+// клієнт гравця), формування заблоковане; поруч — «Перерахувати всі зі
+// знімків» (послідовно, з прогресом; data/itemPointsRecalc.ts).
 // =========================================================
 
 import { useEffect, useRef, useState } from 'react';
@@ -36,7 +41,9 @@ import { CLASS_LABELS, CLASS_ORDER, gemMixLabel, playerProfile, rulesFor, tierFo
 import { describeSnapshotBuffs, reservePolicyFromFlags, resolveBuffOptions } from '../../data/ruleFlags';
 import { useRules } from '../../data/rulesStore';
 import { fetchRatings, ratingOf, type PlayerRating } from '../../data/ratings';
+import { canRecalc, recalcRegistration } from '../../data/itemPointsRecalc';
 import TierBadge, { type PlayerCardInfo } from '../../components/PlayerPopover';
+import { setNamesOf } from '../../components/ScoreBreakdown';
 import { weaponAbilityName } from '../../data/weaponAbilities';
 import {
   applyBalancedTeams,
@@ -50,6 +57,7 @@ import {
   teamMembers,
   teamRows,
   teamStrengthFor,
+  unverifiedForBalance,
   type TeamsDraft,
 } from '../../data/teams';
 
@@ -117,6 +125,17 @@ function fmtDateTime(iso: string): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+/** «1 заявка не перевірена» · «2 заявки не перевірено» · «5 заявок не перевірено». */
+export function unverifiedLabel(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} заявка не перевірена`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return `${n} заявки не перевірено`;
+  return `${n} заявок не перевірено`;
+}
+
+/** Хід «Перерахувати всі зі знімків»: скільки зроблено, помилки за ніками. */
+interface RecalcAllState { done: number; total: number; errors: string[] }
 
 /** Заявка з анкетою → вхід алгоритму; без анкети — null (не бере участі в балансі).
  * Скор — той самий, що й у playersForBalance (гір + корекція адміна + бонус за Ело);
@@ -188,6 +207,9 @@ function playerInfos(regs: Registration[], version: string, teamSize: number | n
       tier: tierFor(score, version),
       gemsMix: gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined,
       weaponAbility: weaponAbilityName(r.dollPower?.abil),
+      // розклад по речах (скор v2) — назви речей тут без каталогу, лише слоти й бали
+      breakdown: r.itemBreakdown,
+      setNames: setNamesOf(r.characterSnapshot),
       admin: {
         score, gearScore: b.gear, adjust: b.adjust, rating: b.rating, adjustNote: r.scoreAdjustNote,
         elo: ratings ? ratingOf(ratings, r.nickname) : undefined,
@@ -841,6 +863,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const [err, setErr] = useState<string | null>(null);
   const [forming, setForming] = useState(false);
   const [subst, setSubst] = useState<{ team: Registration; out: Registration } | null>(null);
+  const [recalcAll, setRecalcAll] = useState<RecalcAllState | null>(null);
 
   const reload = async () => {
     const [r, matches, results, rt] = await Promise.all([
@@ -885,6 +908,10 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const regOpen = isRegistrationOpen(t);
   const enoughPlayers = S > 0 && players.length >= 2 * S;
   const stats = t.balanceStats;
+  // Неперевірений скор v2 серед підтверджених — жеребка чекає перерахунку зі знімків.
+  const unverified = unverifiedForBalance(regs);
+  const formBlocked = unverified.length > 0;
+  const formBlockTitle = formBlocked ? `${unverifiedLabel(unverified.length)} — спершу перерахуй зі знімків` : undefined;
 
   // Резерв у порядку черги на заміну (як при формуванні), пізні заявки — в кінці.
   const reserveOrder = new Map((stats?.reserve ?? []).map((r, i) => [r.registrationId, i] as const));
@@ -913,9 +940,52 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
     setTournamentStatus(t.id, 'registration_closed').catch(reportError).finally(() => setBusy(false));
   };
   const openForming = () => {
+    if (formBlocked) return;
     if (bracketLen > 0 && !confirm('Сітку буде видалено. Переформувати команди?')) return;
     setForming(true);
   };
+  /** Послідовний перерахунок усіх неперевірених зі знімків із прогресом; без
+   * колонок 0032 (власник ще не виконав міграцію) далі першої помилки не йдемо —
+   * кожен рядок упав би з тим самим. Рядки без знімка — у помилки. */
+  const recalcAllRun = async () => {
+    const list = unverified;
+    setBusy(true);
+    setErr(null);
+    const errors: string[] = [];
+    setRecalcAll({ done: 0, total: list.length, errors });
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      try {
+        if (!canRecalc(r)) throw new Error('у заявці немає знімка ляльки — відхили або перевір через ✎ у заявках');
+        await recalcRegistration(r, t);
+      } catch (e) {
+        const msg = errorMessage(e, 'помилка');
+        errors.push(`${r.nickname}: ${msg}`);
+        if (/0032/.test(msg)) { setRecalcAll({ done: i + 1, total: list.length, errors: errors.slice() }); break; }
+      }
+      setRecalcAll({ done: i + 1, total: list.length, errors: errors.slice() });
+    }
+    await reload().catch((e) => setErr(errorMessage(e, 'Не вдалося перечитати заявки.')));
+    setBusy(false);
+  };
+  const formBlock = formBlocked ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="badge warn" title="Бали за речі цих заявок порахував клієнт гравця — перед жеребкою адмінка перераховує їх зі знімка ляльки за версією шкали турніру">
+          {unverifiedLabel(unverified.length)}
+        </span>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={recalcAllRun}>Перерахувати всі зі знімків</button>
+        {recalcAll && (
+          <span className="hint" style={{ margin: 0 }}>
+            {recalcAll.done < recalcAll.total && busy ? `Перераховую ${recalcAll.done}/${recalcAll.total}…` : `Перераховано ${recalcAll.done - recalcAll.errors.length} з ${recalcAll.total}`}
+          </span>
+        )}
+      </div>
+      {recalcAll?.errors.map((e, i) => <p key={i} className="form-err">{e}</p>)}
+    </div>
+  ) : recalcAll ? (
+    <span className="hint" style={{ margin: 0 }}>Перераховано {recalcAll.done - recalcAll.errors.length} з {recalcAll.total} — усі заявки перевірено.</span>
+  ) : null;
   const disband = () => {
     if (!confirm('Розформувати команди? Сітка (якщо є) буде видалена.')) return;
     setBusy(true);
@@ -964,8 +1034,9 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
                 : ` Зараз уміщається ${K} — у модалці обери ${largestPow2(K)}, зайві гравці підуть у резерв.`}
             </p>
           )}
+          {formBlock}
           <div>
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy || !enoughPlayers} onClick={openForming}>Сформувати команди</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy || !enoughPlayers || formBlocked} title={formBlockTitle} onClick={openForming}>Сформувати команди</button>
           </div>
         </>
       ) : (
@@ -1053,13 +1124,14 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
             </div>
           </div>
 
+          {!hasResults && formBlock}
           {!hasResults && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                disabled={busy || !enoughPlayers}
-                title={!enoughPlayers ? `Потрібно щонайменше ${2 * S} підтверджених гравців з анкетою` : bracketLen > 0 ? 'Сітку буде видалено' : ''}
+                disabled={busy || !enoughPlayers || formBlocked}
+                title={formBlockTitle ?? (!enoughPlayers ? `Потрібно щонайменше ${2 * S} підтверджених гравців з анкетою` : bracketLen > 0 ? 'Сітку буде видалено' : '')}
                 onClick={openForming}
               >
                 Переформувати

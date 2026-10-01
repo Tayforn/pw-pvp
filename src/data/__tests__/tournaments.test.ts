@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // tournaments.ts тягне клієнт Supabase — тут його заміняє заглушка, що запам'ятовує
 // insert/update і віддає один турнір на select (для перевірки «реєстрація відкрита»).
+type DbError = { code?: string; message?: string } | null;
 const db = vi.hoisted(() => ({
   tournament: null as Record<string, unknown> | null,
   writes: [] as Array<{ table: string; op: 'insert' | 'update'; row: Record<string, unknown>; id?: string }>,
+  /** Помилки наступних insert/update по черзі (порожня черга — успіх). */
+  insertErrors: [] as Array<{ code?: string; message?: string } | null>,
+  updateErrors: [] as Array<{ code?: string; message?: string } | null>,
 }));
 vi.mock('../../app/supabaseClient', () => ({
   supabase: {
@@ -12,19 +16,19 @@ vi.mock('../../app/supabaseClient', () => ({
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: db.tournament, error: null }) }) }),
       insert: async (row: Record<string, unknown>) => {
         db.writes.push({ table, op: 'insert', row });
-        return { error: null };
+        return { error: db.insertErrors.shift() ?? null };
       },
       update: (row: Record<string, unknown>) => ({
         eq: async (_col: string, id: string) => {
           db.writes.push({ table, op: 'update', row, id });
-          return { error: null };
+          return { error: db.updateErrors.shift() ?? null };
         },
       }),
     }),
   },
 }));
 
-import { likePattern, registrationFromRow, submitRegistration, updateRegistrationItemPoints, type RegistrationRow } from '../tournaments';
+import { isMissingColumnError, likePattern, registrationFromRow, submitRegistration, updateRegistrationItemPoints, type RegistrationRow } from '../tournaments';
 import { isPastTournament, type ItemBreakdown } from '../types';
 
 describe('likePattern (екранування ніка для ilike)', () => {
@@ -106,6 +110,13 @@ describe('registrationFromRow: item_points / item_breakdown (0032)', () => {
     expect(extra.warn).toEqual(['ok']);
   });
 
+  it('checked («перевірено» після перерахунку в адмінці) проходить лише як справжнє true', () => {
+    expect(registrationFromRow({ ...ROW, item_breakdown: { ...BREAKDOWN, checked: true } }).itemBreakdown).toEqual({ ...BREAKDOWN, checked: true });
+    for (const v of [false, 'true', 1, null]) {
+      expect(registrationFromRow({ ...ROW, item_breakdown: { ...BREAKDOWN, checked: v } }).itemBreakdown, String(v)).not.toHaveProperty('checked');
+    }
+  });
+
   it('зламаний розклад → null, а itemPoints від нього не залежить', () => {
     const bad: unknown[] = [
       'x', 5, [], { v: 2, ver: 'balance-v1.0', sum: BREAKDOWN.sum, rows: [] }, { v: 1, sum: BREAKDOWN.sum, rows: [] },
@@ -142,9 +153,17 @@ describe('submitRegistration / updateRegistrationItemPoints (0032)', () => {
     return w;
   };
 
+  const inserts = () => db.writes.filter((w) => w.op === 'insert');
+  /** PostgREST до міграції 0032: колонки немає в кеші схеми. */
+  const NO_COLUMN: DbError = { code: 'PGRST204', message: "Could not find the 'item_points' column of 'registrations' in the schema cache" };
+  const withV2 = { tournamentId: 't1', nickname: 'Tayforn', rulesAck: true, character: { ...character, itemPoints: 268.68, itemBreakdown: BREAKDOWN } };
+
   beforeEach(() => {
     db.tournament = OPEN;
     db.writes.length = 0;
+    db.insertErrors.length = 0;
+    db.updateErrors.length = 0;
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   it('заявка без itemPoints/itemBreakdown не пише колонок 0032 (до міграції insert не падає)', async () => {
@@ -186,5 +205,60 @@ describe('submitRegistration / updateRegistrationItemPoints (0032)', () => {
     db.writes.length = 0;
     await updateRegistrationItemPoints('r1', null, null);
     expect(db.writes).toEqual([{ table: 'registrations', op: 'update', id: 'r1', row: { item_points: null, item_breakdown: null } }]);
+  });
+
+  // ── Запасний шлях до міграції 0032 (власник ще не виконав її) ──
+
+  it('до 0032: insert падає на відсутній колонці → один повтор без item_points/item_breakdown, решта колонок як була', async () => {
+    db.insertErrors.push(NO_COLUMN);
+    await submitRegistration(withV2);
+    const ins = inserts();
+    expect(ins).toHaveLength(2);
+    expect(ins[0].row).toMatchObject({ item_points: 268.68, item_breakdown: BREAKDOWN });
+    expect(ins[1].row).not.toHaveProperty('item_points');
+    expect(ins[1].row).not.toHaveProperty('item_breakdown');
+    expect(ins[1].row).toMatchObject({ tournament_id: 't1', nickname: 'Tayforn', character_id: 'c1', character_rev: 3, doll_power: character.power });
+    expect(ins[1].row.character_snapshot).toBe(character.snapshot);
+    expect(Object.keys(ins[1].row).sort()).toEqual(Object.keys(ins[0].row).filter((k) => k !== 'item_points' && k !== 'item_breakdown').sort());
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('0032'));
+    // Postgres undefined_column і текст про колонку без коду — теж запасний шлях
+    for (const e of [{ code: '42703', message: 'column "item_breakdown" of relation "registrations" does not exist' }, { message: 'column item_points does not exist' }]) {
+      db.writes.length = 0;
+      db.insertErrors.push(e);
+      await submitRegistration(withV2);
+      expect(inserts(), JSON.stringify(e)).toHaveLength(2);
+    }
+  });
+
+  it('повтор лише один: друга помилка йде нагору; інша помилка (дубль ніка, RLS) — без повтору; без полів 0032 — без повтору', async () => {
+    db.insertErrors.push(NO_COLUMN, { code: '23505', message: 'duplicate key value violates unique constraint "registrations_tournament_nickname"' });
+    await expect(submitRegistration(withV2)).rejects.toMatchObject({ code: '23505' });
+    expect(inserts()).toHaveLength(2);
+    db.writes.length = 0;
+    db.insertErrors.push({ code: '42501', message: 'new row violates row-level security policy for table "registrations"' });
+    await expect(submitRegistration(withV2)).rejects.toMatchObject({ code: '42501' });
+    expect(inserts()).toHaveLength(1);
+    // заявка без itemPoints/itemBreakdown (чи без персонажа) повторювати нічого — помилка як є
+    db.writes.length = 0;
+    db.insertErrors.push(NO_COLUMN);
+    await expect(submitRegistration({ tournamentId: 't1', nickname: 'Tayforn', rulesAck: true, character })).rejects.toMatchObject({ code: 'PGRST204' });
+    expect(inserts()).toHaveLength(1);
+  });
+
+  it('updateRegistrationItemPoints до 0032 — зрозуміла помилка про міграцію; інші помилки — як є', async () => {
+    db.updateErrors.push(NO_COLUMN);
+    await expect(updateRegistrationItemPoints('r1', 1, null)).rejects.toThrow(/міграцію 0032/);
+    db.updateErrors.push({ code: '42501', message: 'row-level security' });
+    await expect(updateRegistrationItemPoints('r1', 1, null)).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('isMissingColumnError: коди PGRST204 / 42703 або текст про колонку 0032', () => {
+    expect(isMissingColumnError({ code: 'PGRST204', message: 'x' })).toBe(true);
+    expect(isMissingColumnError({ code: '42703', message: 'x' })).toBe(true);
+    expect(isMissingColumnError({ message: 'Column item_breakdown not found' })).toBe(true);
+    expect(isMissingColumnError({ message: 'column foo does not exist' })).toBe(false); // не наша колонка
+    expect(isMissingColumnError({ message: 'item_points must be >= 0' })).toBe(false); // CHECK, не відсутня колонка
+    expect(isMissingColumnError({ code: '23505', message: 'duplicate key' })).toBe(false);
+    expect(isMissingColumnError({})).toBe(false);
   });
 });

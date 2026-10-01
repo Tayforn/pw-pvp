@@ -7,10 +7,13 @@ import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament 
 import { fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
 import { isGearComplete } from '../components/GearFields';
 import RulesList from '../components/RulesList';
+import ScoreBreakdown from '../components/ScoreBreakdown';
 import { parseRulesMd } from '../data/ruleCatalog';
 import { readLastNickname, saveLastNickname } from '../app/lastNickname';
 import { useMe } from '../app/useMe';
-import { BUILD_LABELS, CLASS_LABELS, computeGearScore, gearParts, gearSummary, gemMixLabel, rulesFor, SPECIAL_SET_LABELS } from '../data/gearRules';
+import { BUILD_LABELS, CLASS_LABELS, gearParts, gearSummary, gemMixLabel, registrationScore, rulesFor, tierForWith } from '../data/gearRules';
+import { useRules } from '../data/rulesStore';
+import { rulesVersionFor } from '../data/teams';
 import type { CharacterForRegistration, CharacterSummary } from '../doll/registration';
 
 // Модуль ляльки (каталоги, формули) — окремий чанк: вантажимо лише коли
@@ -43,6 +46,8 @@ export default function RegisterPage() {
   const [tournamentId, setTournamentId] = useState('');
   const [nickname, setNickname] = useState('');
   const { me: discordMe, login } = useMe();
+  // Версії шкали з бази — скор і тир персонажа рахуються за версією турніру.
+  useRules();
   const [members, setMembers] = useState<string[]>([]);
   // Анкета спорядження — лише для балансного фул-рандому.
   const [gear, setGear] = useState<Partial<PlayerGear>>({});
@@ -134,8 +139,9 @@ export default function RegisterPage() {
       return;
     }
     setCharLoad({ status: 'loading' });
+    // Скор v2 — за версією шкали, закріпленою за турніром (до жеребки — поточна), і розміром його команди.
     loadDollReg()
-      .then((m) => m.characterForRegistration(id))
+      .then((m) => m.characterForRegistration(id, { rulesVersion: tournament ? rulesVersionFor(tournament) : null, teamSize: tournament?.teamSize ?? null }))
       .then((data) => {
         setCharLoad({ status: 'ready', data });
         if (data.result.gear) setGear(data.result.gear);
@@ -146,6 +152,18 @@ export default function RegisterPage() {
       .catch((e) => setCharLoad({ status: 'error', err: errorMessage(e, String(e)) }));
   };
   const charData = charId && charLoad.status === 'ready' ? charLoad.data ?? null : null;
+  // Скор v2 для картки й попапа: клас (за розміром команди турніру) + бали за речі + рівень + джин —
+  // так само його порахує жеребка (registrationScore), за версією шкали, якою рахувала лялька.
+  const charRules = charData ? rulesFor(charData.rulesVersion) : null;
+  const charScore = charData && charRules ? registrationScore({ gear: charData.result.gear, itemPoints: charData.itemPoints }, charRules, tournament?.teamSize) : null;
+  const charTier = charScore != null && charRules ? tierForWith(charScore, charRules) : null;
+  const setNames = useMemo(() => charData?.doc.sets.map((s) => s.name) ?? [], [charData]);
+  // Назви речей для розкладу — з результату ляльки (у item_breakdown назв немає).
+  const itemNameOf = useMemo(() => {
+    const names = new Map<string, string>();
+    if (charData) for (const r of [...charData.items.main, ...charData.items.sets.flatMap((s) => s.rows)]) names.set(r.slot + ':' + r.catId, r.name);
+    return (catId: number, slot: string): string | null => names.get(slot + ':' + catId) ?? null;
+  }, [charData]);
 
   const membersValid = !isTeam || members.every((m) => m.trim());
   // Фул-рандом — лише персонажем із заповненою анкетою персонажа.
@@ -174,7 +192,15 @@ export default function RegisterPage() {
         rulesAck,
         memberNicknames: isTeam ? members.map((m) => m.trim()) : undefined,
         ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
-        ...(charData ? { character: { id: charData.rec.id, revision: charData.rec.revision, snapshot: charData.doc, power: charData.power } } : {}),
+        // Скор v2 (0032): бали за речі й розклад — до міграції submitRegistration повторює insert без них.
+        ...(charData
+          ? {
+              character: {
+                id: charData.rec.id, revision: charData.rec.revision, snapshot: charData.doc, power: charData.power,
+                itemPoints: charData.itemPoints, itemBreakdown: charData.itemBreakdown,
+              },
+            }
+          : {}),
       });
       markRegistered(tournamentId);
       // У fixed-командному поле — назва команди, не нік; його не запам'ятовуємо.
@@ -235,7 +261,7 @@ export default function RegisterPage() {
             <>
               <p className="hint">
                 Адмін підтвердить участь. Команду дізнаєшся на сторінці турніру після закриття реєстрації — команду собі не обирають.
-                Помилився в анкеті? Напиши адміну.
+                Помилився в ляльці? Онови персонажа й напиши адміну.
               </p>
               <p style={{ margin: 0 }}>
                 <a className="link" href={routeUrl({ name: 'tournament', id: tournamentId })}>Сторінка турніру</a>
@@ -342,27 +368,27 @@ export default function RegisterPage() {
               </div>
             </div>
           )}
-          {isBalanced && charId && charLoad.status === 'loading' && <p className="hint" style={{ margin: 0 }}>Завантажую персонажа й рахую анкету з ляльки…</p>}
+          {isBalanced && charId && charLoad.status === 'loading' && <p className="hint" style={{ margin: 0 }}>Завантажую персонажа й рахую бали з ляльки…</p>}
           {isBalanced && charId && charLoad.status === 'error' && <p className="form-err">Не вдалося завантажити персонажа: {charLoad.err}</p>}
           {isBalanced && charData && (
             <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <b>Анкета з персонажа «{charData.rec.name}»</b>
+              <b>
+                Скор із персонажа «{charData.rec.name}»
+                {charScore != null && charTier ? `: ${charScore} · тир ${charTier}` : ''}
+              </b>
               {charData.result.gear ? (
-                <>
-                  <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear, null, gemMixLabel(charData.result.facts.gemCounts, rulesFor()) || undefined)}</span>
-                  <span className="hint" style={{ margin: 0 }}>
-                    Свап-сети з ляльки: {charData.result.facts.specialSets.length ? charData.result.facts.specialSets.map((k) => SPECIAL_SET_LABELS[k]).join(', ') : 'немає'}
-                    {charData.result.facts.specialSets.length > 0 && !charData.setsFromDoll ? ' (у бали поки не йдуть — це вмикає адмін)' : ''}
-                  </span>
-                  <span className="badge mute" style={{ alignSelf: 'flex-start' }}>
-                    Орієнтовний гір-скор: {computeGearScore(charData.result.gear, null, tournament?.teamSize)}
-                  </span>
-                </>
+                <span className="hint" style={{ margin: 0 }}>{gearSummary(charData.result.gear, null, gemMixLabel(charData.result.facts.gemCounts, charRules ?? undefined) || undefined)}</span>
               ) : (
-                <span className="form-err" style={{ margin: 0 }}>У персонажа не заповнена анкета: бракує {charData.result.missing.join(', ')}.</span>
+                <span className="form-err" style={{ margin: 0 }}>{charData.blockReason}</span>
+              )}
+              <ScoreBreakdown breakdown={charData.itemBreakdown} resolver={itemNameOf} setNames={setNames} />
+              {charScore != null && (
+                <span className="badge mute" style={{ alignSelf: 'flex-start' }}>
+                  Орієнтовний скор: {charScore} · за версією шкали {charData.rulesVersion}
+                </span>
               )}
               <a className="link" href={routeUrl({ name: 'character', id: charData.rec.id })} target="_blank" rel="noreferrer">
-                {charData.result.gear ? 'Змінити в персонажі' : 'Заповнити анкету в персонажі'}
+                Відкрити персонажа
               </a>
               <small className="hint" style={{ margin: 0 }}>Змінив персонажа в іншій вкладці? Обери його тут ще раз, щоб підтягнути зміни.</small>
             </div>
@@ -429,27 +455,19 @@ export default function RegisterPage() {
                 </div>
 
                 <dl className="doll-confirm-grid">
-                  {gearParts(g, gemMixLabel(f.gemCounts, rulesFor()) || undefined).map((p) => (
+                  {gearParts(g, gemMixLabel(f.gemCounts, charRules ?? undefined) || undefined).map((p) => (
                     <div key={p.key} className="doll-confirm-row">
                       <dt>{p.label}</dt>
                       <dd>{p.value}</dd>
                     </div>
                   ))}
-                  <div className="doll-confirm-row">
-                    <dt>Свап-сети</dt>
-                    <dd>
-                      {f.specialSets.length ? (
-                        <span className="doll-confirm-sets">
-                          {f.specialSets.map((k) => (
-                            <span key={k} className="badge">{SPECIAL_SET_LABELS[k]}</span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="doll-confirm-none">немає</span>
-                      )}
-                    </dd>
-                  </div>
                 </dl>
+                <ScoreBreakdown
+                  breakdown={charData.itemBreakdown}
+                  resolver={itemNameOf}
+                  setNames={setNames}
+                  title={charScore != null && charTier ? `Розклад по речах — скор ${charScore} · тир ${charTier}` : 'Розклад по речах'}
+                />
 
                 <p className="hint doll-confirm-note">
                   Адмін бачитиме ляльку такою, як зараз, і може звірити спорядження в грі. Змінилось щось — повернись і онови персонажа.

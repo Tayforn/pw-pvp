@@ -7,7 +7,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, computeGearScore, dollGearScoreWith, playerProfile, ratingBonus, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, dollGearScoreWith, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor } from './gearRules';
 import { evaluateTeams, teamStrengthFromSnapshot, type BalancePlayer, type FormTeamsResult } from './balance';
 import { resolveBuffOptions, type BuffOptions } from './ruleFlags';
 import { ratingOf, type PlayerRating } from './ratings';
@@ -36,7 +36,8 @@ export function teamStrengthFor(
   return teamStrengthFromSnapshot(members, stats, rules);
 }
 
-/** Складові скору гравця: гір (анкета) + ручна корекція адміна + бонус за Ело. */
+/** Складові скору гравця: гір (бали за речі ляльки чи таблиця анкети) + ручна
+ * корекція адміна + бонус за Ело. */
 export interface ScoreBreakdown {
   gear: number;
   adjust: number;
@@ -44,20 +45,39 @@ export interface ScoreBreakdown {
   total: number;
 }
 
-/** teamSize — розмір команди турніру (від нього залежать бали за клас). */
+/** teamSize — розмір команди турніру (від нього залежать бали за клас).
+ * Гір — registrationScore: заявка персонажем зі скором v2 (itemPoints, 0032) —
+ * клас + бали за речі + рівень + джин; старі заявки — таблиця з анкети. Скор з
+ * еталонів (dollScore.mode) у жеребку більше не йде — лише dollScoreOf для показу. */
 export function scoreBreakdown(r: Registration, version: string, ratings: Map<string, PlayerRating> | undefined, teamSize: number | null | undefined): ScoreBreakdown | null {
-  if (!r.gear) return null;
-  // Режим «увімкнено»: заявка персонажем рахується з ляльки (якщо для класу є еталон).
   const rules = rulesFor(version);
-  const fromDoll = rules.dollScore.mode === 'on' ? dollScoreOf(r, version, teamSize) : null;
-  const gear = fromDoll ?? computeGearScore(r.gear, version, teamSize);
+  const gear = registrationScore(r, rules, teamSize);
+  if (gear == null) return null;
   const adjust = r.scoreAdjust ?? 0;
-  const rating = ratings ? ratingBonus(ratingOf(ratings, r.nickname)?.rating, rulesFor(version)) : 0;
+  const rating = ratings ? ratingBonus(ratingOf(ratings, r.nickname)?.rating, rules) : 0;
   return { gear, adjust, rating, total: gear + adjust + rating };
 }
 
-/** Скор спорядження з ляльки (атака й живучість відносно еталона класу) —
- * для заявок персонажем; null — немає сили в заявці або еталона для класу. */
+/** Заявка персонажем зі скором v2, яку адмінка ще не перерахувала зі знімка:
+ * item_points порахував клієнт гравця, а checked ставить лише перерахунок
+ * (src/doll/recompute.ts). Такі рядки — «не перевірено», і жеребка їх чекає. */
+export function isUnverifiedV2(r: Pick<Registration, 'itemPoints' | 'itemBreakdown'>): boolean {
+  return r.itemPoints != null && r.itemBreakdown?.checked !== true;
+}
+
+/** Підтверджені гравці з неперевіреним скором v2 — поки вони є, команди не формуються. */
+export function unverifiedForBalance(regs: Registration[]): Registration[] {
+  return regs.filter((r) => r.kind === 'player' && r.status === 'confirmed' && isUnverifiedV2(r));
+}
+
+/** Чи є в турнірі заявки зі скором v2 — тоді рядки без itemPoints адмінка позначає «таблиця». */
+export function hasItemPointsRows(regs: Registration[]): boolean {
+  return regs.some((r) => r.kind === 'player' && r.itemPoints != null);
+}
+
+/** LEGACY — скор спорядження з ляльки (атака й живучість відносно еталона класу):
+ * лише для показу, у жеребку не йде; null — немає сили в заявці або еталона для
+ * класу. Прибирається разом із dollGearScoreWith (коміт E). */
 export function dollScoreOf(r: Registration, version: string, teamSize: number | null | undefined): number | null {
   if (!r.gear || !r.dollPower) return null;
   return dollGearScoreWith(r.gear, r.dollPower, rulesFor(version), teamSize);

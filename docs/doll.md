@@ -233,8 +233,10 @@ R9R2 50 (власник, 30.09.2026), тож ці числа замінено в
 `model/itemScore.ts` — `scoreItems(doc, rules, lookup?)`: бали за кожен надітий
 екземпляр Головного й сетів, без еталонів класу, порогів свап-сетів і табличних
 кошиків (рішення власника 30.09.2026 і «рішення після читальної перевірки» в
-специфікації B3). Поки що чисті функції з тестами (`__tests__/itemScore.test.ts`);
-заявка, жеребка й картка «Готовність» переходять на них наступними комітами.
+специфікації B3). Чисті функції з тестами (`__tests__/itemScore.test.ts`);
+заявка персонажем уже пише їх (`registration.ts` → `RegisterPage`, див.
+«Заявка» нижче); жеребка/адмінка й картка «Готовність» переходять на них
+наступними комітами.
 
 **Формула заявки.** `score = classPoints(клас, розмір команди) + itemPoints +
 level[рівень] + genie[удача]` — `registrationScore` у `src/data/gearRules.ts`;
@@ -296,7 +298,45 @@ n — індекс сету + 1; лише зараховані рядки). `bre
 `character`, адмінка перераховує через `updateRegistrationItemPoints`. Публічна
 insert-політика тепер вимагає `character_snapshot` у фул-рандомі; рядки 4 і 5
 стандартного блоку реєстрації (`REG_BLOCK_LINES`) переписані на бали з речей і
-трактат у кожному сеті. Виконати міграцію ДО викладки заявки, що пише скор v2.
+трактат у кожному сеті.
+
+**Заявка (крок C1).** `characterForRegistration(id, { rulesVersion, teamSize })`
+(`registration.ts`) поруч із legacy-анкетою (`gearFromCharacter`, колонки
+грейдів) рахує `scoreItems` за версією шкали турніру (`rulesVersionFor`;
+невідома чи відсутня — поточна) і складає `itemBreakdown` з `cls` за розміром
+команди турніру, `lvl` і `genie` (джин — з анкети, як у `registrationScore`,
+без анкети — `genieOf`), тож `sum.cls + sum.lvl + sum.genie + itemPoints` = скор
+заявки. `RegisterPage` пише `itemPoints`/`itemBreakdown` у `submitRegistration`
+і показує «Скор із персонажа «X»: N · тир», рядок анкети й «Розклад по речах»
+(`src/components/ScoreBreakdown.tsx` — головний бандл, підписи слотів із
+`src/data/slotLabels.ts`, назви речей — з результату ляльки). До міграції 0032
+`submitRegistration` ловить «колонки немає» (PGRST204 / 42703 / текст про
+`item_points`) і один раз повторює insert без цих полів — заявка проходить, скор
+табличний; `updateRegistrationItemPoints` тоді кидає «спершу виконайте міграцію
+0032».
+
+**Читання, жеребка, адмінка (крок C2).** Гір заявки всюди —
+`registrationScore`: `teams.scoreBreakdown` (жеребка, адмінка), `TournamentPage`
+(публічний ранг і суми команд без знімка), `RegistrationsPanel`; скор з
+еталонів (`dollScore.mode`) у жеребку більше не йде (`dollScoreOf` лишився лише
+як legacy до коміту E). Попап гравця (`PlayerPopover`, `CardBreakdown`) показує
+під анкетою «Спорядження з ляльки» з `item_breakdown`: публічно слоти без чисел,
+адміну — з балами; назви речей — лише в адмінці через resolver з каталогу
+(`doll/recompute.ts` → `catalogItemName`, `ensureBreakdownCats`), назви сетів —
+`setNamesOf(character_snapshot)` без чанка ляльки. Довіра: `item_points` пише
+клієнт, тож `ItemBreakdown.checked` (ставить лише адмінка) відрізняє
+«не перевірено»; `data/itemPointsRecalc.ts` → `recalcRegistration` динамічно
+вантажить `doll/recompute.ts` (`recomputeFromSnapshot`: validateDoc → ensureCats
+→ scoreItems за версією турніру → itemBreakdown з `checked: true`) і пише
+`updateRegistrationItemPoints`. В адмінці: бейджі «не перевірено» / «речі ✓» /
+«таблиця» (рядок без itemPoints у турнірі з v2-рядками), кнопка «↻ зі знімка»,
+автоматичний перерахунок при підтвердженні заявки, у модалці ✎ для v2-рядків —
+лише корекція адміна + розклад + «Перерахувати зі знімка» (без знімка —
+«перерахувати неможливо (старий турнір)»); у блоці «Команди» формування
+заблоковане, поки є підтверджені неперевірені (`unverifiedForBalance`), поруч
+«Перерахувати всі зі знімків» із прогресом. До міграції 0032 перерахунок
+падає з «спершу виконайте міграцію 0032». Джин у підписах шкали — за удачею
+(`GENIE_LABELS`: «удача до 60 … удача 100»).
 
 ## Збірка й деплой
 

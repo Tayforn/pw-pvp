@@ -36,7 +36,7 @@ export type ArmorSet = 'other' | 'nirvana' | 'nirvana_r8_mix' | 'r8r' | 'r9';
 export type ArmorRefine = 'a0_4' | 'a5' | 'a6' | 'a7' | 'a8' | 'a9' | 'a10' | 'a11' | 'a12';
 export type SpecialSet = 'pz' | 'pa' | 'aspd';
 export type Tract = 't1_3' | 't4_5' | 't6' | 't7' | 't8' | 'emperor';
-/** Джин за рівнем (0020): до 60 · 61–70 · 71–80 · 81–90 · 91–99 · 100/100. */
+/** Джин за удачею (0020; кошики ті самі, що колись «за рівнем»): до 60 · 61–70 · 71–80 · 81–90 · 91–99 · 100. */
 export type Genie = 'g60' | 'g61_70' | 'g71_80' | 'g81_90' | 'g91_99' | 'g100';
 /** Камені у броні (до 6 шмоток × 4 дірки = 24 камені), за вартістю по зростанню:
  * рівневі 0–9 / 10 / 11 → Сюаньки → Сюаньки/ПА → ПА → Сюаньки/Лагеря → Лагеря (2 ПЗ кожен, до 48 ПЗ). */
@@ -197,6 +197,10 @@ export interface ItemBreakdown {
   sum: { cls?: number; lvl?: number; genie?: number; main: number; sets: number; setsRaw: number; pair: number };
   rows: ItemBreakdownRow[];
   warn?: string[];
+  /** true — адмінка перерахувала бали зі знімка ляльки (src/doll/recompute.ts):
+   * скор перевірено. Клієнт гравця (itemScore.ts) поля не ставить, тож до
+   * перерахунку заявка — «не перевірено», і жеребка чекає (TeamsPanel). */
+  checked?: boolean;
 }
 
 export interface Registration {

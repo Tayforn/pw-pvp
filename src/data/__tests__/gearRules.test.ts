@@ -226,8 +226,8 @@ describe('balance-v1.0: шкала', () => {
 
   it('gearSummary — компактний рядок українською, з камінням у сетах', () => {
     expect(gearSummary(gear({ weaponGrade: 'cgd', weaponRefine: 'w10', armorSet: 'r8r', armorRefine: 'a8', gems: 'pa', specialSets: ['pz'], specialSetGems: { pz: 'camp' }, tract: 't8', genie: 'g100' })))
-      .toBe('ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря) · Тракт 8 · Джин 100/100');
-    expect(gearSummary(gear({ weaponPz: true, gems: 'xuan_camp' }))).toBe('Нірвана +0–5 + ПЗ-зброя · Нірвана +5 · Камні Сюаньки / Лагеря · Тракт 1–3 · Джин до 60');
+      .toBe('ЦГД +10 · R8R +8 · Камні ПА · ПЗ-сет (Лагеря) · Тракт 8 · Джин удача 100');
+    expect(gearSummary(gear({ weaponPz: true, gems: 'xuan_camp' }))).toBe('Нірвана +0–5 + ПЗ-зброя · Нірвана +5 · Камні Сюаньки / Лагеря · Тракт 1–3 · Джин удача до 60');
   });
 });
 

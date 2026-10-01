@@ -126,6 +126,8 @@ const validBreakdown = (b: unknown): ItemBreakdown | null => {
     },
     rows,
     ...(warn ? { warn } : {}),
+    // «перевірено» — лише справжнє true (ставить перерахунок в адмінці)
+    ...(o.checked === true ? { checked: true } : {}),
   };
 };
 /** Експортовано для тесту маппінгу (колонок 0032 до міграції немає → null). */
@@ -223,7 +225,7 @@ export async function submitRegistration(input: {
   if (!tournament || !isRegistrationOpen(tournament)) {
     throw new Error('Реєстрація на цей турнір закрита або турнір уже пройшов.');
   }
-  const { error } = await supabase.from('registrations').insert({
+  const row: Record<string, unknown> = {
     tournament_id: input.tournamentId,
     nickname: input.nickname,
     rules_ack: input.rulesAck,
@@ -240,15 +242,36 @@ export async function submitRegistration(input: {
           ...(input.character.itemBreakdown !== undefined ? { item_breakdown: input.character.itemBreakdown } : {}),
         }
       : {}),
-  });
+  };
+  let { error } = await supabase.from('registrations').insert(row);
+  // Запасний шлях до міграції 0032 (її виконує власник у SQL Editor): колонок
+  // item_points/item_breakdown ще немає, і PostgREST відкидає insert. Один раз
+  // повторюємо без них — заявка проходить, скор рахується таблицею з анкети
+  // (registrationScore без itemPoints). Після міграції сюди не заходить.
+  if (error && ('item_points' in row || 'item_breakdown' in row) && isMissingColumnError(error)) {
+    console.warn('registrations: колонок 0032 ще немає — заявка без item_points/item_breakdown (виконайте міграцію)');
+    const legacy = { ...row };
+    delete legacy.item_points;
+    delete legacy.item_breakdown;
+    ({ error } = await supabase.from('registrations').insert(legacy));
+  }
   if (error) throw error;
+}
+
+/** Помилка «колонки немає»: PostgREST не знайшов її в кеші схеми (PGRST204),
+ * Postgres — undefined_column (42703), або текст згадує колонку 0032. */
+export function isMissingColumnError(e: { code?: string | null; message?: string | null }): boolean {
+  const code = e.code ?? '';
+  const msg = e.message ?? '';
+  return code === 'PGRST204' || code === '42703' || (/item_points|item_breakdown/.test(msg) && /column/i.test(msg));
 }
 
 /** Перерахунок скору v2 зі знімка в адмінці (0032): update-політика 0006 пропускає
  * власника турніру/суперадміна й колонки не обмежує. null — стерти обидва (скор
- * знову табличний, з анкети). Викликів поки немає — підключає крок C. */
+ * знову табличний, з анкети). До міграції 0032 — зрозуміла помилка замість «column … does not exist». */
 export async function updateRegistrationItemPoints(id: string, itemPoints: number | null, itemBreakdown: ItemBreakdown | null): Promise<void> {
   const { error } = await supabase.from('registrations').update({ item_points: itemPoints, item_breakdown: itemBreakdown }).eq('id', id);
+  if (error && isMissingColumnError(error)) throw new Error('Колонок item_points / item_breakdown ще немає — спершу виконайте міграцію 0032.');
   if (error) throw error;
 }
 

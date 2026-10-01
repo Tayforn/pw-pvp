@@ -1,8 +1,10 @@
 // =========================================================
-// Бейдж рангу (S/A/B/C/D) з попапом «картка персонажа»: нік, клас, ранг і
-// анкета спорядження рядками; в адмінці — ще скор зі складовими, Ело, ПА/ПЗ
-// і корекція. Публічно передається лише те, що й так видно на сторінці
-// турніру (анкета) + ранг; числа скору — тільки адміну (рішення §5.18).
+// Бейдж рангу (S/A/B/C/D) з попапом «картка персонажа»: нік, клас, ранг,
+// анкета спорядження рядками і — для заявки персонажем (скор v2, 0032) —
+// «Розклад по речах» з item_breakdown; в адмінці — ще скор зі складовими,
+// Ело, ПА/ПЗ і корекція. Публічно передається лише те, що й так видно на
+// сторінці турніру (анкета, слоти й назви речей) + ранг; числа скору, у тому
+// числі бали за речі, — тільки адміну (рішення §5.18).
 //
 // Відкривається з наведення (закривається, коли курсор пішов) і з кліку
 // (закріплюється — закривається Esc, кліком поза або повторним кліком).
@@ -12,11 +14,12 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import type { PlayerGear, Tier } from '../data/types';
+import type { ItemBreakdown, PlayerGear, Tier } from '../data/types';
 import {
   ARMOR_REFINE_LABELS, ARMOR_SET_LABELS, BUILD_LABELS, CHAR_LEVEL_LABELS, CLASS_LABELS, GEMS_LABELS, GENIE_LABELS, SPECIAL_SET_LABELS, SPECIAL_SET_ORDER,
   TRACT_LABELS, WEAPON_GRADE_LABELS, WEAPON_REFINE_LABELS, ringsLabel, rulesFor, shgVoznesLabel,
 } from '../data/gearRules';
+import ScoreBreakdown from './ScoreBreakdown';
 
 export interface PlayerCardInfo {
   nickname: string;
@@ -26,6 +29,14 @@ export interface PlayerCardInfo {
   gemsMix?: string;
   /** Абілка основної зброї з ляльки (назва). */
   weaponAbility?: string;
+  /** Розклад скору v2 по речах (заявка персонажем, 0032) — рядки під анкетою:
+   * публічно слоти й назви без балів, адміну (є admin) — з балами. */
+  breakdown?: ItemBreakdown | null;
+  /** Назви сетів зі знімка ляльки (setNamesOf) — підписи конфігурацій розкладу. */
+  setNames?: readonly string[];
+  /** Назва речі за id каталогу й слотом — адмінка, коли каталог ляльки
+   * завантажено; без resolver-а рядок — лише слот (публічно назв не показуємо). */
+  itemName?: (catId: number, slot: string) => string | null;
   /** Адмінська частина — публічно не передається. */
   admin?: {
     score: number;
@@ -61,6 +72,14 @@ export function gearRows(g: PlayerGear, gemsMix?: string): { label: string; valu
 }
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+/** «Розклад по речах» у картці: є лише в заявок персонажем зі скором v2.
+ * Публічно — без чисел (як і сам скор), адміну — з балами; назви речей —
+ * коли передано resolver (адмінка з каталогом), інакше лише слоти. */
+export function CardBreakdown({ info }: { info: PlayerCardInfo }) {
+  if (!info.breakdown) return null;
+  return <ScoreBreakdown breakdown={info.breakdown} showPoints={!!info.admin} resolver={info.itemName} setNames={info.setNames} title="Спорядження з ляльки" />;
+}
 
 /** «від 130» / «130–174» — межі рангу за порогами версії. */
 function tierRange(tier: Tier, version: string): string {
@@ -130,6 +149,7 @@ function Popover({ info, anchor, pinned, onEnter, onLeave }: { info: PlayerCardI
           </div>
         )}
       </div>
+      <CardBreakdown info={info} />
     </div>,
     document.body,
   );
@@ -171,7 +191,8 @@ export default function TierBadge({ info, width = 28, style }: { info: PlayerCar
       const t = e.target as Element | null;
       if (ref.current && !ref.current.contains(t) && !t?.closest?.('.player-pop')) hide();
     };
-    const onMove = () => hide();
+    // Гортання всередині самого попапу (довгий розклад по речах) його не закриває.
+    const onMove = (e: Event) => { if ((e.target as Element | null)?.closest?.('.player-pop')) return; hide(); };
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDown, true);
     window.addEventListener('scroll', onMove, true);

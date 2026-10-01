@@ -636,7 +636,7 @@ const BUILTIN: GearRules = {
   specialSetsCap: 20,
   swapTotalCap: null,
   tract: { t1_3: 0, t4_5: 2, t6: 5, t7: 8, t8: 15, emperor: 20 },
-  // джин за рівнем: 100/100 — не панацея, але й 71+/81+ уже щось важать
+  // джин за удачею: 100 — не панацея, але й 71+/81+ уже щось важать
   genie: { g60: 0, g61_70: 2, g71_80: 4, g81_90: 6, g91_99: 8, g100: 10 },
   // рівень: до 100 — 0, далі кожен рівень дорожчає
   level: { l90_100: 0, l101: 1, l102: 2, l103: 4, l104: 7, l105: 10 },
@@ -1111,7 +1111,8 @@ export const TRACT_LABELS: Record<Tract, string> = {
 };
 export const TRACT_ORDER: Tract[] = ['t1_3', 't4_5', 't6', 't7', 't8', 'emperor'];
 
-export const GENIE_LABELS: Record<Genie, string> = { g60: 'до 60', g61_70: '61–70', g71_80: '71–80', g81_90: '81–90', g91_99: '91–99', g100: '100/100' };
+/** Джин — за удачею (genieBucket у src/data/genie.ts); ключі кошиків історичні. */
+export const GENIE_LABELS: Record<Genie, string> = { g60: 'удача до 60', g61_70: '61–70', g71_80: '71–80', g81_90: '81–90', g91_99: '91–99', g100: 'удача 100' };
 export const GENIE_ORDER: Genie[] = ['g60', 'g61_70', 'g71_80', 'g81_90', 'g91_99', 'g100'];
 
 export const BUILD_LABELS: Record<Build, string> = { dd: 'ДД', hybrid: 'Гібрид', con: 'Кон' };

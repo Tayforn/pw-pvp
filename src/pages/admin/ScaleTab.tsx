@@ -384,7 +384,7 @@ export default function ScaleTab() {
 
       <NumTable title="Рівень персонажа" order={CHAR_LEVEL_ORDER} labels={CHAR_LEVEL_LABELS} values={draft.level} onChange={(v) => patch({ level: v })} />
       <NumTable title="Трактат" order={TRACT_ORDER} labels={TRACT_LABELS} values={draft.tract} onChange={(v) => patch({ tract: v })} />
-      <NumTable title="Джин (за рівнем)" order={GENIE_ORDER} labels={GENIE_LABELS} values={draft.genie} onChange={(v) => patch({ genie: v })} />
+      <NumTable title="Джин (за удачею)" order={GENIE_ORDER} labels={GENIE_LABELS} values={draft.genie} onChange={(v) => patch({ genie: v })} />
 
       <div className="card" style={{ padding: 14 }}>
         <b>Пороги tier</b>

@@ -726,8 +726,6 @@ html[data-theme="light"] { --trn-accent: var(--accent); --trn-accent-rgb: 176, 1
 .doll-confirm-row { padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); min-width: 0; }
 .doll-confirm-row dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); margin-bottom: 3px; }
 .doll-confirm-row dd { margin: 0; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
-.doll-confirm-sets { display: flex; flex-wrap: wrap; gap: 6px; }
-.doll-confirm-none { color: var(--text-mute); font-weight: 400; }
 .doll-confirm-note { margin: 0; }
 .doll-confirm-ack {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; cursor: pointer;
@@ -739,6 +737,33 @@ html[data-theme="light"] { --trn-accent: var(--accent); --trn-accent-rgb: 176, 1
 .doll-confirm-ack.on { border-color: rgba(var(--good-rgb), 0.5); background: rgba(var(--good-rgb), 0.08); }
 @media (max-width: 360px) {
   .doll-confirm-grid { grid-template-columns: 1fr; }
+}
+
+/* ── «Розклад по речах» (ScoreBreakdown: заявка персонажем, попап «Лялька актуальна?», адмінка) ── */
+.score-bd { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; background: var(--bg-2); }
+.score-bd > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+.score-bd-total { color: var(--accent-3); }
+.score-bd-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.score-bd-cfg { display: flex; flex-direction: column; }
+.score-bd-cfg-name {
+  display: flex; justify-content: space-between; gap: 10px; padding: 4px 0;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute);
+}
+.score-bd-row {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 10px; align-items: baseline;
+  padding: 4px 0; font-size: 13.5px; line-height: 1.35; box-shadow: inset 0 1px 0 var(--line);
+}
+.score-bd-slot { color: var(--text-dim); white-space: nowrap; }
+.score-bd-name { min-width: 0; overflow-wrap: anywhere; }
+.score-bd-name .hint { margin: 0; }
+.score-bd-pts { text-align: right; white-space: nowrap; }
+.score-bd-warn { color: var(--warn); }
+.score-bd-sum, .score-bd-empty, .score-bd-warn { margin: 0; }
+/* у попапі гравця розклад тісніший, а довгий — гортається всередині, не закриваючи попап */
+.player-pop .score-bd { padding: 6px 10px; }
+.player-pop .score-bd-body { max-height: min(50vh, 360px); overflow-y: auto; }
+@media (max-width: 420px) {
+  .score-bd-row { grid-template-columns: 76px minmax(0, 1fr) auto; }
 }
 
 /* ── Повзунки: темні з золотим бігунком, як у сітці (раніше — лише .bracket-scroll) ── */

@@ -4,13 +4,14 @@ import { routeUrl } from '../app/useRoute';
 import { useTournamentLive } from '../app/useTournamentLive';
 import type { CharClass, Registration, Tier, Tournament } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isPastTournament, isRegistrationOpen } from '../data/types';
-import { CLASS_LABELS, computeGearScore, gemMixLabel, rulesFor, tierFor } from '../data/gearRules';
+import { CLASS_LABELS, gemMixLabel, registrationScore, rulesFor, tierFor } from '../data/gearRules';
 import { describeSnapshotBuffs } from '../data/ruleFlags';
 import { useRules } from '../data/rulesStore';
 import { rulesVersionFor, teamMembers, teamRows, teamStrengthFor } from '../data/teams';
 import BracketView from '../components/BracketView';
 import RulesList from '../components/RulesList';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
+import { setNamesOf } from '../components/ScoreBreakdown';
 import { weaponAbilityName } from '../data/weaponAbilities';
 import MemberNotice from '../components/MemberNotice';
 
@@ -30,15 +31,20 @@ function classCountsLine(players: Registration[]): string {
     .join(' · ');
 }
 
-/** Публічна картка гравця для бейджа рангу: нік, клас, анкета і ранг — без
- * чисел скору (їх бачить лише адмін). Ранг у сформованих командах — зі
- * знімка жеребки (там урахована корекція й рейтинг, яких анонім не бачить);
- * до формування — з самої анкети. */
+/** Публічна картка гравця для бейджа рангу: нік, клас, анкета, розклад по
+ * речах (заявка персонажем) і ранг — без чисел скору (їх бачить лише адмін).
+ * Ранг у сформованих командах — зі знімка жеребки (там урахована корекція й
+ * рейтинг, яких анонім не бачить); до формування — з самої заявки
+ * (registrationScore: бали за речі v2, а без них — таблиця анкети). */
 function publicInfo(r: Registration, tournament: Tournament, frozenTiers?: Map<string, Tier>): PlayerCardInfo | null {
   if (!r.gear) return null;
   const version = rulesVersionFor(tournament);
-  const tier = frozenTiers?.get(r.id) ?? tierFor(computeGearScore(r.gear, version, tournament.teamSize), version);
-  return { nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems, rulesFor(version)) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil) };
+  const rules = rulesFor(version);
+  const tier = frozenTiers?.get(r.id) ?? tierFor(registrationScore(r, rules, tournament.teamSize) ?? 0, version);
+  return {
+    nickname: r.nickname, gear: r.gear, tier, gemsMix: gemMixLabel(r.dollPower?.gems, rules) || undefined, weaponAbility: weaponAbilityName(r.dollPower?.abil),
+    breakdown: r.itemBreakdown, setNames: setNamesOf(r.characterSnapshot),
+  };
 }
 
 /** Рядок гравця «як у таблиці» (ті самі колонки, що в адмінці): нік · клас · ранг. */
@@ -83,7 +89,7 @@ export function BalancedTeams({ tournament, registrations }: { tournament: Tourn
     const members = teamMembers(team, registrations);
     const snap = statTeams.get(team.nickname);
     if (snap) return { team, members, ...teamStrengthFor(tournament, snap.members) };
-    const total = members.reduce((sum, m) => sum + (m.gear ? computeGearScore(m.gear, version, tournament.teamSize) : 0), 0);
+    const total = members.reduce((sum, m) => sum + (registrationScore(m, rulesFor(version), tournament.teamSize) ?? 0), 0);
     return { team, members, total, buff: 0, strength: total };
   });
   // Резерв — підтверджені з анкетою, кого не взяли в жодну команду.
@@ -135,7 +141,7 @@ export function BalancedTeams({ tournament, registrations }: { tournament: Tourn
           </div>
         </div>
       )}
-      <span className="hint" style={{ marginTop: 10 }}>{trust.join(' · ')} · натисни на ранг гравця, щоб побачити анкету</span>
+      <span className="hint" style={{ marginTop: 10 }}>{trust.join(' · ')} · натисни на ранг гравця, щоб побачити спорядження</span>
     </div>
   );
 }
@@ -294,7 +300,7 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
                     <div className="participants-grid">
                       {players.map((r) => <PlayerRow key={r.id} reg={r} info={publicInfo(r, tournament)} />)}
                     </div>
-                    <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)} · натисни на ранг гравця, щоб побачити анкету</span>
+                    <span className="hint" style={{ marginTop: 10 }}>Класи: {classCountsLine(players)} · натисни на ранг гравця, щоб побачити спорядження</span>
                   </>
                 )}
                 {(status === 'registration_closed' || status === 'in_progress') && (
