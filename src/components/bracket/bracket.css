@@ -1,0 +1,370 @@
+/* =========================================================
+   Турнірна сітка (BracketView) — візуал B «Ігрове вікно» з нинішніми
+   кольорами сайту. Полотно сітки — абсолютні картки + SVG-лінії в одному
+   контейнері з однією прокруткою (верхня й нижня сітки разом). Шлях команди
+   (пошук / наведення / закріплення) — золоті лінії й рамки, решта притемнена.
+   Кольори — лише токени сайту (світла тема перевизначає змінні нижче).
+   ========================================================= */
+
+/* Акцент сітки: у темній темі — золото (--accent-3); у світлій --accent-3 і
+   --good — один зелений, тож заголовки/лінії/live збігалися б із кольором
+   перемоги — там беремо золотий --accent. */
+:root {
+  --trn-accent: var(--accent-3);
+  --trn-accent-rgb: var(--accent-3-rgb);
+  --trn-bad-text: #ff8a8a;
+  --trn-chip-bg: rgba(255, 255, 255, 0.05);
+}
+html[data-theme="light"] {
+  --trn-accent: var(--accent);
+  --trn-accent-rgb: 176, 127, 35;
+  --trn-bad-text: var(--bad);
+  --trn-chip-bg: rgba(120, 84, 38, 0.1);
+}
+
+.trn-head-text, .trn-band-title, .trn-champ-title, .trn-champ-name, .trn-podium-title,
+.trn-podium-name, .trn-medal, .trn-panel-title, .trn-side-score, .trn-standing, .trn-fullscreen-title {
+  font-family: 'Grunt Grotesk', system-ui, sans-serif;
+}
+
+/* ── Панель інструментів: пошук, легенда, вигляд, фулскрін ── */
+.trn-toolbar { display: flex; align-items: center; gap: 10px 14px; margin-bottom: 10px; flex-wrap: wrap; }
+.trn-search { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.trn-search input {
+  background-color: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2); color: var(--text);
+  padding: 7px 10px; border-radius: var(--radius); font-size: 13.5px; width: 240px; max-width: 60vw;
+}
+.trn-search input:focus { outline: none; border-color: var(--accent); }
+.trn-search.found input { border-color: var(--accent); background-color: rgba(var(--trn-accent-rgb), 0.06); }
+.trn-legend { display: inline-flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-mute); }
+.trn-legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.trn-legend .sw-win { width: 3px; height: 14px; background: var(--good); }
+.trn-legend .sw-path { width: 16px; height: 2px; background: var(--trn-accent); }
+.trn-legend .sw-wait { width: 14px; height: 10px; border: 1px dashed var(--text-mute); }
+/* «шлях команди / шлях чемпіона» — обидва підписи в одній клітинці: ширина пункту не міняється від наведення */
+.trn-legend-alt { display: inline-grid; }
+.trn-legend-alt > span { grid-area: 1 / 1; }
+.trn-legend-alt > .is-hidden, .trn-legend .trn-legend-path.is-off { visibility: hidden; }
+.trn-tools { display: inline-flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+@media (max-width: 760px) { .trn-legend { display: none; } }
+
+/* ── Смужка «Шлях»: етапи команди, вибір серед кількох збігів, підказка ── */
+/* Прокручуються лише пігулки етапів (.trn-pathbar-steps); мітка, назва, підсумок і «✕ Скинути» — flex: none,
+   тож їх видно на будь-якій ширині, навіть коли шлях довгий. Висота смужки однакова в усіх станах (підказка,
+   шлях без прокрутки, шлях із прокруткою): у контейнера етапів фіксована висота з місцем під тонку смугу
+   прокрутки (глобальний scrollbar-width: thin — до 10 px), тож наведення не зсуває сітку. */
+.trn-pathbar {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 3px 12px; margin: 0 0 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-1);
+  white-space: nowrap; min-width: 0;
+}
+.trn-pathbar-label { flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--trn-accent); }
+.trn-pathbar-team { flex: none; max-width: 240px; overflow: hidden; text-overflow: ellipsis; font-size: 14px; font-weight: 700; }
+.trn-pathbar-nick { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--text-mute); }
+.trn-pathbar-steps {
+  flex: 0 1 auto; min-width: 0; height: 36px; display: flex; align-items: center; gap: 8px;
+  overflow-x: auto; overflow-y: hidden;
+}
+.trn-pathbar-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: var(--text-mute); }
+.trn-pathbar-hint.when-touch { display: none; }
+/* Сенсорні екрани: наведення немає — смужку можна переносити (без ризику «стрибка» під курсором). */
+@media (hover: none) {
+  .trn-pathbar { flex-wrap: wrap; white-space: normal; row-gap: 6px; }
+  .trn-pathbar-steps { height: auto; flex-wrap: wrap; row-gap: 6px; overflow: visible; }
+  .trn-pathbar-hint { overflow: visible; }
+  .trn-pathbar-hint.when-hover { display: none; }
+  .trn-pathbar-hint.when-touch { display: inline; }
+}
+.trn-pathbar-gap { flex: none; width: 4px; }
+.trn-step {
+  flex: none; height: 26px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--line-2);
+  font: 600 12.5px/1 inherit; font-family: inherit; cursor: pointer; background: transparent; color: var(--text-dim);
+  display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums;
+}
+.trn-step:focus-visible, .trn-chip:focus-visible, .trn-ref:focus-visible { outline: 2px solid var(--trn-accent); outline-offset: 1px; }
+.trn-step.win { border-color: rgba(var(--good-rgb), 0.4); background: rgba(var(--good-rgb), 0.14); color: var(--good); }
+.trn-step.loss { border-color: rgba(var(--bad-rgb), 0.45); background: rgba(var(--bad-rgb), 0.16); color: var(--trn-bad-text); }
+.trn-step.live { border-color: var(--trn-accent); background: rgba(var(--trn-accent-rgb), 0.12); color: var(--trn-accent); }
+.trn-step.wait { border-style: dashed; color: var(--text-mute); }
+.trn-step:hover { filter: brightness(1.15); }
+.trn-step-arrow { flex: none; font-size: 13px; color: var(--text-mute); }
+.trn-step-arrow.drop { color: var(--trn-bad-text); font-weight: 700; }
+.trn-standing {
+  flex: none; padding: 3px 10px; border-radius: var(--radius-pill); border: 1px solid var(--line-2);
+  font-size: 12px; font-weight: 700; color: var(--text-dim); background: var(--trn-chip-bg);
+}
+.trn-standing.gold { border-color: var(--trn-accent); background: rgba(var(--trn-accent-rgb), 0.2); color: var(--trn-accent); }
+.trn-standing.good { border-color: rgba(var(--good-rgb), 0.4); background: rgba(var(--good-rgb), 0.14); color: var(--good); }
+.trn-standing.bad { border-color: rgba(var(--bad-rgb), 0.45); background: rgba(var(--bad-rgb), 0.12); color: var(--trn-bad-text); }
+.trn-standing.live { border-color: var(--trn-accent); color: var(--trn-accent); background: transparent; }
+.trn-chip {
+  flex: none; height: 26px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--line-2);
+  background: var(--trn-chip-bg); color: var(--text-dim); font: 600 12.5px/1 inherit; font-family: inherit; cursor: pointer;
+}
+.trn-chip:hover { border-color: var(--trn-accent); color: var(--text); }
+.trn-chip .nick { color: var(--text-mute); font-weight: 500; }
+.trn-pathbar-clear { flex: none; margin-left: auto; }
+
+/* ── Підсумок турніру (пʼєдестал) над сіткою ── */
+.trn-podium {
+  margin: 0 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1)); overflow: hidden;
+}
+.trn-podium-head {
+  min-height: 34px; padding: 4px 8px 4px 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: rgba(var(--trn-accent-rgb), 0.08); border-bottom: 1px solid var(--line-2);
+}
+.trn-podium-title { flex: 1 1 auto; font-weight: 700; font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.trn-podium-grid { padding: 12px; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 12px; }
+.trn-podium-cell {
+  display: flex; align-items: center; gap: 14px; min-width: 0; padding: 10px 14px; text-align: left;
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: transparent; color: inherit;
+  font: inherit; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.trn-podium-cell:hover, .trn-podium-cell:focus-visible { border-color: var(--trn-accent); outline: none; }
+.trn-podium-cell.p1 { border-color: var(--trn-accent); background: rgba(var(--trn-accent-rgb), 0.08); }
+.trn-podium-cell.on { box-shadow: 0 0 0 2px rgba(var(--trn-accent-rgb), 0.5); }
+.trn-podium-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.trn-medal {
+  width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 700; font-size: 17px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.trn-medal.m1 { background: linear-gradient(135deg, var(--rank-gold-1), var(--rank-gold-2)); color: var(--rank-gold-ink); }
+.trn-medal.m2 { background: linear-gradient(135deg, var(--rank-silver-1), var(--rank-silver-2)); color: var(--rank-silver-ink); }
+.trn-medal.m3 { background: linear-gradient(135deg, var(--rank-bronze-1), var(--rank-bronze-2)); color: var(--rank-bronze-ink); }
+.trn-podium-name { font-weight: 700; font-size: 16px; line-height: 1.2; color: var(--text); overflow-wrap: anywhere; }
+.trn-podium-cell.p1 .trn-podium-name { font-size: 20px; color: var(--trn-accent); }
+.trn-podium-roster { font-size: 12.5px; line-height: 1.35; color: var(--text-dim); overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .trn-podium-grid { grid-template-columns: 1fr; gap: 8px; padding: 10px; }
+  .trn-podium-cell { padding: 8px 12px; }
+}
+
+/* ── Полотно сітки: одна прокрутка на все ── */
+.trn-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 10px; }
+.trn-canvas { position: relative; flex: none; }
+.trn-lines { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.trn-edge { fill: none; stroke: rgba(var(--trn-accent-rgb), 0.32); stroke-width: 1; transition: stroke 0.15s, stroke-width 0.15s; }
+.trn-edge.champ { stroke: rgba(var(--trn-accent-rgb), 0.85); stroke-width: 2; }
+.trn-path .trn-edge { stroke: rgba(var(--trn-accent-rgb), 0.16); stroke-width: 1; }
+.trn-path .trn-edge.on { stroke: var(--trn-accent); stroke-width: 2; }
+.trn-divider { position: absolute; left: 0; height: 1px; background: var(--line); }
+.trn-head { position: absolute; height: 26px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+.trn-head-text { font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--trn-accent); overflow: hidden; text-overflow: ellipsis; }
+.trn-head-sub { flex: none; font-size: 12px; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+/* підзаголовок першої колонки нижньої сітки — під заголовком (місце резервує layout.LB_NOTE_H) */
+.trn-head-note {
+  position: absolute; height: 16px; font-size: 12px; line-height: 16px; color: var(--text-mute);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help;
+}
+/* текст лише для зчитувачів екрана */
+.trn-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.trn-cell { position: absolute; display: flex; align-items: center; }
+
+/* ── Картка матчу ── */
+.trn-match-outer { width: 100%; }
+.trn-match {
+  width: 100%; display: flex; flex-direction: column; box-sizing: border-box;
+  border: 1px solid var(--line-2); border-radius: var(--radius); overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.trn-match.trn-decided { border-color: rgba(var(--trn-accent-rgb), 0.4); }
+/* чекає: учасників ще немає — пунктир, як у легенді */
+.trn-match.trn-pending { border-style: dashed; }
+/* live — обидва учасники відомі, результату ще немає: саме ці матчі шукають очима */
+.trn-match.trn-live { border-color: var(--trn-accent); box-shadow: 0 0 0 1px rgba(var(--trn-accent-rgb), 0.25), 0 0 18px -6px rgba(var(--trn-accent-rgb), 0.55); }
+.trn-match.decisive { border-color: var(--trn-accent); }
+.trn-match.decisive .trn-match-meta { background: linear-gradient(rgba(var(--trn-accent-rgb), 0.18), rgba(var(--trn-accent-rgb), 0.05)); }
+.trn-match.clickable { cursor: pointer; }
+/* картка фокусується лише програмно (повернення фокуса після панелі) */
+.trn-match:focus { outline: none; }
+.trn-match:focus-visible { border-color: var(--trn-accent); box-shadow: 0 0 0 2px rgba(var(--trn-accent-rgb), 0.55); }
+.trn-match.clickable:hover { border-color: rgba(var(--trn-accent-rgb), 0.8); }
+.trn-match.on-path { border-color: var(--trn-accent); }
+.trn-match.selected { border-color: var(--trn-accent); box-shadow: 0 0 0 2px rgba(var(--trn-accent-rgb), 0.55); }
+.trn-path-pin .trn-match.dim { opacity: 0.38; }
+.trn-path-hover .trn-match.dim { opacity: 0.6; }
+.trn-filtering .trn-match:not(.trn-hit) { opacity: 0.45; }
+.trn-match.trn-busy { opacity: 0.6; pointer-events: none; }
+
+.trn-match-meta {
+  display: flex; align-items: center; gap: 6px; min-height: 22px; padding: 0 8px; box-sizing: border-box;
+  background: var(--bg-3); font-size: 11px; line-height: 1; color: var(--text-mute); white-space: nowrap;
+}
+.trn-tag { flex: none; font-weight: 700; color: var(--trn-accent); }
+.trn-fmt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.trn-drop { flex: none; padding: 1px 5px; border: 1px dashed var(--line-2); border-radius: 3px; color: var(--text-mute); }
+.trn-drop.on { border-style: solid; border-color: var(--trn-accent); background: rgba(var(--trn-accent-rgb), 0.2); color: var(--trn-accent); }
+.trn-live-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--trn-accent); box-shadow: 0 0 6px var(--trn-accent); }
+.trn-match-ctl { flex: none; display: inline-flex; gap: 4px; align-items: center; margin-left: auto; padding: 2px 0; }
+/* редактор: у тісній шапці керування не обрізається — у крайньому разі переноситься другим рядком */
+.trn-match.editing .trn-match-meta { flex-wrap: wrap; row-gap: 0; }
+/* керування в шапці картки (формат, ↺) — один стиль замість інлайнів */
+.trn-ctl {
+  font-size: 12px; line-height: 1; padding: 3px 6px; border-radius: var(--radius); background: var(--bg-3); color: var(--text);
+  border: 1px solid var(--line-2); text-transform: uppercase; font-family: inherit; cursor: pointer;
+}
+.trn-ctl:focus-visible { outline: none; border-color: var(--accent); }
+
+.trn-slot {
+  position: relative; display: flex; align-items: stretch; min-height: 36px; box-sizing: border-box;
+  border-top: 1px solid var(--line); color: var(--text-dim); transition: background 0.12s, color 0.12s;
+}
+.trn-match.no-members .trn-slot { min-height: 30px; }
+.trn-slot-bar { flex: none; width: 3px; background: transparent; }
+.trn-slot-body { flex: 1 1 auto; min-width: 0; padding: 2px 8px; display: flex; flex-direction: column; justify-content: center; }
+.trn-slot-name { font-size: 13px; line-height: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* шрифт складу задано явно — під нього міряється «+N» (BracketView.fitsRoster) */
+.trn-slot-members { display: flex; min-width: 0; font: 500 11px/14px 'e-Ukraine', system-ui, sans-serif; color: var(--text-mute); }
+.trn-slot-members-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trn-slot-more { flex: none; margin-left: 4px; font-weight: 700; color: var(--text-dim); }
+/* порожній слот: звідки прийде учасник («переможець В1.2») */
+.trn-slot-src { font-style: italic; font-weight: 500; font-size: 11.5px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* рахунок серії і ✓/✕ праворуч */
+.trn-slot-res {
+  flex: none; min-width: 26px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 8px;
+  font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-mute);
+}
+.trn-slot-res .mark { font-size: 12px; }
+.trn-slot.win { background: rgba(var(--good-rgb), 0.14); color: var(--good); }
+.trn-slot.win .trn-slot-members { color: rgba(var(--good-rgb), 0.8); }
+.trn-slot.win .trn-slot-more { color: var(--good); }
+.trn-slot.win .trn-slot-res { color: var(--good); }
+.trn-slot.lose { color: var(--text-mute); }
+/* команда, чий шлях показано: золота смужка зліва; поразка — червоний відтінок і ✕ */
+.trn-slot.focus .trn-slot-bar { background: var(--trn-accent); }
+.trn-slot.focus.lose { background: rgba(var(--bad-rgb), 0.1); color: var(--text-dim); }
+.trn-slot.focus.lose .trn-slot-res { color: var(--trn-bad-text); }
+.trn-slot.hovered { box-shadow: inset 0 0 0 1px var(--trn-accent); }
+/* збіг пошуку серед кількох команд: слот підсвічено, решта карток притемнена */
+.trn-slot.hit { background: rgba(var(--trn-accent-rgb), 0.22); color: var(--trn-accent); }
+.trn-slot.hit .trn-slot-bar { background: var(--trn-accent); }
+.trn-slot.hit .trn-slot-members { color: var(--trn-accent); opacity: 0.85; }
+.trn-slot[role='button'] { cursor: pointer; }
+.trn-slot[role='button']:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--trn-accent); }
+.trn-slot.pickable:hover { background: rgba(var(--trn-accent-rgb), 0.08); }
+.trn-slot.pickable:active { background: rgba(var(--trn-accent-rgb), 0.16); }
+@media (pointer: coarse) { .trn-slot, .trn-match.no-members .trn-slot { min-height: 40px; } }
+
+/* ── Блок переможця під вирішальним матчем ── */
+.trn-champ {
+  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; padding: 0; text-align: left;
+  border: 1px solid var(--trn-accent); border-radius: var(--radius-lg); overflow: hidden; color: var(--text);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1)); font: inherit;
+  box-shadow: 0 0 26px -10px rgba(var(--trn-accent-rgb), 0.65);
+}
+button.trn-champ { cursor: pointer; }
+button.trn-champ:hover, button.trn-champ:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(var(--trn-accent-rgb), 0.5), 0 0 26px -10px rgba(var(--trn-accent-rgb), 0.65); }
+.trn-champ-head {
+  height: 32px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px;
+  background: rgba(var(--trn-accent-rgb), 0.1); border-bottom: 1px solid var(--line-2);
+}
+.trn-champ-title { font-weight: 700; font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.trn-champ-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.trn-champ-name { font-weight: 700; font-size: 20px; line-height: 1.15; color: var(--trn-accent); overflow-wrap: anywhere; }
+.trn-champ-roster { display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.35; }
+.trn-champ-roster > span { overflow-wrap: anywhere; }
+.trn-champ.empty { border-style: dashed; border-color: var(--line-2); box-shadow: none; }
+.trn-champ.empty .trn-champ-name { font-size: 14px; color: var(--text-mute); }
+.trn-champ.empty .trn-trophy { opacity: 0.5; }
+.trn-champ.dim { opacity: 0.38; }
+.trn-path-hover .trn-champ.dim { opacity: 0.6; }
+.trn-trophy { flex: none; color: var(--trn-accent); }
+
+/* ── Підказка при наведенні: склад і матчі команди ── */
+.trn-pop {
+  position: fixed; z-index: 2100; width: 300px; box-sizing: border-box; padding: 12px 14px;
+  background: var(--bg-2); border: 1px solid var(--accent); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text);
+  pointer-events: none; animation: fadeIn 0.12s ease;
+}
+.trn-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.trn-pop-head b { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.trn-pop-members { display: flex; flex-direction: column; }
+.trn-member { min-height: 28px; display: flex; align-items: center; gap: 8px; box-shadow: inset 0 1px 0 var(--line); font-size: 13px; }
+.trn-member-nick { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.trn-cls { flex: none; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--trn-chip-bg); color: var(--text-mute); font-size: 12px; }
+.trn-tier { flex: none; padding: 1px 7px; font-size: 11.5px; font-weight: 800; }
+/* у світлій темі світле золото рангу S на світлому тлі не читається — темний текст (як у ляльці) */
+html[data-theme='light'] .trn-tier.tier-S { color: var(--rank-gold-ink); }
+.trn-pop-sub, .trn-panel-sec h4 { margin: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.trn-pop-games { display: flex; flex-direction: column; }
+.trn-game { min-height: 24px; padding: 2px 0; display: flex; align-items: center; gap: 8px; font-size: 12.5px; line-height: 1.3; }
+.trn-game-tag { flex: none; width: 38px; font-weight: 700; color: var(--trn-accent); }
+.trn-game-text { flex: 1 1 auto; min-width: 0; color: var(--text-dim); overflow-wrap: anywhere; }
+.trn-game-res { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+.trn-game-res.win { color: var(--good); }
+.trn-game-res.loss { color: var(--trn-bad-text); }
+.trn-game-res.live { color: var(--trn-accent); }
+.trn-game-res.wait { color: var(--text-mute); }
+.trn-pop-foot { font-size: 11.5px; color: var(--text-mute); }
+
+/* ── Панель матчу (клік по картці) — закривається лише хрестиком або Esc ── */
+.trn-panel {
+  position: fixed; z-index: 2050; top: 84px; right: 16px; width: 340px; max-height: calc(100vh - 100px);
+  display: flex; flex-direction: column; box-sizing: border-box;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1)); border: 1px solid var(--accent);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; animation: fadeIn 0.12s ease;
+}
+.trn-panel.in-fullscreen { top: 16px; max-height: calc(100vh - 32px); }
+.trn-panel-head {
+  flex: none; height: 42px; padding: 0 8px 0 14px; display: flex; align-items: center; gap: 8px;
+  background: rgba(var(--trn-accent-rgb), 0.08); border-bottom: 1px solid var(--line-2);
+}
+.trn-panel-title { flex: 1 1 auto; font-weight: 700; font-size: 12.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.trn-panel-close {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: var(--radius);
+  border: 1px solid var(--line-2); background: transparent; color: var(--text-dim); cursor: pointer;
+}
+.trn-panel-close:hover { background: var(--trn-chip-bg); color: var(--text); }
+.trn-panel-close:focus-visible { outline: 2px solid var(--trn-accent); outline-offset: 1px; }
+.trn-panel-body { padding: 12px 14px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.trn-panel-sub { font-size: 12.5px; color: var(--text-mute); }
+.trn-side { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.trn-side.win { border-color: rgba(var(--good-rgb), 0.4); background: rgba(var(--good-rgb), 0.1); }
+.trn-side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.trn-side-name { font-weight: 700; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.trn-side.win .trn-side-name, .trn-side.win .trn-side-score { color: var(--good); }
+.trn-side-score { flex: none; font-weight: 700; font-size: 18px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.trn-side .trn-member { min-height: 24px; font-size: 12.5px; }
+.trn-side-empty { font-size: 12.5px; font-style: italic; color: var(--text-mute); }
+.trn-panel-sec { display: flex; flex-direction: column; gap: 4px; }
+.trn-panel-line { font-size: 12.5px; line-height: 1.4; color: var(--text-dim); }
+.trn-ref {
+  padding: 0; border: 0; background: none; font: inherit; font-weight: 700; color: var(--trn-accent); cursor: pointer;
+  border-bottom: 1px dashed rgba(var(--trn-accent-rgb), 0.5);
+}
+.trn-ref:hover { border-bottom-style: solid; }
+.trn-panel-actions { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 640px) {
+  .trn-panel, .trn-panel.in-fullscreen { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 72vh; }
+}
+
+/* ── Заголовок секції (список, матч за 3-тє в списку) ── */
+.trn-band { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.trn-band-title { font-size: 12.5px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: var(--trn-accent); }
+
+/* фулскрін: один зовнішній скрол, шапка з назвою турніру */
+.trn-fullscreen { position: fixed; inset: 0; z-index: 2000; background: var(--bg-0); padding: 20px 24px; overflow: auto; display: flex; flex-direction: column; }
+.trn-fullscreen > * { flex-shrink: 0; } /* інакше блоки з overflow: hidden (пʼєдестал) стискаються до нуля */
+.trn-fullscreen .trn-scroll { overflow: visible; }
+.trn-fullscreen-title { font-size: 18px; font-weight: 800; margin-right: 6px; }
+
+/* список по раундах (телефони) */
+.trn-list { display: flex; flex-direction: column; gap: 6px; }
+.trn-list-round { padding: 10px 14px; margin-bottom: 8px; }
+.trn-list-round > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.trn-list-round > summary::-webkit-details-marker { display: none; }
+.trn-list-round > summary::before { content: '▸'; color: var(--text-mute); font-size: 12px; transition: transform 0.15s; }
+.trn-list-round[open] > summary::before { transform: rotate(90deg); }
+.trn-list-round .trn-head-text { font-size: 11px; }
+.trn-list-matches { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.trn-list-matches .trn-match-outer { max-width: 420px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .trn-match, .trn-edge, .trn-pop, .trn-panel { transition: none; animation: none; }
+}

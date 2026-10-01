@@ -184,6 +184,7 @@ export default function BracketPanel({ tournament }: { tournament: Tournament })
         registrations={registrations}
         bracketNewLook={tournament.bracketNewLook}
         title={tournament.name}
+        balanceTeams={tournament.balanceStats?.teams}
         editable={{
           // Повертаємо проміс: картка блокується, поки запит у дорозі; помилка — у банер, не в alert.
           onSetFormat: (matchId, format) => setMatchFormat(matchId, format).then(reload).catch((e) => setErr(errorMessage(e, 'Не вдалося змінити формат.'))),

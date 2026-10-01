@@ -4,22 +4,46 @@
 // без бази й логіну в адмінку. Генерація повторює структуру
 // src/data/bracket.ts (single/double elim без байів); результати
 // зберігаються лише в стані сторінки з тією ж пропагацією переможця/
-// програвшого, що й setMatchWinner.
+// програвшого, що й setMatchWinner. Склади з класами й рангами — фейковий
+// знімок жеребки (balanceTeams), як у фул-рандомі: видно в підказці й панелі
+// матчу. Генератори сітки експортовано — ними ж користуються тести сітки.
 // =========================================================
 
 import { useMemo, useState } from 'react';
-import type { BracketMatch, Registration } from '../data/types';
+import type { BalanceStats, BracketMatch, Registration, Tier } from '../data/types';
+import { CLASS_ORDER } from '../data/gearRules';
 import BracketView from '../components/BracketView';
+import { requiredWins } from '../components/bracket/model';
 
 const NAMES = ['ПотужнічТанк', 'нубо вар', 'мегаМаг', 'Дудлс', 'нубоДру', 'топСік', 'Тайфорн', 'Ксенус', 'слабМіст', 'Стефанія', 'Потужніч сін', 'слабкий маг', 'потужнічВар', 'пупупу', 'Меркурі', 'NeO[N]', 'DudeIsFine', 'Люкс', 'Фінрод', 'Аркан'];
 
-function fakeTeams(n: number, size: number, tournamentId: string): Registration[] {
+export function fakeTeams(n: number, size: number, tournamentId: string): Registration[] {
   return Array.from({ length: n }, (_, i) => ({
     id: `team-${i + 1}`, tournamentId, nickname: `Команда ${i + 1}`, rulesAck: true, status: 'confirmed', createdAt: '2026-09-20T00:00:00Z',
     memberNicknames: size > 1 ? Array.from({ length: size }, (_, j) => NAMES[(i * size + j) % NAMES.length]) : null,
     kind: size > 1 ? 'team' : 'player', teamRegistrationId: null, gear: null, attackLevel: null, defenseLevel: null, scoreAdjust: 0, scoreAdjustNote: null,
-    characterId: null, characterRev: null, characterSnapshot: null, dollConfirmedAt: null, dollPower: null, itemPoints: null, itemBreakdown: null,
+    characterId: null, characterRev: null, characterSnapshot: null, dollConfirmedAt: null, dollPower: null, itemPoints: null, itemBreakdown: null, rejectReason: null,
   }));
+}
+
+const TIERS: Tier[] = ['S', 'A', 'B', 'C', 'D'];
+
+/** Фейковий знімок жеребки: клас і ранг кожного з команди (як balanceStats.teams). */
+function fakeBalanceTeams(teams: Registration[]): BalanceStats['teams'] {
+  return teams.map((t, i) => ({
+    name: t.nickname,
+    total: 0,
+    members: (t.memberNicknames ?? []).map((nickname, j) => ({
+      registrationId: `${t.id}-p${j}`, nickname, charClass: CLASS_ORDER[(i * 3 + j) % CLASS_ORDER.length], score: 0, tier: TIERS[(i + j) % TIERS.length],
+    })),
+  }));
+}
+
+/** Випадковий результат серії: переможець набирає потрібні перемоги, програвший — менше. */
+function randomScore(format: string, firstWins: boolean): string {
+  const need = requiredWins(format);
+  const other = Math.floor(Math.random() * need);
+  return firstWins ? `${need}-${other}` : `${other}-${need}`;
 }
 
 const blank = (over: Partial<BracketMatch> & Pick<BracketMatch, 'id' | 'bracketSide' | 'round' | 'slot'>): BracketMatch => ({
@@ -27,7 +51,7 @@ const blank = (over: Partial<BracketMatch> & Pick<BracketMatch, 'id' | 'bracketS
   nextMatchId: null, nextMatchSlot: null, loserNextMatchId: null, loserNextMatchSlot: null, ...over,
 });
 
-function singleElim(ids: string[], thirdPlace: boolean): BracketMatch[] {
+export function singleElim(ids: string[], thirdPlace: boolean): BracketMatch[] {
   const n = ids.length, k = Math.log2(n);
   const idsByRound = Array.from({ length: k }, (_, r) => Array.from({ length: n / 2 ** (r + 1) }, (_, s) => `w${r + 1}-${s}`));
   const thirdId = thirdPlace && k >= 2 ? 'third' : null;
@@ -47,7 +71,7 @@ function singleElim(ids: string[], thirdPlace: boolean): BracketMatch[] {
   return out;
 }
 
-function doubleElim(ids: string[]): BracketMatch[] {
+export function doubleElim(ids: string[]): BracketMatch[] {
   const n = ids.length, k = Math.log2(n);
   const wb = Array.from({ length: k }, (_, r) => Array.from({ length: n / 2 ** (r + 1) }, (_, s) => `w${r + 1}-${s}`));
   const lbRounds = 2 * k - 2;
@@ -83,7 +107,7 @@ function doubleElim(ids: string[]): BracketMatch[] {
 }
 
 /** Та сама пропагація, що й у setMatchWinner (без автозавершення турніру). */
-function applyWinner(matches: BracketMatch[], matchId: string, winnerId: string | null, score: string | null): BracketMatch[] {
+export function applyWinner(matches: BracketMatch[], matchId: string, winnerId: string | null, score: string | null): BracketMatch[] {
   const m = matches.find((x) => x.id === matchId)!;
   let next = matches.map((x) => (x.id === matchId ? { ...x, winnerId, score } : x));
   const put = (list: BracketMatch[], id: string | null, slot: 1 | 2 | null, pid: string | null) =>
@@ -109,25 +133,42 @@ export default function DevBracketPage() {
   const [editable, setEditable] = useState(true);
   const [newLook, setNewLook] = useState(true);
   const [thirdPlace, setThirdPlace] = useState(true);
+  const [format, setFormat] = useState('bo3');
   const [version, setVersion] = useState(0);
 
   const registrations = useMemo(() => fakeTeams(n, size, 'dev'), [n, size]);
-  const initial = useMemo(() => (kind === 'double' ? doubleElim(registrations.map((r) => r.id)) : singleElim(registrations.map((r) => r.id), thirdPlace)), [kind, registrations, thirdPlace, version]);
+  const balanceTeams = useMemo(() => (size > 1 ? fakeBalanceTeams(registrations) : null), [registrations, size]);
+  const initial = useMemo(() => {
+    const ids = registrations.map((r) => r.id);
+    const list = kind === 'double' ? doubleElim(ids) : singleElim(ids, thirdPlace);
+    // вирішальний матч — на одну гру довший (як зазвичай роблять адміни)
+    return list.map((m) => ({ ...m, format: m.bracketSide === 'final' && format === 'bo3' ? 'bo5' : format }));
+  }, [kind, registrations, thirdPlace, format, version]);
   const [matches, setMatches] = useState(initial);
   const [key, setKey] = useState(initial);
   if (key !== initial) { setKey(initial); setMatches(initial); }
 
-  const playRandomRound = () => {
-    // зіграти всі live-матчі випадково — щоб швидко побачити стани
-    let cur = matches;
-    for (const m of matches) {
+  // зіграти всі live-матчі випадково — щоб швидко побачити стани
+  const playRound = (list: BracketMatch[]): BracketMatch[] => {
+    let cur = list;
+    for (const m of list) {
       if (m.participant1Id && m.participant2Id && !m.winnerId) {
         const w = Math.random() < 0.5 ? m.participant1Id : m.participant2Id;
-        cur = applyWinner(cur, m.id, w, w === m.participant1Id ? '1-0' : '0-1');
+        cur = applyWinner(cur, m.id, w, randomScore(m.format, w === m.participant1Id));
       }
     }
-    setMatches(cur);
+    return cur;
   };
+  const playRandomRound = () => setMatches((cur) => playRound(cur));
+  const playAll = () => setMatches((cur) => {
+    let next = cur;
+    for (let i = 0; i < 64; i++) {
+      const after = playRound(next);
+      if (after === next) break;
+      next = after;
+    }
+    return next;
+  });
 
   return (
     <div>
@@ -142,16 +183,21 @@ export default function DevBracketPage() {
         <label className="field" style={{ flex: '0 0 110px' }}><span>Людей у паті</span>
           <select value={size} onChange={(e) => setSize(Number(e.target.value))}>{[1, 2, 3, 5].map((x) => <option key={x} value={x}>{x}</option>)}</select>
         </label>
+        <label className="field" style={{ flex: '0 0 100px' }}><span>Формат</span>
+          <select value={format} onChange={(e) => setFormat(e.target.value)}>{['bo1', 'bo3', 'bo5'].map((x) => <option key={x} value={x}>{x.toUpperCase()}</option>)}</select>
+        </label>
         <label className="checkbox-row"><input type="checkbox" checked={editable} onChange={(e) => setEditable(e.target.checked)} /> редактор</label>
         <label className="checkbox-row"><input type="checkbox" checked={newLook} onChange={(e) => setNewLook(e.target.checked)} /> дзеркальна (single)</label>
         <label className="checkbox-row"><input type="checkbox" checked={thirdPlace} onChange={(e) => setThirdPlace(e.target.checked)} /> матч за 3-тє (single)</label>
         <button type="button" className="btn btn-ghost btn-sm" onClick={playRandomRound}>Зіграти live-матчі випадково</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={playAll}>Зіграти все</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVersion((v) => v + 1)}>Скинути</button>
       </div>
       <BracketView
         matches={matches}
         registrations={registrations}
         bracketNewLook={newLook}
+        balanceTeams={balanceTeams}
         title="DEV · Тестовий турнір"
         editable={editable ? {
           // імітація мережі — щоб бачити стан «у дорозі»

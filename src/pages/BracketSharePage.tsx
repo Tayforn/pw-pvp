@@ -38,7 +38,7 @@ export default function BracketSharePage({ id }: { id: string }) {
           </div>
         </div>
         <div style={{ marginBottom: 18 }}>
-          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
+          <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} balanceTeams={tournament.balanceStats?.teams} />
         </div>
         {teamsFormed && (
           <details className="card" open={tournament.status !== 'completed'} style={{ marginBottom: 18 }}>
