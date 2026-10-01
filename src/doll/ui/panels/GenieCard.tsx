@@ -6,7 +6,8 @@
 // діапазону шкали («удача 91–99»). Нижче — 8 слотів вмінь (клік відкриває
 // вміння у вікні; порожні 5–8 підписані удачею, без якої їх не відкрити) і
 // три підсумки, червоні при порушенні: мін. рівень джина, треба удачі,
-// спорідненість. Попередження словами (genieWarnings) — у плашці стану.
+// спорідненість («Спорідн.» — щоб підпис не обрізався в колонці 328 px).
+// Попередження словами (genieWarnings) — у плашці стану.
 //
 // Іконка виду НЕ має класу doll-icon: димовий тест рахує такі іконки як
 // надіті речі. Правила і числа — src/data/genie.ts; у документ ідуть лише
@@ -117,9 +118,10 @@ export function GenieCardView({ genie, kind, points, rangeLabel, legacy, readOnl
   const sums = genie ? genieSums(genie) : null;
   const n = genie ? genie.skills.length : 0;
   const slots = Array.from({ length: GENIE_MAX_SKILLS }, (_, i) => genie?.skills[i]);
-  const sum = (key: string, value: string, sub: string, bad: boolean) => (
-    <div className={'doll-genie-sum' + (bad ? ' bad' : '')} key={key}>
-      <div className="doll-genie-sum-k">{key}</div>
+  // Підпис підсумку в картці 328 px — коротко й повністю (без трикрапки): «Спорідн.» з повною назвою в підказці.
+  const sum = (key: string, value: string, sub: string, bad: boolean, short?: string) => (
+    <div className={'doll-genie-sum' + (bad ? ' bad' : '')} key={key} title={short ? key : undefined}>
+      <div className="doll-genie-sum-k">{short ?? key}</div>
       <div className="doll-genie-sum-v">
         {value}
         {sub && <span> {sub}</span>}
@@ -233,9 +235,9 @@ export function GenieCardView({ genie, kind, points, rangeLabel, legacy, readOnl
           ? [
               sum('Мін. рівень', String(sums.minLevel), 'є ' + genie.level, sums.minLevel > genie.level),
               sum('Треба удачі', String(sums.luck), 'є ' + genie.luck, sums.luck > genie.luck),
-              sum('Спорідненість', String(sums.aff), 'з ' + sums.affHave, sums.aff > sums.affHave),
+              sum('Спорідненість', String(sums.aff), 'з ' + sums.affHave, sums.aff > sums.affHave, 'Спорідн.'),
             ]
-          : [sum('Мін. рівень', '—', '', false), sum('Треба удачі', '—', '', false), sum('Спорідненість', '—', '', false)]}
+          : [sum('Мін. рівень', '—', '', false), sum('Треба удачі', '—', '', false), sum('Спорідненість', '—', '', false, 'Спорідн.')]}
       </div>
     </DollCard>
   );

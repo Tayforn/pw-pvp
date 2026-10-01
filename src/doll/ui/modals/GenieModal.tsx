@@ -1,10 +1,11 @@
 // =========================================================
 // ЛЯЛЬКА — вікно джина (варіант Д1): збирання вмінь. Оболонка xl із двома
-// панелями (ModalShell + doll-modal-split). Смуга керування: вид (5 речей
-// каталогу pk → слот pk Головного, «без джина» — зняти), рівень і удача з
-// кроками −/+, пігулка діапазону шкали й балів. Ліворуч: «Збірка n/8» (клік
-// по слоту — прибрати), 4 підсумки й 5 стихій, пошук, «Суша / Усі 91»
-// (типово «Суша» ховає 10 вмінь лише для води чи повітря), «лише доступні»,
+// панелями (ModalShell + doll-modal-split). Смуга керування — два рядки:
+// 1) «Вид» і пігулки виду (5 речей каталогу pk → слот pk Головного, «без
+// джина» — зняти); 2) рівень і удача з кроками −/+, «макс. N», праворуч
+// пігулка діапазону шкали й балів. Ліворуч: «Збірка n/8» (клік по слоту —
+// прибрати), 4 підсумки й 5 стихій, пошук, «Наземні / Усі 91» (типово
+// «Наземні» ховає 10 вмінь, що працюють лише у воді чи в повітрі), «лише доступні»,
 // сітка плиток 32 px зі спрайта (src/data/genieIcon.ts). Праворуч — картка
 // вміння: назва, рівні 1–10 лише для чисел тексту, факти з таблиці правил
 // (рівень джина від, спорідненість, клас, місцевість), опис із сегментів
@@ -52,8 +53,8 @@ export type GenieTerrain = 'land' | 'all';
 /** Джин, якого ще не заповнювали: так його бачать і операції (ops.genieOr). */
 const EMPTY_GENIE: GenieCfg = { level: 1, luck: 0, skills: [] };
 
-/** Вміння видно «на суші»: без обмеження місцевості або з сушею в масці;
- * ховаються лише ті, що тільки для води чи повітря. */
+/** Наземне вміння: без обмеження місцевості або з сушею в масці;
+ * перемикач «Наземні» ховає лише ті, що тільки для води чи повітря. */
 export function onLand(s: GenieSkill): boolean {
   return !((s.ter & (TERRAIN_WATER | TERRAIN_AIR)) !== 0 && (s.ter & TERRAIN_LAND) === 0);
 }
@@ -95,14 +96,14 @@ export function classText(mask: number): string {
     .join(', ');
 }
 
-/** Обмеження місцевості словами; '' — всюди. */
+/** Обмеження місцевості словами («лише на суші та в повітрі»); '' — всюди. */
 export function terrainText(ter: number): string {
   if (!ter) return '';
   const parts: string[] = [];
-  if (ter & TERRAIN_LAND) parts.push('суша');
-  if (ter & TERRAIN_WATER) parts.push('вода');
-  if (ter & TERRAIN_AIR) parts.push('повітря');
-  return 'лише ' + parts.join(' і ');
+  if (ter & TERRAIN_LAND) parts.push('на суші');
+  if (ter & TERRAIN_WATER) parts.push('у воді');
+  if (ter & TERRAIN_AIR) parts.push('в повітрі');
+  return 'лише ' + parts.join(' та ');
 }
 
 /** Коротка назва виду для пігулки: «Душа Тай Чин» → «Тай Чин», «Прическа 'Тао Лі'» → «Тао Лі». */
@@ -157,7 +158,7 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
   const curKind = doc.main.pk ? model.items.get(doc.main.pk) : undefined;
   const curKindId = curKind?.inst.id;
 
-  // «Суша» типово; якщо відкрито на вмінні лише для води/повітря — одразу «Усі», щоб його було видно.
+  // «Наземні» типово; якщо відкрито на вмінні лише для води/повітря — одразу «Усі», щоб його було видно.
   const [terrain, setTerrain] = useState<GenieTerrain>(() => {
     const s = initialRef != null ? genieSkill(initialRef) : undefined;
     return s && !onLand(s) ? 'all' : 'land';
@@ -176,6 +177,7 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
 
   const rows = useMemo(() => genieGridRows({ terrain, q, onlyAvail, cfg: g, bit }), [terrain, q, onlyAvail, g, bit]);
   const landN = useMemo(() => GENIE_SKILLS.filter(onLand).length, []);
+  const landHint = 'Наземні: ховає ' + (GENIE_SKILLS.length - landN) + ' вмінь, що працюють лише у воді чи в повітрі';
   const availN = useMemo(
     () => GENIE_SKILLS.filter((s) => (terrain === 'all' || onLand(s)) && !g.skills.includes(s.ref) && !whyBlocked(s.ref, g, bit)).length,
     [terrain, g, bit],
@@ -331,34 +333,36 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
             без джина
           </button>
         </div>
-        <div className="doll-gw-num">
-          <label htmlFor={lvlId}>Рівень</label>
-          <div className="doll-gw-step">
-            <button type="button" aria-label="Нижчий рівень джина" disabled={readOnly || g.level <= 1} onClick={() => api.apply((d) => setGenieLevel(d, (d.genie?.level ?? 1) - 1))}>
-              −
-            </button>
-            <GenieNum id={lvlId} value={filled ? g.level : null} min={1} max={GENIE_MAX_LEVEL} disabled={readOnly} label="Рівень джина" placeholder="—" onCommit={(v) => api.apply((d) => setGenieLevel(d, v))} />
-            <button type="button" aria-label="Вищий рівень джина" disabled={readOnly || g.level >= GENIE_MAX_LEVEL} onClick={() => api.apply((d) => setGenieLevel(d, d.genie ? d.genie.level + 1 : 1))}>
-              +
-            </button>
+        <div className="doll-gw-nums">
+          <div className="doll-gw-num">
+            <label htmlFor={lvlId}>Рівень</label>
+            <div className="doll-gw-step">
+              <button type="button" aria-label="Нижчий рівень джина" disabled={readOnly || g.level <= 1} onClick={() => api.apply((d) => setGenieLevel(d, (d.genie?.level ?? 1) - 1))}>
+                −
+              </button>
+              <GenieNum id={lvlId} value={filled ? g.level : null} min={1} max={GENIE_MAX_LEVEL} disabled={readOnly} label="Рівень джина" placeholder="—" onCommit={(v) => api.apply((d) => setGenieLevel(d, v))} />
+              <button type="button" aria-label="Вищий рівень джина" disabled={readOnly || g.level >= GENIE_MAX_LEVEL} onClick={() => api.apply((d) => setGenieLevel(d, d.genie ? d.genie.level + 1 : 1))}>
+                +
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="doll-gw-num" title={'На ' + g.level + ' рівні удача буває до ' + maxLuckAtLevel(g.level)}>
-          <label htmlFor={luckId}>Удача</label>
-          <div className="doll-gw-step">
-            <button type="button" aria-label="Менша удача" disabled={readOnly || g.luck <= 0} onClick={() => api.apply((d) => setGenieLuck(d, (d.genie?.luck ?? 0) - 1))}>
-              −
-            </button>
-            <GenieNum id={luckId} className="luck" value={filled ? g.luck : null} min={0} max={GENIE_MAX_LUCK} disabled={readOnly} label="Удача джина" placeholder="—" onCommit={(v) => api.apply((d) => setGenieLuck(d, v))} />
-            <button type="button" aria-label="Більша удача" disabled={readOnly || g.luck >= GENIE_MAX_LUCK} onClick={() => api.apply((d) => setGenieLuck(d, (d.genie?.luck ?? 0) + 1))}>
-              +
-            </button>
+          <div className="doll-gw-num" title={'На ' + g.level + ' рівні удача буває до ' + maxLuckAtLevel(g.level)}>
+            <label htmlFor={luckId}>Удача</label>
+            <div className="doll-gw-step">
+              <button type="button" aria-label="Менша удача" disabled={readOnly || g.luck <= 0} onClick={() => api.apply((d) => setGenieLuck(d, (d.genie?.luck ?? 0) - 1))}>
+                −
+              </button>
+              <GenieNum id={luckId} className="luck" value={filled ? g.luck : null} min={0} max={GENIE_MAX_LUCK} disabled={readOnly} label="Удача джина" placeholder="—" onCommit={(v) => api.apply((d) => setGenieLuck(d, v))} />
+              <button type="button" aria-label="Більша удача" disabled={readOnly || g.luck >= GENIE_MAX_LUCK} onClick={() => api.apply((d) => setGenieLuck(d, (d.genie?.luck ?? 0) + 1))}>
+                +
+              </button>
+            </div>
+            {filled && <span className="doll-gw-max">макс. {maxLuckAtLevel(g.level)}</span>}
           </div>
-          {filled && <span className="doll-gw-max">макс. {maxLuckAtLevel(g.level)}</span>}
+          <span className={'doll-card-pill doll-gw-pts ' + (filled ? 'good' : 'warn')} title="Бали шкали за джина — за удачею">
+            {filled ? GENIE_LABELS[bucket] + ' · +' + pts + ' у скор' : legacyBucket ? 'зі старої анкети: ' + GENIE_LABELS[legacyBucket] + ' · +' + pts + ' у скор' : 'не заповнено · 0 у скор'}
+          </span>
         </div>
-        <span className={'doll-card-pill doll-gw-pts ' + (filled ? 'good' : 'warn')} title="Бали шкали за джина — за удачею">
-          {filled ? GENIE_LABELS[bucket] + ' · +' + pts + ' у скор' : legacyBucket ? 'зі старої анкети: ' + GENIE_LABELS[legacyBucket] + ' · +' + pts + ' у скор' : 'не заповнено · 0 у скор'}
-        </span>
       </div>
       {notice && (
         <div className="doll-m-notice doll-gw-notice" role="status">
@@ -419,7 +423,7 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
           </div>
 
           <div className="doll-gw-sec">
-            <span>Усі вміння · {terrain === 'land' ? landN + ' на суші' : GENIE_SKILLS.length}</span>
+            <span>Усі вміння · {terrain === 'land' ? landN + ' наземних' : GENIE_SKILLS.length}</span>
             <i>можна додати: {availN}</i>
           </div>
           <div className="doll-gw-filter">
@@ -437,11 +441,11 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
                 focusTile(tabRef);
               }}
             />
-            <div className="doll-seg doll-seg-xs" role="radiogroup" aria-label="Місцевість">
-              <button type="button" role="radio" aria-checked={terrain === 'land'} className={terrain === 'land' ? 'is-on' : ''} onClick={() => setTerrain('land')}>
-                Суша
+            <div className="doll-seg doll-seg-xs" role="radiogroup" aria-label="Які вміння показати" title={landHint}>
+              <button type="button" role="radio" aria-checked={terrain === 'land'} className={terrain === 'land' ? 'is-on' : ''} title={landHint} onClick={() => setTerrain('land')}>
+                Наземні
               </button>
-              <button type="button" role="radio" aria-checked={terrain === 'all'} className={terrain === 'all' ? 'is-on' : ''} onClick={() => setTerrain('all')}>
+              <button type="button" role="radio" aria-checked={terrain === 'all'} className={terrain === 'all' ? 'is-on' : ''} title="Усі вміння, і ті, що працюють лише у воді чи в повітрі" onClick={() => setTerrain('all')}>
                 Усі {GENIE_SKILLS.length}
               </button>
             </div>

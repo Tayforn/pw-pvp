@@ -752,23 +752,33 @@ html[data-theme='light'] .doll-pk-cmp-row:nth-child(even) { background: rgba(0, 
 .doll-tip-actnote { flex: 1 1 100%; font-size: 12px; line-height: 1.4; color: var(--doll-tip-mute); }
 
 /* ── Вікно джина (xl + split) ───────────────────────────────────────── */
-/* Смуга керування: вид, рівень, удача, пігулка балів. Не стискається. */
+/* Смуга керування — два рядки: 1) «Вид» і пігулки виду (разом із «без джина»); 2) «Рівень» −/+,
+   «Удача» −/+, «макс. N», праворуч пігулка балів. Усі елементи — висотою --gw-h, по центру рядка;
+   підписи «Вид», «Рівень», «Удача» — однакові. Не стискається. */
 .doll-gw-bar {
-  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  --gw-h: 30px;
+  flex: none; display: flex; flex-direction: column; gap: 8px;
   padding: 10px 14px; border-bottom: 1px solid var(--line);
 }
-.doll-gw-l { font-size: 13px; color: var(--text-dim); }
+.doll-gw-l, .doll-gw-num > label { min-width: 0; font-size: 13px; color: var(--text-dim); white-space: nowrap; }
 .doll-gw-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* «Вид» і «Рівень» — однакової ширини: пігулки виду й крок рівня починаються з однієї вертикалі. */
+.doll-gw-kinds > .doll-gw-l, .doll-gw-num:first-child > label { min-width: 48px; }
+.doll-gw-kinds > .doll-gw-l { margin-right: 2px; } /* 6 px проміжку пігулок + 2 = 8 px, як у рядку рівня */
+.doll-gw-nums { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
 .doll-gw-kind {
-  min-height: 30px; padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  height: var(--gw-h); box-sizing: border-box; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius-pill);
   background: transparent; color: var(--text-dim); font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
 }
 .doll-gw-kind:hover:not(:disabled) { border-color: var(--accent-2); color: var(--text); }
 .doll-gw-kind.is-on { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-3-rgb), 0.08); }
 .doll-gw-kind:disabled { cursor: default; opacity: 0.7; }
 .doll-gw-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.doll-gw-num { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
-.doll-gw-step { display: inline-flex; align-items: stretch; border: 1px solid var(--line-2); border-radius: var(--radius); overflow: hidden; }
+.doll-gw-num { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.doll-gw-step {
+  display: inline-flex; align-items: stretch; height: var(--gw-h); box-sizing: border-box;
+  border: 1px solid var(--line-2); border-radius: var(--radius); overflow: hidden;
+}
 .doll-gw-step button {
   width: 26px; padding: 0; border: 0; background: rgba(255, 255, 255, 0.03);
   color: var(--accent); font: 700 15px/1 system-ui, sans-serif; cursor: pointer;
@@ -778,13 +788,13 @@ html[data-theme='light'] .doll-gw-step button { background: rgba(255, 255, 255, 
 .doll-gw-step button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Поле між кроками: без своєї рамки (поля вікон ляльки задані через :where, тож тут вага звичайна). */
 .doll-modal .doll-gw-step input[type='number'] {
-  width: 46px; height: 30px; min-height: 0; padding: 0 2px; border: 0; border-radius: 0;
+  width: 46px; height: 100%; min-height: 0; padding: 0 2px; border: 0; border-radius: 0;
   text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; background-color: var(--bg-2);
 }
 .doll-modal .doll-gw-step input[type='number'].luck { color: var(--accent-3); }
 .doll-modal .doll-gw-step input[type='number']:focus { box-shadow: inset 0 0 0 2px rgba(var(--accent-3-rgb), 0.35); }
 .doll-gw-max { font-size: 11.5px; color: var(--text-mute); white-space: nowrap; }
-.doll-gw-pts { margin-left: auto; }
+.doll-gw-pts { margin-left: auto; height: var(--gw-h); box-sizing: border-box; padding: 0 12px; font-size: 12.5px; font-weight: 600; }
 .doll-gw-notice { flex: none; margin: 8px 14px 0; }
 
 /* Тіло: ліва панель + картка вміння 400 px; кожна скролиться сама. */
@@ -929,7 +939,7 @@ html[data-theme='light'] .doll-gw-after-row:nth-child(even) { background: rgba(0
   .doll-gw-pts { margin-left: 0; }
 }
 @media (pointer: coarse) {
+  .doll-gw-bar { --gw-h: 36px; }
   .doll-gw-step button { width: 36px; }
-  .doll-gw-kind { min-height: 36px; }
   .doll-gw-lvlrow button { width: 36px; height: 36px; }
 }

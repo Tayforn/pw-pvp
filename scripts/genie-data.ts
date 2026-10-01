@@ -13,7 +13,9 @@
 //
 // Тексти в Хелпері — HTML. Тут вони розбираються ЛИШЕ за відомими токенами;
 // будь-що інше з «<», «>» чи «&» зупиняє скрипт: сирий HTML не має потрапити
-// в дані ляльки (у src/doll рендер лише React-вузлами).
+// в дані ляльки (у src/doll рендер лише React-вузлами). Після розбору злиплі
+// поля розділяються (splitGlued): значення «Обмеження» — окремо від опису,
+// «Миттєве» — окремим рядком; невідоме значення обмеження теж зупиняє скрипт.
 // =========================================================
 
 import fs from 'node:fs';
@@ -121,6 +123,61 @@ function parseTpl(ref: number, tpl: string): Seg[] {
   return out;
 }
 
+// ---------- постобробка: злиплі поля ----------
+// У Хелпері значення «Обмеження» й сам опис вміння — один текстовий вузол («немає Вистрілює…»,
+// «крім воїнів Знерухомлює…»), а «Миттєве» часом прилипає до числа витривалості («200 Миттєве»).
+// Розділяємо: значення обмеження — окремим сегментом, опис — з нового рядка (стільки ж розривів,
+// скільки між полями цього тексту); «Миттєве» — окремим рядком-підписом, як в інших вміннях.
+
+/** Класи у значенні обмеження (українські й російські тексти Хелпера). */
+const LIMIT_CLASSES = ['воїн', 'маг', 'лучник', 'жрець', 'перевертень', 'друїд', 'зооморф', 'воин', 'жрец', 'оборотень', 'друид'];
+const LIMIT_CLASS = `(?:${LIMIT_CLASSES.join('|')})`;
+/** Значення на початку тексту після «Обмеження»: «немає», «крім <кого>[.]» або перелік класів через кому. */
+const LIMIT_VALUE = new RegExp(`^\\s*(немає|нет|Все профессии|(?:крім|кроме)\\s+[^\\s.,]+\\.?|${LIMIT_CLASS}(?:,\\s*${LIMIT_CLASS})*)(?=\\s|$)\\s*`, 'u');
+const LIMIT_LABEL = /^(Обмеження|Ограничение)/u;
+/** «Миттєве» без власного рядка: текст без тону, що лише з нього й складається (з пробілом спереду). */
+const INSTANT = /^\s+(Миттєве|Миттєво|Миттєва дія|Мгновенная|Мгновенное|Мгновенно)\s*$/u;
+
+/** Скільки розривів рядка стоїть підряд перед позицією end (між полями тексту: 2 в укр., 1 у рос.). */
+function brsBefore(d: Seg[], end: number): number {
+  let n = 0;
+  for (let i = end - 1; i >= 0 && 'br' in d[i]; i--) n++;
+  return Math.max(1, n);
+}
+/** Скільки розривів стоїть підряд з позиції start. */
+function brsFrom(d: Seg[], start: number): number {
+  let n = 0;
+  for (let i = start; i < d.length && 'br' in d[i]; i++) n++;
+  return Math.max(1, n);
+}
+const brs = (n: number): Seg[] => Array.from({ length: n }, () => ({ br: 1 as const }));
+
+function splitGlued(ref: number, d: Seg[]): Seg[] {
+  const out: Seg[] = [];
+  for (let i = 0; i < d.length; i++) {
+    const s = d[i];
+    const prev = out[out.length - 1];
+    if ('t' in s && !s.c && prev && !('br' in prev) && INSTANT.test(s.t)) {
+      out.push(...brs(brsFrom(d, i + 1)), { t: s.t.trim(), c: 'label' });
+      continue;
+    }
+    out.push(s);
+    if (!('t' in s) || s.c !== 'label' || !LIMIT_LABEL.test(s.t)) continue;
+    const next = d[i + 1];
+    if (!next || !('t' in next) || next.c) continue;
+    const m = LIMIT_VALUE.exec(next.t);
+    if (!m) throw new Error(`вміння ${ref}: невідоме значення обмеження ${JSON.stringify(next.t.slice(0, 60))}`);
+    const rest = next.t.slice(m[0].length);
+    const after = d[i + 2];
+    out.push({ t: m[1] });
+    // Опис — з нового рядка: і коли він у тому ж вузлі, і коли одразу за значенням іде число чи текст.
+    if (rest || (after && !('br' in after))) out.push(...brs(brsBefore(d, i)));
+    if (rest) out.push({ t: rest });
+    i++;
+  }
+  return out;
+}
+
 // ---------- збірка ----------
 
 async function main(): Promise<void> {
@@ -192,7 +249,7 @@ async function main(): Promise<void> {
   const texts: Array<[string, unknown]> = [];
   let segs = 0;
   for (const s of fixed) {
-    const d = parseTpl(s.ref, s.tpl);
+    const d = splitGlued(s.ref, parseTpl(s.ref, s.tpl));
     segs += d.length;
     // У st — ключі, які підставляються в текст, плюс '0' (потрібний рівень джина) і
     // '1' (дух для вивчення) по рівнях вміння — для перемикача рівнів у картці вміння.

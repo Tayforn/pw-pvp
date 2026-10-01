@@ -7,7 +7,10 @@
 //     (бафи тімейтів, правило 4, склад, алгоритм);
 //   • RulesFooter.tsx — sticky-футер «Зберегти як нову версію» на обох.
 // Тут лишились лише дрібні поля, якими користуються обидві вкладки, — щоб
-// вони виглядали однаково й не дублювались.
+// вони виглядали однаково й не дублювались. Числові поля стоять у сітці
+// AdmFields (.adm-fields у styles.css): однакова ширина, підпис над полем
+// переноситься повністю (без трикрапки), а саме поле притиснуте донизу
+// клітинки — поля одного ряду на одній лінії, хоч підпис в один рядок, хоч у три.
 //
 // Зберігання — лише як НОВА версія (balance-v1.1, v1.2, …): турніри, чиї
 // команди вже сформовано, назавжди рахуються своєю версією, а нові турніри
@@ -16,35 +19,38 @@
 
 import type { ReactNode } from 'react';
 
-/** Ціле число ≥ 0 у вузькому полі з підписом (підпис обрізається трьома крапками). */
-export function NumInput({ label, value, onChange, width = 92 }: { label: string; value: number; onChange: (v: number) => void; width?: number }) {
+/** Сітка полів адмінки: поля однакової ширини (wide — ширші, для довгих підписів), вирівняні донизу. */
+export function AdmFields({ wide, children }: { wide?: boolean; children: ReactNode }) {
+  return <div className={'adm-fields' + (wide ? ' wide' : '')}>{children}</div>;
+}
+
+/** Ціле число ≥ 0 у клітинці AdmFields; підпис над полем переноситься повністю. */
+export function NumInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="field" style={{ flex: `0 1 ${width}px` }}>
-      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={label}>{label}</span>
+    <label className="field adm-f">
+      <span>{label}</span>
       <input
         type="number"
         min={0}
         step={1}
         value={Number.isFinite(value) ? value : ''}
-        style={{ padding: '8px 10px', fontSize: 14 }}
         onChange={(e) => onChange(e.target.value === '' ? 0 : Math.max(0, Math.round(Number(e.target.value))))}
       />
     </label>
   );
 }
 
-/** Відсоток (0–100) для значення 0–1 — підпис не обрізається. */
+/** Відсоток (0–100) для значення 0–1 у клітинці AdmFields. */
 export function PctInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="field" style={{ flex: '0 0 auto', width: 150 }}>
-      <span style={{ whiteSpace: 'normal' }}>{label}</span>
+    <label className="field adm-f">
+      <span>{label}</span>
       <input
         type="number"
         min={0}
         max={100}
         step={5}
         value={Math.round(value * 100)}
-        style={{ padding: '8px 10px', fontSize: 14 }}
         onChange={(e) => onChange(Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) / 100)}
       />
     </label>
@@ -85,11 +91,11 @@ export function NumTable<K extends string>({ title, hint, order, labels, values,
         <span className="badge mute">max {max}</span>
       </div>
       {hint && <p className="hint" style={{ margin: '0 0 8px' }}>{hint}</p>}
-      <div className="field-row" style={{ gap: 10 }}>
+      <AdmFields>
         {order.map((k) => (
           <NumInput key={k} label={labels[k]} value={values[k]} onChange={(v) => onChange({ ...values, [k]: v })} />
         ))}
-      </div>
+      </AdmFields>
     </div>
   );
 }

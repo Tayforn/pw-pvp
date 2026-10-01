@@ -84,6 +84,9 @@ html[data-theme='light'] .doll { --doll-acc-rgb: 176, 127, 35; }
 .doll-cq { container: doll / inline-size; min-width: 0; }
 .doll-layout { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .doll-col { display: contents; }
+/* Картки колонок не розпирають колонку довгим рядком (назва пасивки, «вільно 15»): вміст
+   стискається, обрізається чи переноситься всередині картки. */
+.doll-col > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .doll-col-eq > * { order: 1; }
 .doll-col-stats > * { order: 4; }
 .doll-col-side > * { order: 5; }
@@ -111,7 +114,9 @@ html[data-theme='light'] .doll { --doll-acc-rgb: 176, 127, 35; }
 @container doll (min-width: 1000px) {
   .doll-layout { grid-template-columns: 320px minmax(0, 1fr) 328px; grid-template-rows: auto; }
   .doll-col-eq { grid-row: 1; }
-  .doll-col-side { grid-column: 3; grid-row: 1; display: flex; }
+  /* Тут колонка — flex-стовпчик, і align-items: start зі сходинки 700 px діяв би вже по ширині:
+     картки ставали б завширшки зі свій найширший рядок і вилазили за 328 px. Тягнемо на всю ширину. */
+  .doll-col-side { grid-column: 3; grid-row: 1; display: flex; align-items: stretch; }
 }
 
 .doll-alert {
@@ -124,39 +129,81 @@ html[data-theme='light'] .doll { --doll-acc-rgb: 176, 127, 35; }
 .doll-loading p { margin: 0 0 12px; }
 .doll-loading p:last-child { margin-bottom: 0; }
 
-/* ── Смужка персонажа (CharBar): поля в рядок, підпис ліворуч, кнопки сторінки праворуч ── */
+/* ── Смужка персонажа (CharBar): компактні поля з дрібним підписом над полем, кнопки сторінки праворуч ──
+   Один рядок від ширини редактора ≈ 1014 px (вікно 1280 з відкритим сайдбаром): «←» | Імʼя 150 ·
+   Клас 104 · Стать · Рівень 56 · Шлях 120 | пігулка стану й кнопки btn-sm висотою 30 px. Усі
+   елементи притиснуті донизу рядка — поля, кнопки й «←» стоять на одній лінії. Смужка — контейнер:
+   довгі написи («Мої персонажі», «Імпорт із Хелпера») лише коли вона ширша за 1180 px. */
 .doll-bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
-  padding: 10px 14px; background: var(--bg-1);
+  container: dollbar / inline-size;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px;
+  padding: 8px 12px; background: var(--bg-1);
   border: 1px solid var(--line); border-radius: var(--radius-lg);
 }
-.doll-bar-start, .doll-bar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.doll-bar-start, .doll-bar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .doll-bar-end { margin-left: auto; justify-content: flex-end; }
-.doll-bar-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-width: 0; }
-.doll-bar .doll-bar-f { flex-direction: row; align-items: center; gap: 6px; }
+.doll-bar-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; min-width: 0; }
+.doll-bar .doll-bar-f { flex-direction: column; align-items: stretch; gap: 3px; }
 .doll-bar .doll-bar-f > label,
-.doll-bar-l { font-size: 12px; font-weight: 500; color: var(--text-mute); white-space: nowrap; }
+.doll-bar-l {
+  font-size: 10.5px; line-height: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-mute); white-space: nowrap;
+}
 .doll-bar .field input[type='text'],
 .doll-bar .field input[type='number'],
-.doll-bar .field select { height: 34px; padding: 0 10px; font-size: 14px; }
-.doll-bar .field select { width: auto; min-width: 104px; padding-right: 30px; background-position: right 10px center; }
-.doll-bar-name input[type='text'] { width: 170px; }
-.doll-bar-lvl input[type='number'] { width: 72px; }
+.doll-bar .field select { height: 30px; box-sizing: border-box; padding: 0 8px; font-size: 13px; }
+.doll-bar .field select { padding-right: 26px; background-position: right 9px center; }
+.doll-bar-name input[type='text'] { width: 150px; }
+.doll-bar-cls select { width: 104px; }
+.doll-bar-lvl input[type='number'] { width: 56px; text-align: center; }
+.doll-bar-path select { width: 120px; }
 .doll-bar .field input:disabled,
 .doll-bar .field select:disabled { opacity: 0.7; cursor: default; }
-.doll-bar .doll-seg { padding: 2px; }
-/* «← Мої персонажі» — тихе посилання, як у макеті */
+.doll-bar .doll-seg { height: 30px; box-sizing: border-box; padding: 2px; flex-wrap: nowrap; }
+.doll-bar .doll-seg button { padding: 0 9px; font-size: 12px; }
+/* Кнопки сторінки: btn-sm тієї ж висоти, що й поля. */
+.doll-bar-end .btn-sm { height: 30px; box-sizing: border-box; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.doll-bar-end .doll-bar-ico { display: inline-grid; place-items: center; width: 30px; padding: 0; }
+.doll-bar-ico svg { display: block; }
+/* Стан збереження — коротка пігулка: «збережено», «не збережено», «чернетка»; повний текст — у title. */
+.doll-save-pill {
+  display: inline-flex; align-items: center; height: 22px; box-sizing: border-box; padding: 0 8px;
+  border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+  font-size: 11.5px; font-weight: 600; white-space: nowrap; color: var(--text-mute); cursor: default;
+}
+.doll-save-pill.good { color: var(--good); border-color: rgba(var(--good-rgb), 0.4); background: rgba(var(--good-rgb), 0.1); }
+.doll-save-pill.warn { color: var(--warn); border-color: rgba(var(--warn-rgb), 0.45); background: rgba(var(--warn-rgb), 0.1); }
+.doll-save-pill.bad { color: var(--bad); border-color: rgba(var(--bad-rgb), 0.45); background: rgba(var(--bad-rgb), 0.1); }
+/* «← Мої персонажі» — тихе посилання висотою поля; на вужчій смужці лишається «←» (назва — в aria-label). */
 .doll-bar-back {
-  padding: 4px 2px; border: 0; background: none; font: inherit; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 4px;
+  border: 0; background: none; font: inherit; font-size: 13px;
   color: var(--text-mute); cursor: pointer; white-space: nowrap;
 }
+.doll-bar-back > span:first-child { font-size: 16px; line-height: 1; }
 .doll-bar-back:hover { color: var(--accent); }
 .doll-bar-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
+@container dollbar (max-width: 1179px) {
+  .doll-bar-back-t { display: none; }
+  .doll-bar .doll-page-hint-long { display: none; }
+  .doll-bar .doll-page-hint-short { display: inline; }
+}
 /* Дрібний рядок під смужкою: підказка про чернетку, що заважає збереженню. */
 .doll-bar-note { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: -4px; padding: 0 4px; font-size: 12px; line-height: 1.45; color: var(--text-mute); }
 .doll-bar-note .doll-page-blockers { flex: 1 1 100%; }
+@media (pointer: coarse) {
+  .doll-bar .field input[type='text'],
+  .doll-bar .field input[type='number'],
+  .doll-bar .field select,
+  .doll-bar .doll-seg,
+  .doll-bar-back,
+  .doll-bar-end .btn-sm { height: 36px; }
+  .doll-bar-end .doll-bar-ico { width: 36px; }
+}
 @media (max-width: 560px) {
   .doll-bar { padding: 10px 12px; }
+  /* На телефоні «←» і так стоїть окремим рядком — місце для повного напису є. */
+  .doll-bar-back-t { display: inline; }
   .doll-bar-fields { flex: 1 1 100%; }
   .doll-bar-name { flex: 1 1 100%; }
   .doll-bar-name input[type='text'] { width: 100%; }
@@ -450,9 +497,6 @@ html[data-theme='light'] .doll-menu-title[class*='gx-'] { color: var(--text); }
 .doll-page-save { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; flex: 1 1 280px; min-width: 0; }
 .doll-page-save .hint { margin: 0; max-width: 400px; }
 .doll-page-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.doll-save-state { font-size: 12px; color: var(--text-mute); }
-.doll-save-state.is-pending { color: var(--text-dim); }
-.doll-save-state.is-failed { color: var(--bad); }
 .doll-page-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; font-size: 14px; color: var(--text-dim); }
 .doll-import { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; }
 .doll-import h3 { margin: 0; font-size: 16px; }
@@ -487,8 +531,6 @@ html[data-theme='light'] .doll-menu-title[class*='gx-'] { color: var(--text); }
 /* Сторінка: чернетка, що не пройде збереження, конфлікт вкладок, стан сховища. */
 .doll-page-hint-short { display: none; }
 .doll-page-blockers { flex: 1 1 100%; font-size: 12.5px; line-height: 1.45; color: var(--bad); }
-.doll-save-state.is-held,
-.doll-save-state.is-off { color: var(--bad); }
 .doll-page-notice.is-warn { flex-wrap: wrap; color: var(--text); border-color: rgba(var(--bad-rgb), 0.45); }
 .doll-page-notice-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 560px) {
@@ -498,7 +540,6 @@ html[data-theme='light'] .doll-menu-title[class*='gx-'] { color: var(--text); }
   .doll-page-bar { gap: 8px; }
   .doll-page-save { flex-basis: 100%; }
   .doll-page-tools { gap: 6px; }
-  .doll-page-tools .doll-save-state { flex: 1 1 100%; }
   /* Вступ на телефоні ховаємо: ті самі підказки є в редакторі, а фігура має бути ближче до верху. */
   .doll-page > .section-head p { display: none; }
 }

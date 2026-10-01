@@ -402,7 +402,7 @@ describe('вікно джина', () => {
   const EMPTY_G = { level: 1, luck: 0, skills: [] as number[] };
   const fullDoc = (): CharacterDoc => ({ ...docFrom('typical-by'), genie: { level: 100, luck: 91, skills: CHEAP } });
 
-  it('без джина: вікно xl з двома панелями, 81 плитка «на суші», вид з каталогу pk, пігулка «не заповнено»', () => {
+  it('без джина: вікно xl з двома панелями, 81 наземна плитка, вид з каталогу pk, пігулка «не заповнено»', () => {
     const doc = docFrom('typical-by');
     const html = renderIn(doc, <GenieModal />);
     const text = visible(html);
@@ -412,18 +412,27 @@ describe('вікно джина', () => {
     expect(text).toContain('Джин');
     expect(text).toContain('Збірка · 0 / 8');
     expect((html.match(/class="doll-gw-tile/g) || []).length).toBe(81);
-    expect(text).toContain('Усі вміння · 81 на суші');
+    expect(text).toContain('Усі вміння · 81 наземних');
     // вид: 5 речей каталогу + «без джина»; у фікстурі надіта «Душа Тай Инь»
     expect((html.match(/class="doll-gw-kind(?: is-on)?"/g) || []).length).toBe(6);
     expect(html).toMatch(/class="doll-gw-kind is-on" aria-pressed="true"[^>]*>Тай Инь</);
     expect(text).toContain('без джина');
+    // смуга — два рядки: «Вид» з пігулками (і «без джина»), потім рівень, удача й пігулка балів
+    expect(html).toMatch(/class="doll-gw-bar"><div class="doll-gw-kinds"[^]*?>без джина<\/button><\/div><div class="doll-gw-nums"><div class="doll-gw-num">/);
+    const nums = html.indexOf('class="doll-gw-nums"');
+    expect(nums).toBeLessThan(html.indexOf('>Удача<'));
+    expect(html.indexOf('>Удача<')).toBeLessThan(html.indexOf('doll-gw-pts'));
+    expect(html.indexOf('doll-gw-pts')).toBeLessThan(html.indexOf('class="doll-gw-body"'));
     expect(text).toContain('не заповнено · 0 у скор');
     expect(text).not.toContain('макс.'); // підказка «макс. удачі» лише для заповненого джина
     // можна додати стільки, скільки правила пускають на 1 рівні з удачею 0
     const avail = GENIE_SKILLS.filter((s) => onLand(s) && !whyBlocked(s.ref, EMPTY_G, clsBit('by'))).length;
     expect(avail).toBeGreaterThan(0);
     expect(text).toContain('можна додати: ' + avail);
-    expect(html).toMatch(/aria-checked="true"[^>]*>Суша</);
+    // перемикач «Наземні / Усі 91» (не «Суша»): підказка каже, що саме ховається
+    expect(html).toMatch(/aria-checked="true"[^>]*>Наземні</);
+    expect(html).toContain('title="Наземні: ховає 10 вмінь, що працюють лише у воді чи в повітрі"');
+    expect(text).not.toContain('Суша');
     expect(text).toContain('Усі 91');
     expect(text).toContain('лише доступні');
     expect(html).toContain('aria-label="Пошук вміння"');
@@ -436,7 +445,7 @@ describe('вікно джина', () => {
     expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
   });
 
-  it('фільтри сітки: суша 81 / усі 91, пошук за назвою, «лише доступні» за правилами (збірка лишається)', () => {
+  it('фільтри сітки: наземні 81 / усі 91, пошук за назвою, «лише доступні» за правилами (збірка лишається)', () => {
     const bit = clsBit('by');
     expect(genieGridRows({ terrain: 'land', q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(81);
     expect(genieGridRows({ terrain: 'all', q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(91);
@@ -493,7 +502,7 @@ describe('вікно джина', () => {
     expect(html).toMatch(/disabled=""[^>]*>Додати в джина/);
     expect(text).toContain('не додати: треба рівень джина 60, є 1');
     expect(html).toMatch(/class="doll-gw-tile is-cur is-blocked"/);
-    expect(text).toContain('Місцевість лише суша');
+    expect(text).toContain('Місцевість лише на суші');
     expect(text).toContain('Рівень джина від 60');
     // класове вміння мага у воїна
     const mage = visible(renderIn(doc, <GenieModal initialRef={10331} />)); // «Зірка майстра» — лише маг
@@ -526,8 +535,8 @@ describe('вікно джина', () => {
     expect(classText(0)).toBe('');
     expect(classText(clsBit('by') | clsBit('ya'))).toBe(CLASS_LABELS[CLS_CHAR.by] + ', ' + CLASS_LABELS[CLS_CHAR.ya]);
     expect(terrainText(0)).toBe('');
-    expect(terrainText(0x8000)).toBe('лише вода');
-    expect(terrainText(0x4000 | 0x10000)).toBe('лише суша і повітря');
+    expect(terrainText(0x8000)).toBe('лише у воді');
+    expect(terrainText(0x4000 | 0x10000)).toBe('лише на суші та в повітрі');
     expect(kindShort('Душа Тай Чин')).toBe('Тай Чин');
     expect(kindShort("Прическа 'Тао Лі'")).toBe('Тао Лі');
     expect(onLand(GENIE_SKILLS.find((s) => s.ref === 10141)!)).toBe(false); // «Ловкость ветра» — лише повітря

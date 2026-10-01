@@ -16,6 +16,7 @@ vi.mock('../../../data/rulesStore', () => ({
 
 const { default: ScaleTab } = await import('../ScaleTab');
 const visible = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+const count = (html: string, re: RegExp): number => (html.match(re) || []).length;
 
 afterEach(() => _resetRulesDraftForTests());
 
@@ -75,6 +76,27 @@ describe('вкладка «Шкала балів»', () => {
     for (const a of V2_ARCHETYPES) expect(t).toContain(a.name);
     expect(html).toMatch(/class="badge warn"[^>]*>S</);
     expect(html).toMatch(/class="badge mute"[^>]*>D</);
+  });
+
+  it('поля — сіткою AdmFields: однакові клітинки, підпис повністю (без трикрапки), жодного field-row', () => {
+    const html = renderToStaticMarkup(<ScaleTab />);
+    // старий ряд із підписами в один рядок (обрізання трикрапкою, поля на різній висоті) зник
+    expect(html).not.toContain('field-row');
+    expect(html).not.toMatch(/text-overflow:\s*ellipsis/);
+    // «Лялька: камені й збірка» — широка сітка: 8 каменів + гібрид/кон, кожне поле — клітинка adm-f з повним підписом
+    const doll = html.slice(html.indexOf('Лялька: камені й збірка'), html.indexOf('Стелі свап-спорядження'));
+    expect(count(doll, /class="adm-fields wide"/g)).toBe(2);
+    expect(count(doll, /<label class="field adm-f"><span>/g)).toBe(10);
+    expect(doll).toContain('<span>Камені 12 рівня (Сюаньки, Нюйви, Пань Гу…)</span>');
+    expect(doll).toContain('<span>Гібрид — від, % очок у Тілобудові</span>');
+    // у кожній сітці — лише клітинки полів (і клітинка кнопки), без власних ширин і flex-основ
+    for (const grid of html.split('class="adm-fields').slice(1)) {
+      const kids = grid.match(/^[^>]*>(<label class="field adm-f">|<div class="adm-f-act">)/);
+      expect(kids, grid.slice(0, 120)).not.toBeNull();
+    }
+    expect(html).not.toMatch(/class="field adm-f" style=/);
+    // «Стелі свап-спорядження»: поле, кнопка «Рекомендована» в клітинці сітки, поле ПЗ свап-зброї
+    expect(html).toMatch(/<span>Стеля свап-сетів<\/span>(?:(?!adm-fields).)*class="adm-f-act"><button[^>]*>Рекомендована: (?:(?!adm-fields).)*<span>Стеля ПЗ свап-зброї<\/span>/);
   });
 
   it('абілки й стелі — з чернетки: правка стору видно в полях', () => {

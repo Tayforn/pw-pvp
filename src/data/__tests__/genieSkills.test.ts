@@ -102,4 +102,36 @@ describe('тексти вмінь (genie-text.json)', () => {
       expect(Object.keys(sk.st).sort()).toEqual([...new Set([...used, '0', '1'])].sort());
     }
   });
+
+  it('«Обмеження» — лише значення, опис з нового рядка; «Миттєве» не злипається з числом', () => {
+    const LIMIT = /^(немає|Все профессии|(крім|кроме) \S+|[а-яіїєґ]+(, [а-яіїєґ]+)*)$/u;
+    let limits = 0;
+    for (const [ref, sk] of Object.entries(texts)) {
+      sk.d.forEach((seg, i) => {
+        const t = 't' in seg ? String(seg.t) : '';
+        if (seg.c === 'label' && /^(Обмеження|Ограничение)/u.test(t)) {
+          limits++;
+          const v = sk.d[i + 1];
+          expect(v && 't' in v && v.c === undefined, `вміння ${ref}: значення обмеження`).toBe(true);
+          expect(String(v.t), `вміння ${ref}`).toMatch(LIMIT);
+          // далі — кінець тексту або розрив рядка, а не продовження опису в тому ж рядку
+          if (sk.d[i + 2]) expect(sk.d[i + 2], `вміння ${ref}: після «${String(v.t)}»`).toEqual({ br: 1 });
+        }
+        if (/Миттєв|Мгновен/u.test(t)) {
+          expect(seg.c, `вміння ${ref}: «${t}»`).toBe('label');
+          expect(t.trim()).toBe(t);
+          expect(sk.d[i - 1], `вміння ${ref}: перед «${t}»`).toEqual({ br: 1 });
+        }
+      });
+    }
+    expect(limits).toBe(90);
+    // «Жало»: «Обмеження: немає», порожній рядок, опис; «Стовп полумʼя» — «200», порожній рядок, «Миттєве»
+    const sting = texts['10001'].d;
+    const at = sting.findIndex((s) => s.t === 'Обмеження:　');
+    expect(sting.slice(at + 1, at + 4)).toEqual([{ t: 'немає' }, { br: 1 }, { br: 1 }]);
+    expect(String(sting[at + 4].t)).toMatch(/^Вистрілює в супротивника отруєним жалом/);
+    const fire = texts['10151'].d;
+    const n = fire.findIndex((s) => s.t === '200');
+    expect(fire.slice(n + 1, n + 4)).toEqual([{ br: 1 }, { br: 1 }, { t: 'Миттєве', c: 'label' }]);
+  });
 });

@@ -114,7 +114,12 @@ function expectEditor(html: string): void {
   // сторінка без входу (у тестах /api/me недоступний): замість збереження — вхід, чернетка в браузері
   const text = visible(html);
   expect(text).toContain('← Мої персонажі');
-  expect(text).toContain('Увійти через Discord, щоб зберегти');
+  expect(html).toContain('aria-label="Мої персонажі"');
+  // смужка компактна: пігулка стану «чернетка» (повний текст — у підказці), кошик «Скинути чернетку»,
+  // коротка кнопка входу з повним поясненням у підказці
+  expect(html).toMatch(/class="doll-save-pill mute" role="status" title="Чернетк[^"]*"[^>]*>чернетка</);
+  expect(html).toMatch(/class="btn btn-bad btn-sm doll-bar-ico" aria-label="Скинути чернетку"[^>]*><svg/);
+  expect(html).toMatch(/title="Увійти через Discord, щоб зберегти персонажа в профіль"[^>]*>Увійти й зберегти</);
   expect(text).toContain('чернетка в цьому браузері');
   // заголовок розділу над редактором прибрано (лишився лише у списку «Мої персонажі»)
   expect(text).not.toContain('Лялька персонажа');

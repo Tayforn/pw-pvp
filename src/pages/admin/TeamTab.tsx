@@ -17,7 +17,7 @@ import {
 } from '../../data/gearRules';
 import { DRUID_AMP, FULL_DD_KILL, buffPctTo, pairViolates } from '../../data/balance';
 import { patchBalance, patchBuffs, patchComposition, useRulesDraft } from '../../data/rulesDraftStore';
-import { CardHead, NumInput, PctInput, RuleRow } from './RulesEditor';
+import { AdmFields, CardHead, NumInput, PctInput, RuleRow } from './RulesEditor';
 
 const KX_ORDER: KxMode[] = ['noKx', 'kx'];
 const KX_LABELS: Record<KxMode, string> = { noKx: 'Без КХ', kx: 'Під КХ' };
@@ -148,16 +148,16 @@ function BuffsCard() {
         на жеребку не впливає. Якщо в правилах турніру знято рядок «Бафи лише від своєї пачки», бафи для того турніру не рахуються незалежно від галочки.
       </p>
 
-      <div className="field-row" style={{ gap: 10, alignItems: 'flex-start' }}>
-        <label className="field" style={{ flex: '0 1 220px' }}>
+      <AdmFields wide>
+        <label className="field adm-f">
           <span>КХ-бафи за замовчуванням</span>
-          <select value={b.defaultKx} style={{ padding: '8px 30px 8px 10px', fontSize: 14 }} onChange={(e) => patchBuffs({ defaultKx: e.target.value === 'kx' ? 'kx' : 'noKx' })}>
+          <select value={b.defaultKx} onChange={(e) => patchBuffs({ defaultKx: e.target.value === 'kx' ? 'kx' : 'noKx' })}>
             <option value="noKx">без КХ</option>
             <option value="kx">під КХ</option>
           </select>
         </label>
-        <NumInput label="Стеля бафів одному гравцю, %" value={b.cap} onChange={(v) => patchBuffs({ cap: Math.min(100, v) })} width={200} />
-      </div>
+        <NumInput label="Стеля бафів одному гравцю, %" value={b.cap} onChange={(v) => patchBuffs({ cap: Math.min(100, v) })} />
+      </AdmFields>
       <p className="hint" style={{ margin: '4px 0 12px' }}>
         <b>КХ</b> — яку колонку таблиці брати, коли в правилах турніру поле «КХ-бафи» не задано (у попапі правил можна перекрити для конкретного
         турніру). Під КХ бафи Танка і Приста слабші, бо частина їх із КХ не складається: для Лучника 250 з Танком і Пристом різниця ≈ 25 балів.
@@ -188,11 +188,11 @@ function BuffsCard() {
         Запобіжник для масових форматів: при 5×5 рівна сила розводить гір між командами на 140–210 балів. 100 = бафи рахуються повністю,
         50 = наполовину, 0 = у цьому розмірі не рахуються (галочка лишається увімкненою для інших).
       </p>
-      <div className="field-row" style={{ gap: 10 }}>
+      <AdmFields>
         {SIZE_KEYS.map((k) => (
-          <NumInput key={k} label={`Команди по ${SIZE_LABELS[k]}`} value={b.sizeWeight[k]} onChange={(v) => patchBuffs({ sizeWeight: { ...b.sizeWeight, [k]: Math.min(100, v) } })} width={130} />
+          <NumInput key={k} label={`Команди по ${SIZE_LABELS[k]}`} value={b.sizeWeight[k]} onChange={(v) => patchBuffs({ sizeWeight: { ...b.sizeWeight, [k]: Math.min(100, v) } })} />
         ))}
-      </div>
+      </AdmFields>
 
       <label className="checkbox-row" style={{ margin: '14px 0 4px' }}>
         <input type="checkbox" checked={b.killScaled} onChange={(e) => patchBuffs({ killScaled: e.target.checked })} />
@@ -264,29 +264,29 @@ function BuffsCard() {
           Живий приклад тими самими формулами, що й жеребка (стеля, частка за розміром, множник на урон — усе враховано).
           {!b.enabled && ' Бафи зараз вимкнено — це лише перевірка таблиці, на жеребку вона не впливає.'}
         </p>
-        <div className="field-row" style={{ gap: 10, alignItems: 'flex-end' }}>
-          <label className="field" style={{ flex: '0 1 150px' }}>
+        <AdmFields>
+          <label className="field adm-f">
             <span>Отримувач</span>
-            <select value={recv} style={{ padding: '6px 30px 6px 8px', fontSize: 13 }} onChange={(e) => setRecv(e.target.value as CharClass)}>
+            <select value={recv} onChange={(e) => setRecv(e.target.value as CharClass)}>
               {CLASS_ORDER.map((c) => <option key={c} value={c}>{CLASS_LABELS[c]}</option>)}
             </select>
           </label>
           <NumInput label="Його гір" value={recvScore} onChange={setRecvScore} />
-          <label className="field" style={{ flex: '0 1 120px' }}>
+          <label className="field adm-f">
             <span>Команди по</span>
-            <select value={checkS} style={{ padding: '6px 30px 6px 8px', fontSize: 13 }} onChange={(e) => setCheckS(Number(e.target.value))}>
+            <select value={checkS} onChange={(e) => setCheckS(Number(e.target.value))}>
               {[2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}{n === 5 ? '+' : ''}</option>)}
             </select>
           </label>
           {teamMates.map((c, i) => (
-            <label key={i} className="field" style={{ flex: '0 1 150px' }}>
+            <label key={i} className="field adm-f">
               <span>Тімейт {i + 1}</span>
-              <select value={c} style={{ padding: '6px 30px 6px 8px', fontSize: 13 }} onChange={(e) => setMates(mates.map((m, j) => (j === i ? (e.target.value as CharClass) : m)))}>
+              <select value={c} onChange={(e) => setMates(mates.map((m, j) => (j === i ? (e.target.value as CharClass) : m)))}>
                 {CLASS_ORDER.map((k) => <option key={k} value={k}>{CLASS_LABELS[k]}</option>)}
               </select>
             </label>
           ))}
-        </div>
+        </AdmFields>
         <p style={{ margin: '10px 0 0', fontSize: 14 }}>
           <b>{CLASS_LABELS[recv]} {recvScore}</b> + {teamMates.map((c) => CLASS_LABELS[c]).join(' + ')}:
           без КХ <b>+{pts(pNo)}</b> балів ({fmtPct(pNo)} %), під КХ <b>+{pts(pKx)}</b> ({fmtPct(pKx)} %).
@@ -389,11 +389,11 @@ function CompositionCard() {
           Кон-збірка ріже урон: шмот той самий, а вбиває гірше. Число — скільки відсотків урону свого класу лишається гравцеві.
           Приклад: Сін у кон-збірці = 100 % × {Math.round(comp.buildKill.con * 100)} % = {Math.round(comp.profiles.assassin.kill * comp.buildKill.con * 100)} % урону.
         </p>
-        <div className="field-row" style={{ gap: 10 }}>
+        <AdmFields>
           {BUILD_ORDER.map((bk) => (
             <PctInput key={bk} label={BUILD_LABELS[bk]} value={comp.buildKill[bk]} onChange={(v) => patchComp({ buildKill: { ...comp.buildKill, [bk]: v } })} />
           ))}
-        </div>
+        </AdmFields>
       </div>
 
       <div style={{ marginTop: 16 }}>
@@ -401,9 +401,9 @@ function CompositionCard() {
         <p className="hint" style={{ margin: '2px 0 8px' }}>
           Другий ДД теж завдає шкоди, але його урон не збирається з першим в один бурст. Число — з якою часткою він входить у «зв'язку» команди (третій і далі так само).
         </p>
-        <div className="field-row" style={{ gap: 10 }}>
+        <AdmFields>
           <PctInput label="Другий ДД додає, %" value={comp.secondDd} onChange={(v) => patchComp({ secondDd: v })} />
-        </div>
+        </AdmFields>
       </div>
 
       <div style={{ marginTop: 16 }}>
@@ -418,12 +418,12 @@ function CompositionCard() {
         <p className="hint" style={{ margin: '2px 0 8px' }}>
           Гравець «небезпечний», якщо його урон не менший за це число. Потрібно лише для другого правила.
         </p>
-        <div className="field-row" style={{ gap: 10, alignItems: 'flex-end' }}>
+        <AdmFields>
           <PctInput label="Небезпечний від, % урону" value={comp.threatMinKill} onChange={(v) => patchComp({ threatMinKill: v })} />
-          <span className="hint" style={{ margin: '0 0 10px' }}>
-            Зараз: {dangerExample('archer')} · {dangerExample('barbarian')} · {dangerExample('seeker')} · {dangerExample('assassin', 'con')}.
-          </span>
-        </div>
+        </AdmFields>
+        <p className="hint" style={{ margin: '6px 0 0' }}>
+          Зараз: {dangerExample('archer')} · {dangerExample('barbarian')} · {dangerExample('seeker')} · {dangerExample('assassin', 'con')}.
+        </p>
       </div>
 
       <div style={{ marginTop: 16 }}>
@@ -494,9 +494,11 @@ function CompositionCard() {
         </p>
       </div>
 
-      <div className="field-row" style={{ gap: 10, marginTop: 12 }}>
-        <NumInput label="Топовий ДД — від скору" value={comp.topDdMinScore} onChange={(v) => patchComp({ topDdMinScore: v })} width={170} />
-        <PctInput label="Дозволена підтримка топового ДД, % (команди 3+)" value={comp.topSupportAllow} onChange={(v) => patchComp({ topSupportAllow: v })} />
+      <div style={{ marginTop: 12 }}>
+        <AdmFields wide>
+          <NumInput label="Топовий ДД — від скору" value={comp.topDdMinScore} onChange={(v) => patchComp({ topDdMinScore: v })} />
+          <PctInput label="Дозволена підтримка топового ДД, % (команди 3+)" value={comp.topSupportAllow} onChange={(v) => patchComp({ topSupportAllow: v })} />
+        </AdmFields>
       </div>
       <p className="hint" style={{ margin: '6px 0 0' }}>
         Поріг — обрив: корекція скору навколо нього вмикає / вимикає правило 4 для гравця. Гравець зі скором {comp.topDdMinScore + 3} після корекції −4
@@ -525,12 +527,12 @@ function AlgorithmCard() {
         увімкнених бафах. У командах по 3 він заважає правилу про топового ДД, тому рекомендовано {Math.round(RECOMMENDED_TOP_PROFILE_WEIGHT * 100)} %;
         у парах на розклад не впливає — лише на цифру штрафу.
       </p>
-      <div className="field-row" style={{ gap: 10 }}>
+      <AdmFields>
         <NumInput label="ε-коридор" value={bal.epsilon} onChange={(v) => patchBalance({ epsilon: v })} />
-        <NumInput label="Кандидатів (top-N)" value={bal.topN} onChange={(v) => patchBalance({ topN: Math.max(1, v) })} width={140} />
+        <NumInput label="Кандидатів (top-N)" value={bal.topN} onChange={(v) => patchBalance({ topN: Math.max(1, v) })} />
         <NumInput label="Вага ролей" value={bal.weights.role} onChange={(v) => patchBalance({ weights: { ...bal.weights, role: v } })} />
         <PctInput label="Профіль сили, %" value={bal.weights.top} onChange={(v) => patchBalance({ weights: { ...bal.weights, top: v } })} />
-      </div>
+      </AdmFields>
     </div>
   );
 }

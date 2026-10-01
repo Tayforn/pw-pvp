@@ -669,7 +669,9 @@ describe('Джин (картка)', () => {
     expect(genieSums(doc.genie!)).toEqual({ minLevel: 100, luck: 91, aff: 6, affHave: affPointsAtLevel(100) });
     expect(text).toContain(norm('Мін. рівень 100 є 100'));
     expect(text).toContain(norm('Треба удачі 91 є 91'));
-    expect(text).toContain(norm('Спорідненість 6 з 21'));
+    // «Спорідненість» у колонці 328 px — коротким підписом без трикрапки, повна назва — у підказці
+    expect(text).toContain(norm('Спорідн. 6 з 21'));
+    expect(html).toMatch(/class="doll-genie-sum" title="Спорідненість"[^>]*><div class="doll-genie-sum-k">Спорідн\.</);
     expect(html).not.toContain('doll-genie-sum bad');
     expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
   });
@@ -718,7 +720,7 @@ describe('Джин (картка)', () => {
     // без вмінь удача 100 нічого не вимагає: підсумки 1 / 10 / 0 з 21
     expect(visible(html)).toContain(norm('Мін. рівень 1 є 100'));
     expect(visible(html)).toContain(norm('Треба удачі 10 є 100'));
-    expect(visible(html)).toContain(norm('Спорідненість 0 з 21'));
+    expect(visible(html)).toContain(norm('Спорідн. 0 з 21'));
   });
 });
 

@@ -21,7 +21,7 @@ import {
 } from '../../data/gearRules';
 import { WEAPON_ABILITIES, WEAPON_ABILITY_BY_CODE, type WeaponAbility } from '../../data/weaponAbilities';
 import { draftTiersValid, patchDraft, useRulesDraft } from '../../data/rulesDraftStore';
-import { NumInput, NumTable } from './RulesEditor';
+import { AdmFields, NumInput, NumTable } from './RulesEditor';
 import { TABLE_ARCHETYPES, V2_ARCHETYPES, v2ArchetypeScore } from './scaleArchetypes';
 
 /** Грейди, для яких є сенс у перевизначенні за класом (R9-лінійка й ЦГД/РЦГД). */
@@ -294,13 +294,13 @@ export default function ScaleTab() {
           Наявність і точку лялька бачить сама («Шлем героя», «Плащ вознесения»): кожна рахується один раз (екземпляр із найбільшою точкою, хоч у
           Головному, хоч у сеті) замість шостої точки броні за шолом чи накидку; камені в них — як у броні. Бонус — якщо надіті обидві хоч десь.
         </p>
-        <div className="field-row" style={{ gap: 10 }}>
+        <AdmFields>
           <NumInput label="Є ШГ" value={draft.shg} onChange={(v) => patch({ shg: v })} />
           <NumInput label="Є Вознєс" value={draft.voznes} onChange={(v) => patch({ voznes: v })} />
-          <NumInput label="Обидві разом" value={draft.shgVoznesBonus} onChange={(v) => patch({ shgVoznesBonus: v })} width={120} />
-          <NumInput label="Рівень точки ШГ" value={draft.shgRefinePerLevel} onChange={(v) => patch({ shgRefinePerLevel: v })} width={140} />
-          <NumInput label="Рівень точки Вознєса" value={draft.voznesRefinePerLevel} onChange={(v) => patch({ voznesRefinePerLevel: v })} width={160} />
-        </div>
+          <NumInput label="Обидві разом" value={draft.shgVoznesBonus} onChange={(v) => patch({ shgVoznesBonus: v })} />
+          <NumInput label="Рівень точки ШГ" value={draft.shgRefinePerLevel} onChange={(v) => patch({ shgRefinePerLevel: v })} />
+          <NumInput label="Рівень точки Вознєса" value={draft.voznesRefinePerLevel} onChange={(v) => patch({ voznesRefinePerLevel: v })} />
+        </AdmFields>
       </div>
 
       <NumTable
@@ -312,7 +312,9 @@ export default function ScaleTab() {
         onChange={(v) => patch({ rings: v })}
       />
       <div className="card" style={{ padding: 14 }}>
-        <div className="field-row"><NumInput label="Рівень точки R9R1 (за кільце)" value={draft.ringRefinePerLevel} onChange={(v) => patch({ ringRefinePerLevel: v })} width={220} /></div>
+        <AdmFields>
+          <NumInput label="Рівень точки R9R1 (за кільце)" value={draft.ringRefinePerLevel} onChange={(v) => patch({ ringRefinePerLevel: v })} />
+        </AdmFields>
       </div>
 
       <NumTable
@@ -342,9 +344,9 @@ export default function ScaleTab() {
           ПА-камені лялька рахує за курсом рядка «ПЗ+1» × одиниці каменя (Лагеря +2 ПЗ = {fmt(2 * unit)}, Цзин Юэ / Ракшаса +3 = {fmt(3 * unit)}; у зброї
           — за тим, що камінь дає у зброї), тож рядки «ПЗ+2» і «ПА» тут — лише для складу каменів старих заявок; решту каменів — за рівнем.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        <AdmFields wide>
           {GEM_CLASS_ORDER.map((k) => (
-            <label key={k} className="field">
+            <label key={k} className="field adm-f">
               <span>{GEM_CLASS_LABELS[k]}</span>
               <input
                 type="number"
@@ -355,7 +357,7 @@ export default function ScaleTab() {
               />
             </label>
           ))}
-        </div>
+        </AdmFields>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 8 }}>
           <button
             type="button"
@@ -372,8 +374,8 @@ export default function ScaleTab() {
           Бали за ОДИН камінь. Повна броня (24 гнізда): Лагеря — {Math.round(48 * unit)}, «Каменная броня» — {Math.round(24 * unit)},
           «Алмазная броня» — {Math.round(24 * unit)}, камені 12 рів. (Сюань Юань, Пань Гу, Нюйва) — {Math.round(24 * draft.doll.gemPoints.g12)}.
         </p>
-        <div className="field-row" style={{ gap: 10 }}>
-          <label className="field">
+        <AdmFields wide>
+          <label className="field adm-f">
             <span>Гібрид — від, % очок у Тілобудові</span>
             <input
               type="number" min={0} max={100}
@@ -381,7 +383,7 @@ export default function ScaleTab() {
               onChange={(e) => patch({ doll: { ...draft.doll, buildVit: { ...draft.doll.buildVit, hybrid: Math.min(1, Math.max(0, (Number(e.target.value) || 0) / 100)) } } })}
             />
           </label>
-          <label className="field">
+          <label className="field adm-f">
             <span>Кон — від, % очок у Тілобудові</span>
             <input
               type="number" min={0} max={100}
@@ -389,7 +391,7 @@ export default function ScaleTab() {
               onChange={(e) => patch({ doll: { ...draft.doll, buildVit: { ...draft.doll.buildVit, con: Math.min(1, Math.max(0, (Number(e.target.value) || 0) / 100)) } } })}
             />
           </label>
-        </div>
+        </AdmFields>
         <p className="hint" style={{ margin: '6px 0 0' }}>
           Збірка — за тим, яку частку вільних очок атрибутів гравець вклав у Тілобудову: менше {Math.round(draft.doll.buildVit.hybrid * 100)} % — ДД,
           від {Math.round(draft.doll.buildVit.hybrid * 100)} % — гібрид, від {Math.round(draft.doll.buildVit.con * 100)} % — кон.
@@ -407,8 +409,8 @@ export default function ScaleTab() {
           сума всіх сетів разом — не більше спільної стелі, щоб запасне не важило більше за основний круг (сет R8R — {draft.armorSet.r8r}).
           Зброя, ШГ/Вознєс і кільця із сетів рахуються разом із головними речами й під цю стелю не потрапляють. Порожнє поле — без стелі.
         </p>
-        <div className="field-row" style={{ gap: 10, alignItems: 'end', marginBottom: 8 }}>
-          <label className="field">
+        <div className="adm-fields" style={{ marginBottom: 8 }}>
+          <label className="field adm-f">
             <span>Стеля свап-сетів</span>
             <input
               type="number"
@@ -418,10 +420,13 @@ export default function ScaleTab() {
               onChange={(e) => patch({ swapTotalCap: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value) || 0)) })}
             />
           </label>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => patch({ swapTotalCap: RECOMMENDED_SWAP_TOTAL_CAP })}>
-            Рекомендована: {RECOMMENDED_SWAP_TOTAL_CAP}
-          </button>
-          <NumInput label="Стеля ПЗ свап-зброї" value={draft.weaponPzCap} onChange={(v) => patch({ weaponPzCap: Math.min(100, v) })} width={170} />
+          {/* Кнопка — у своїй клітинці сітки, притиснута донизу: на одній лінії з полями. */}
+          <div className="adm-f-act">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => patch({ swapTotalCap: RECOMMENDED_SWAP_TOTAL_CAP })}>
+              Рекомендована: {RECOMMENDED_SWAP_TOTAL_CAP}
+            </button>
+          </div>
+          <NumInput label="Стеля ПЗ свап-зброї" value={draft.weaponPzCap} onChange={(v) => patch({ weaponPzCap: Math.min(100, v) })} />
         </div>
         <p className="hint" style={{ margin: 0 }}>
           Свап-зброя — усі зброї, крім найдорожчої (та йде головною, де б не лежала): лише ПЗ, який дає річ (каталог + камені), за курсом
@@ -440,11 +445,11 @@ export default function ScaleTab() {
           архетипами в «Перевірці чернетки». Поріг «топового ДД» для правила 4 — окреме поле на вкладці «Бафи й склад»
           (зараз {draft.balance.composition.topDdMinScore}).
         </p>
-        <div className="field-row" style={{ gap: 10 }}>
+        <AdmFields>
           {draft.tiers.slice(0, -1).map((t, i) => (
             <NumInput key={t.tier} label={`${t.tier} від`} value={t.min} onChange={(v) => setTier(i, v)} />
           ))}
-        </div>
+        </AdmFields>
       </div>
 
       <div className="card" style={{ padding: 14 }}>
@@ -456,10 +461,10 @@ export default function ScaleTab() {
           Ело-рейтинг з результатів матчів (вкладка «Звіт»): + вага × (рейтинг − 1000)/100, не більше ± стелі. 0 = вимкнути.
           Додається поверх гір-скору, у «максимум» вище не входить.
         </p>
-        <div className="field-row" style={{ gap: 10 }}>
-          <NumInput label="Балів за 100 Ело" value={draft.ratingWeight} onChange={(v) => patch({ ratingWeight: v })} width={140} />
+        <AdmFields>
+          <NumInput label="Балів за 100 Ело" value={draft.ratingWeight} onChange={(v) => patch({ ratingWeight: v })} />
           <NumInput label="Стеля ±" value={draft.ratingCap} onChange={(v) => patch({ ratingCap: v })} />
-        </div>
+        </AdmFields>
       </div>
     </div>
   );

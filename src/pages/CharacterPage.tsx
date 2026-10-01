@@ -28,7 +28,7 @@ import { browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, useD
 import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
 import { mergeImported } from '../doll/model/importCalc';
-import { clsLabel } from '../doll/ui/CharBar';
+import { BarTrashButton, SavePill, clsLabel } from '../doll/ui/CharBar';
 import DollEditor from '../doll/ui/DollEditor';
 
 const SET_PARAM = 'set';
@@ -65,6 +65,8 @@ const SAVE_TEXT: Record<SaveState, string> = {
   held: 'Не зберігаю: чернетку змінено в іншій вкладці',
   off: 'Сховище браузера недоступне — чернетка не збережеться',
 };
+/** Стани, коли чернетка НЕ пишеться в браузер: пігулка червона, повний текст — ще й у рядку під смужкою. */
+const SAVE_BAD: ReadonlySet<SaveState> = new Set(['failed', 'held', 'off']);
 
 /** Що не пройде перевірку при збереженні в профіль (імʼя, ліміти, бюджет атрибутів) — перші два пункти. */
 function saveBlockers(doc: CharacterDoc): string | null {
@@ -101,11 +103,14 @@ function Notice({ text, onClose }: { text: string; onClose(): void }) {
   );
 }
 
-/** «← Мої персонажі» на початку смужки персонажа. */
+/** «← Мої персонажі» на початку смужки персонажа; на вужчій смужці лишається стрілка (назва — в aria-label). */
 function BackToList({ onClick }: { onClick(): void }) {
   return (
-    <button type="button" className="doll-bar-back" onClick={onClick}>
-      ← Мої персонажі
+    <button type="button" className="doll-bar-back" aria-label="Мої персонажі" title="До списку «Мої персонажі»" onClick={onClick}>
+      <span aria-hidden="true">←</span>
+      <span className="doll-bar-back-t" aria-hidden="true">
+        Мої персонажі
+      </span>
     </button>
   );
 }
@@ -235,27 +240,24 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
     }
   };
 
-  // Смужка персонажа: ліворуч «← Мої персонажі», праворуч стан чернетки, дії з нею і збереження.
+  // Смужка персонажа: ліворуч «← Мої персонажі», праворуч пігулка стану чернетки, імпорт,
+  // кошик «Скинути чернетку» і збереження — коротко, щоб усе стало в один рядок.
+  const saveBad = SAVE_BAD.has(saveState);
   const barEnd = (
     <>
-      <span className={'doll-save-state is-' + saveState} role="status">
-        {SAVE_TEXT[saveState]}
-      </span>
+      <SavePill text={saveBad ? 'не збережено' : 'чернетка'} tone={saveBad ? 'bad' : 'mute'} title={SAVE_TEXT[saveState]} />
       <button type="button" className="btn btn-ghost btn-sm" aria-expanded={importOpen} aria-label="Імпорт із Хелпера" onClick={() => setImportOpen((v) => !v)}>
         <span className="doll-page-hint-long">Імпорт із Хелпера</span>
         <span className="doll-page-hint-short">Імпорт</span>
       </button>
-      <button type="button" className="btn btn-bad btn-sm" aria-label="Скинути чернетку" onClick={resetDraft}>
-        <span className="doll-page-hint-long">Скинути чернетку</span>
-        <span className="doll-page-hint-short">Скинути</span>
-      </button>
+      <BarTrashButton label="Скинути чернетку" onClick={resetDraft} />
       {me ? (
         <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void saveToProfile()}>
           {saving ? 'Зберігаю…' : 'Зберегти в профіль'}
         </button>
       ) : (
-        <button type="button" className="btn btn-primary btn-sm" disabled={meLoading} onClick={login}>
-          Увійти через Discord, щоб зберегти
+        <button type="button" className="btn btn-primary btn-sm" disabled={meLoading} title="Увійти через Discord, щоб зберегти персонажа в профіль" onClick={login}>
+          Увійти й зберегти
         </button>
       )}
     </>
@@ -270,6 +272,12 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
       {me && blockers && (
         <span className="doll-page-blockers" role="note">
           Перед збереженням: {blockers}.
+        </span>
+      )}
+      {/* «held» пояснює плашка конфлікту нижче; решту поганих станів пігулка лише позначає. */}
+      {saveBad && saveState !== 'held' && (
+        <span className="doll-page-blockers" role="note">
+          {SAVE_TEXT[saveState]}.
         </span>
       )}
     </>
@@ -447,18 +455,18 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
     );
   }
 
-  // Смужка персонажа: ліворуч «← Мої персонажі», праворуч стан, «Скасувати зміни», «Видалити», «Зберегти».
+  // Смужка персонажа: ліворуч «← Мої персонажі», праворуч пігулка стану, «Скасувати», кошик «Видалити персонажа», «Зберегти».
   const barEnd = (
     <>
-      <span className={'doll-save-state ' + (dirty ? 'is-pending' : 'is-saved')} role="status">
-        {dirty ? 'Є незбережені зміни' : 'Усе збережено в профілі'}
-      </span>
-      <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !dirty} onClick={() => void discard()}>
-        Скасувати зміни
+      <SavePill
+        text={dirty ? 'не збережено' : 'збережено'}
+        tone={dirty ? 'warn' : 'good'}
+        title={dirty ? 'Є незбережені зміни' : 'Усе збережено в профілі'}
+      />
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !dirty} title="Скасувати зміни й завантажити збережену версію" onClick={() => void discard()}>
+        Скасувати
       </button>
-      <button type="button" className="btn btn-bad btn-sm" disabled={busy} onClick={() => void remove()}>
-        Видалити
-      </button>
+      <BarTrashButton label="Видалити персонажа" disabled={busy} onClick={() => void remove()} />
       <button type="button" className="btn btn-primary btn-sm" disabled={busy || !dirty} onClick={() => void save(revision)}>
         {busy ? 'Зберігаю…' : 'Зберегти'}
       </button>
@@ -553,7 +561,7 @@ function CharactersList({ onNavigate }: { onNavigate: Nav }) {
     return (
       <>
         <div className="card doll-page-notice">
-          <span>Зберігати персонажів у профілі можуть учасники клану — увійди через Discord. Без входу лялька працює як чернетка в цьому браузері.</span>
+          <span>Зберігати персонажів у профілі можуть учасники клану — увійди через Discord. Без входу лялька працює як чернетка в цьому браузері — нею можна подати заявку на фул-рандом; збережи чернетку, поки турнір не закінчиться.</span>
           <span className="doll-page-notice-acts">
             <button type="button" className="btn btn-primary btn-sm" onClick={login}>
               Увійти через Discord
