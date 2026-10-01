@@ -1,6 +1,6 @@
 // =========================================================
 // Роутинг pw-pvp: History API, гібрид статичних шляхів + динамічні
-// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id, /admin/doll/:id) — без бібліотеки роутера, просто
+// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id, /admin/doll/:id) і /my — без бібліотеки роутера, просто
 // парсимо перший/другий сегмент шляху (в стилі pw-calc/pw-events, але
 // pw-calc-івський ROUTES-реєстр тут не підходить — сторінки контент-driven,
 // а не фіксований список вкладок).
@@ -24,6 +24,8 @@ export type Route =
   | { name: 'home' }
   | { name: 'tournaments' }
   | { name: 'register' }
+  /** /my — «Мої заявки»: статус своїх заявок (і гостю — за id, запамʼятованими браузером) */
+  | { name: 'my' }
   | { name: 'rules' }
   | { name: 'admin'; tab?: AdminTab }
   | { name: 'series'; slug: string }
@@ -52,6 +54,7 @@ function parsePath(): Route {
   if (!a) return { name: 'home' };
   if (a === 'tournaments') return { name: 'tournaments' };
   if (a === 'register') return { name: 'register' };
+  if (a === 'my') return { name: 'my' };
   if (a === 'rules') return { name: 'rules' };
   // лялька із заявки — окрема адмінська сторінка, не вкладка; без id (чи з кривим) — просто адмінка
   if (a === 'admin' && b === 'doll' && c && PATH_ID_RE.test(c)) return { name: 'admin-doll', id: c };

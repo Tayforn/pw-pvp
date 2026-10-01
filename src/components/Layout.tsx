@@ -5,7 +5,7 @@
 // /series/:slug, /t/:id) — рендеримо рівно одну сторінку за route.name.
 //
 // Доступ (app/access.ts): гість без входу через Discord бачить лише заявку,
-// правила, минулі турніри й ляльку персонажа; /t/:id/bracket — окрема
+// «Мої заявки», правила, минулі турніри й ляльку персонажа; /t/:id/bracket — окрема
 // сторінка без шапки й меню (посилання «Поділитися»), відкрита всім.
 // Лялька із заявки (/admin/doll/:id) — лише адміну: не-адмін бачить заглушку
 // з посиланням на адмінку (там форма входу).
@@ -37,6 +37,7 @@ import TournamentsPage from '../pages/TournamentsPage';
 import SeriesPage from '../pages/SeriesPage';
 import TournamentPage from '../pages/TournamentPage';
 import RegisterPage from '../pages/RegisterPage';
+import MyRegistrationsPage from '../pages/MyRegistrationsPage';
 import RulesPage from '../pages/RulesPage';
 import AdminPage from '../pages/AdminPage';
 import DevBracketPage from '../pages/DevBracketPage';
@@ -131,7 +132,7 @@ export default function Layout() {
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-goto]');
       const name = a?.dataset.goto;
-      if (name && ['home', 'tournaments', 'register', 'rules', 'admin', 'characters'].includes(name)) {
+      if (name && ['home', 'tournaments', 'register', 'my', 'rules', 'admin', 'characters'].includes(name)) {
         e.preventDefault();
         go({ name } as Route);
       }
@@ -152,6 +153,7 @@ export default function Layout() {
   if (route.name === 'home') page = insider ? <HomePage series={series} onNavigate={go} /> : <TournamentsPage onNavigate={go} guest />;
   else if (route.name === 'tournaments') page = <TournamentsPage onNavigate={go} guest={!insider} />;
   else if (route.name === 'register') page = <RegisterPage />;
+  else if (route.name === 'my') page = <MyRegistrationsPage />;
   else if (route.name === 'rules') page = <RulesPage />;
   else if (route.name === 'series') page = <SeriesPage slug={route.slug} onNavigate={go} />;
   else if (route.name === 'tournament') page = <TournamentPage id={route.id} guest={!insider} onLogin={login} />;

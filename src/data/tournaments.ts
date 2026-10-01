@@ -48,6 +48,8 @@ export interface RegistrationRow {
   doll_power?: DollPower | null;
   // 0032 — numeric PostgREST віддає числом, але страхуємось і від рядка
   item_points?: number | string | null; item_breakdown?: unknown;
+  // 0033
+  reject_reason?: string | null;
 }
 /** Корекція адміна — окрема таблиця з адмінським RLS (0021): анонімному
  * читачу повертається порожньо, у Registration тоді 0 / null. */
@@ -143,6 +145,7 @@ export const registrationFromRow = (r: RegistrationRow, adj?: Adjustments): Regi
     characterSnapshot: r.character_snapshot ?? null, dollConfirmedAt: r.doll_confirmed_at ?? null,
     dollPower: validPower(r.doll_power),
     itemPoints: itemPointsOf(r.item_points), itemBreakdown: validBreakdown(r.item_breakdown),
+    rejectReason: typeof r.reject_reason === 'string' && r.reject_reason.trim() ? r.reject_reason.trim() : null,
   };
 };
 const gearToRow = (g: PlayerGear) => ({
@@ -208,6 +211,76 @@ export async function fetchRegistrations(tournamentId: string): Promise<Registra
   return (data as RegistrationRow[]).map((r) => registrationFromRow(r, adj));
 }
 
+// ── Свої заявки гравця («Мої заявки», статус на сторінці заявки) ──────────
+// Читання заявок і турнірів публічне (0001), тож гостю теж працює.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Лише справжні uuid (значення з localStorage потрапляють у фільтр PostgREST), без повторів. */
+const uuids = (xs: readonly (string | null | undefined)[]): string[] => [...new Set(xs.filter((x): x is string => !!x && UUID_RE.test(x)))];
+
+/** Заявки гравців за id (запамʼятовані цим браузером) і/або за id своїх персонажів
+ * (вхід через Discord); `tournamentId` — лише цього турніру. Нічого не задано — []. */
+export async function fetchOwnRegistrations(q: { ids?: readonly string[]; characterIds?: readonly string[]; tournamentId?: string }): Promise<Registration[]> {
+  const ids = uuids(q.ids ?? []);
+  const characterIds = uuids(q.characterIds ?? []);
+  if (!ids.length && !characterIds.length) return [];
+  const ors: string[] = [];
+  if (ids.length) ors.push(`id.in.(${ids.join(',')})`);
+  if (characterIds.length) ors.push(`character_id.in.(${characterIds.join(',')})`);
+  let query = supabase.from('registrations').select('*').eq('kind', 'player').or(ors.join(','));
+  if (q.tournamentId) query = query.eq('tournament_id', q.tournamentId);
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
+  if (error) throw error;
+  return (data as RegistrationRow[]).map((r) => registrationFromRow(r));
+}
+
+/** Заявка зі старого запису браузера (без id): за останнім ніком на ці турніри. */
+export async function fetchRegistrationsByNickname(tournamentIds: readonly string[], nickname: string): Promise<Registration[]> {
+  const tids = uuids(tournamentIds);
+  const nick = nickname.trim();
+  if (!tids.length || !nick) return [];
+  const { data, error } = await supabase
+    .from('registrations')
+    .select('*')
+    .eq('kind', 'player')
+    .in('tournament_id', tids)
+    .ilike('nickname', likePattern(nick))
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return (data as RegistrationRow[]).map((r) => registrationFromRow(r));
+}
+
+export async function fetchTournamentsByIds(ids: readonly string[]): Promise<Tournament[]> {
+  const tids = uuids(ids);
+  if (!tids.length) return [];
+  const { data, error } = await supabase.from('tournaments').select('*').in('id', tids);
+  if (error) throw error;
+  return (data as TournamentRow[]).map(tournamentFromRow);
+}
+
+/** Учасник команди для статусу заявки: нік і клас (без знімків ляльки — їх не тягнемо). */
+export interface TeamMemberLite { id: string; nickname: string; charClass: CharClass | null; status: RegistrationStatus }
+export interface TeamLite { id: string; name: string; members: TeamMemberLite[] }
+
+/** Команди за id team-рядків (після жеребки) зі складом — легкий select без знімків. */
+export async function fetchTeamsLite(teamIds: readonly string[]): Promise<Map<string, TeamLite>> {
+  const ids = uuids(teamIds);
+  const out = new Map<string, TeamLite>();
+  if (!ids.length) return out;
+  const [teams, members] = await Promise.all([
+    supabase.from('registrations').select('id, nickname').in('id', ids),
+    supabase.from('registrations').select('id, nickname, char_class, status, team_registration_id, created_at').in('team_registration_id', ids).order('created_at', { ascending: true }),
+  ]);
+  if (teams.error) throw teams.error;
+  if (members.error) throw members.error;
+  for (const t of teams.data as Array<{ id: string; nickname: string }>) out.set(t.id, { id: t.id, name: t.nickname, members: [] });
+  for (const m of members.data as Array<{ id: string; nickname: string; char_class: CharClass | null; status: RegistrationStatus; team_registration_id: string }>) {
+    out.get(m.team_registration_id)?.members.push({ id: m.id, nickname: m.nickname, charClass: m.char_class ?? null, status: m.status });
+  }
+  return out;
+}
+
 /** Одна заявка за id — сторінка «лялька із заявки» в адмінці (/admin/doll/:id).
  * Корекція адміна тут не потрібна (scoreAdjust 0). null — такої заявки немає. */
 export async function fetchRegistration(id: string): Promise<Registration | null> {
@@ -220,11 +293,14 @@ export async function submitRegistration(input: {
   tournamentId: string; nickname: string; rulesAck: boolean; memberNicknames?: string[];
   /** Балансний фул-рандом: анкета обов'язкова (RLS відхилить заявку без char_class). */
   gear?: PlayerGear; attackLevel?: number | null; defenseLevel?: number | null;
-  /** Заявка персонажем із ляльки: хто, яка ревізія, знімок документа (0028).
-   * itemPoints/itemBreakdown (0032, скор v2) — undefined = колонки не чіпати (до
-   * міграції їх немає, insert із ними впав би); null — явно порожньо. */
-  character?: { id: string; revision: number; snapshot: unknown; power: DollPower | null; itemPoints?: number | null; itemBreakdown?: ItemBreakdown | null };
-}): Promise<void> {
+  /** Заявка персонажем із ляльки: знімок документа (0028), сила, скор v2.
+   * character_id прямий insert не пише НІКОЛИ (null): чий це персонаж, перевіряє
+   * лише бекенд (POST /api/pvp/registrations, сесія Discord), тож character_id у
+   * рядку — тільки від нього (після 0034 публічний insert з character_id
+   * відхиляє RLS). itemPoints/itemBreakdown (0032, скор v2) — undefined = колонки
+   * не чіпати (до міграції їх немає, insert із ними впав би); null — явно порожньо. */
+  character?: { snapshot: unknown; power: DollPower | null; itemPoints?: number | null; itemBreakdown?: ItemBreakdown | null };
+}): Promise<{ id: string | null }> {
   // Свіжа перевірка прямо перед вставкою — стан на сторінці міг застаріти
   // (вкладка відкрита довго, адмін тим часом закрив реєстрацію чи турнір
   // уже пройшов). RLS-політика в БД теж це перевіряє, ця — для чистого
@@ -242,7 +318,7 @@ export async function submitRegistration(input: {
     // Лише для заявки персонажем — звичайна анкета не пише нових колонок і працює й до 0028.
     ...(input.character
       ? {
-          character_id: input.character.id, character_rev: input.character.revision, character_snapshot: input.character.snapshot,
+          character_id: null, character_rev: null, character_snapshot: input.character.snapshot,
           doll_confirmed_at: new Date().toISOString(),
           ...(input.character.power ? { doll_power: input.character.power } : {}),
           // 0032 — лише коли передано: заявка, що ще не рахує скор v2, працює й до міграції.
@@ -264,14 +340,71 @@ export async function submitRegistration(input: {
     ({ error } = await supabase.from('registrations').insert(legacy));
   }
   if (error) throw error;
+  // id нової заявки потрібен гравцю — «Мої заявки» й статус на сторінці заявки
+  // шукають свою заявку за ним (app/registeredTournaments.ts). Заявку вже
+  // прийнято, тож збій цього читання — не помилка подачі: без id браузер
+  // запамʼятає турнір і нік, і статус знайдеться за ніком.
+  const id = await findRegistrationId(input.tournamentId, input.nickname).catch(() => null);
+  return { id };
+}
+
+/** Жива (не відхилена) заявка гравця з таким ніком на турнір: id, коли створено,
+ * персонаж (character_id пише лише бекенд). Нік серед не відхилених заявок турніру
+ * унікальний (індекс 0001/0017/0033), тож збіг — саме вона. */
+/** nonce — мітка спроби подачі з item_breakdown (ставить бекенд; registerApi.isOwnRow). */
+export interface LiveRegistration { id: string; createdAt: string; characterId: string | null; nonce: string | null }
+
+export async function findLiveRegistration(tournamentId: string, nickname: string): Promise<LiveRegistration | null> {
+  const { data, error } = await supabase
+    .from('registrations')
+    .select('id, created_at, character_id, nonce:item_breakdown->>nonce')
+    .eq('tournament_id', tournamentId)
+    .eq('kind', 'player')
+    .neq('status', 'rejected')
+    .ilike('nickname', likePattern(nickname.trim()))
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as { id?: string; created_at?: string; character_id?: string | null; nonce?: unknown } | null;
+  return row?.id
+    ? { id: row.id, createdAt: row.created_at ?? '', characterId: row.character_id ?? null, nonce: typeof row.nonce === 'string' ? row.nonce : null }
+    : null;
+}
+
+/** id живої заявки гравця з таким ніком на турнір (findLiveRegistration). */
+export async function findRegistrationId(tournamentId: string, nickname: string): Promise<string | null> {
+  return (await findLiveRegistration(tournamentId, nickname))?.id ?? null;
+}
+
+/** Статус наявної заявки гравця з таким ніком на турнір (без урахування регістру) —
+ * щоб пояснити дубль. Після 0033 на нік може бути й відхилена, й нова жива
+ * заявка (повторна подача) — тоді нік тримає жива: спершу шукаємо її, і лише
+ * коли живої немає — відхилену (до 0033 вона блокує нік, адмін має її видалити). */
+export async function fetchPlayerStatusByNickname(tournamentId: string, nickname: string): Promise<RegistrationStatus | null> {
+  const byNick = () =>
+    supabase
+      .from('registrations')
+      .select('status')
+      .eq('tournament_id', tournamentId)
+      .eq('kind', 'player')
+      .ilike('nickname', likePattern(nickname.trim()));
+  const live = await byNick().neq('status', 'rejected').limit(1).maybeSingle();
+  if (live.error) throw live.error;
+  const liveStatus = (live.data as { status?: RegistrationStatus } | null)?.status;
+  if (liveStatus) return liveStatus;
+  const any = await byNick().limit(1).maybeSingle();
+  if (any.error) throw any.error;
+  return (any.data as { status?: RegistrationStatus } | null)?.status ?? null;
 }
 
 /** Помилка «колонки немає»: PostgREST не знайшов її в кеші схеми (PGRST204),
- * Postgres — undefined_column (42703), або текст згадує колонку 0032. */
-export function isMissingColumnError(e: { code?: string | null; message?: string | null }): boolean {
+ * Postgres — undefined_column (42703), або текст згадує колонку 0032 (чи `column`, якщо передано). */
+export function isMissingColumnError(e: { code?: string | null; message?: string | null }, column?: string): boolean {
   const code = e.code ?? '';
   const msg = e.message ?? '';
-  return code === 'PGRST204' || code === '42703' || (/item_points|item_breakdown/.test(msg) && /column/i.test(msg));
+  const named = column ? msg.includes(column) : /item_points|item_breakdown/.test(msg);
+  return code === 'PGRST204' || code === '42703' || (named && /column/i.test(msg));
 }
 
 /** Перерахунок скору v2 зі знімка в адмінці (0032): update-політика 0006 пропускає
@@ -330,9 +463,42 @@ export async function fetchLastGearByNickname(nickname: string): Promise<{ gear:
   return { gear, attackLevel: row.attack_level ?? null, defenseLevel: row.defense_level ?? null, tournamentName: row.tournaments?.name ?? null, eventDate: row.tournaments?.event_date ?? null };
 }
 
-export async function setRegistrationStatus(id: string, status: RegistrationStatus): Promise<void> {
+/** Найдовша причина відхилення (CHECK у 0033). */
+export const REJECT_REASON_MAX = 200;
+
+/** Підтвердити (повернути в живі) відхилену заявку не можна: після 0033 гравець подав
+ * заявку знову з тим самим ніком, і нік серед живих заявок турніру вже зайнятий. */
+export const LIVE_DUPLICATE_TEXT = 'У турнірі вже є жива заявка з цим ніком — підтвердь її, а стару видали.';
+
+const isNicknameConflict = (e: { code?: string | null; message?: string | null }): boolean =>
+  e.code === '23505' || (e.message ?? '').includes('registrations_tournament_nickname');
+
+/**
+ * Статус заявки. Відхилення пише й причину (0033; порожня — null, тож стара причина
+ * не лишається від попереднього відхилення); будь-який інший статус причину стирає
+ * (підтверджена після відхилення заявка не носить стару причину — інакше гравець
+ * побачив би її, наприклад, коли вибуде після заміни). До міграції 0033 колонки
+ * немає — тоді пишеться лише статус, а відповідь каже, що причину не збережено.
+ * Жива заявка з тим самим ніком (повторна подача після 0033) — зрозуміла помилка
+ * LIVE_DUPLICATE_TEXT замість сирого 23505.
+ */
+export async function setRegistrationStatus(id: string, status: RegistrationStatus, rejectReason?: string | null): Promise<{ reasonSaved: boolean }> {
+  const fail = (e: { code?: string | null; message?: string | null }): never => {
+    if (status !== 'rejected' && isNicknameConflict(e)) throw new Error(LIVE_DUPLICATE_TEXT);
+    throw e;
+  };
+  // Відхилення без аргументу причини (старі виклики) — лише статус.
+  const withReason = status !== 'rejected' || rejectReason !== undefined;
+  const reason = status === 'rejected' ? rejectReason?.trim().slice(0, REJECT_REASON_MAX) || null : null;
+  if (withReason) {
+    const { error } = await supabase.from('registrations').update({ status, reject_reason: reason }).eq('id', id);
+    if (!error) return { reasonSaved: true };
+    if (!isMissingColumnError(error, 'reject_reason')) fail(error);
+    console.warn('registrations: колонки reject_reason ще немає — статус без причини (виконайте міграцію 0033)');
+  }
   const { error } = await supabase.from('registrations').update({ status }).eq('id', id);
-  if (error) throw error;
+  if (error) fail(error);
+  return { reasonSaved: !reason };
 }
 
 export async function deleteRegistration(id: string): Promise<void> {

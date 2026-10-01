@@ -58,7 +58,7 @@ export function takeLoginError(): string | null {
   p.delete('login');
   const qs = p.toString();
   history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
-  if (v === 'denied') return 'Тебе немає на сервері клану в Discord або немає потрібної ролі — повний доступ лише для своїх. Заявку на турнір можна подати й без входу.';
+  if (v === 'denied') return 'Тебе немає на сервері клану в Discord або немає потрібної ролі — повний доступ лише для своїх. Заявку на турнір можна подати й без входу — на фул-рандом персонажем із чернетки цього браузера (сторінка «Персонаж»).';
   if (v === 'error') return 'Вхід через Discord не вдався. Спробуй ще раз.';
   return null;
 }

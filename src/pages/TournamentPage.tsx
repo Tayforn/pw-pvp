@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import PageMeta from '../app/PageMeta';
+import { readLastNickname } from '../app/lastNickname';
+import { useMyCharacterIds } from '../app/myCharacterIds';
+import { readRegistrationRefs } from '../app/registeredTournaments';
+import { useMe } from '../app/useMe';
 import { routeUrl } from '../app/useRoute';
 import { useTournamentLive } from '../app/useTournamentLive';
+import { ownBanner, teamFromRegistrations } from '../data/myRegistrations';
+import MyRegistrationCard from '../components/MyRegistrationCard';
 import type { CharClass, Registration, Tier, Tournament } from '../data/types';
 import { STATUS_LABELS, effectiveStatus, isBalancedRandom, isBracketParticipant, isPastTournament, isRegistrationOpen } from '../data/types';
 import { CLASS_LABELS, gemMixLabel, registrationScore, rulesFor, tierFor } from '../data/gearRules';
@@ -185,6 +191,32 @@ export function RulesPrizes({ tournament, collapsed }: { tournament: Tournament;
   );
 }
 
+/** Банер «Твоя заявка: …» — статус своєї заявки на цей турнір (і команда після
+ * жеребки). Свою заявку знаходимо серед уже завантажених: за id, запамʼятованими
+ * браузером при подачі, і за своїми персонажами (вхід через Discord). Видно й гостю
+ * в скороченому вигляді сторінки — це його власна заявка. */
+function OwnRegistrationBanner({ tournament, registrations }: { tournament: Tournament; registrations: Registration[] }) {
+  const { me } = useMe();
+  const charIds = useMyCharacterIds(!!me && isBalancedRandom(tournament));
+  const refs = useMemo(() => readRegistrationRefs(), []);
+  // Знайдена лише за персонажем (не з цього браузера) — з поясненням і без впливу на «Подати знову».
+  const own = useMemo(
+    () => ownBanner(registrations, tournament.id, { refs, characterIds: charIds, lastNickname: readLastNickname() }),
+    [registrations, tournament.id, refs, charIds],
+  );
+  if (!own) return null;
+  const { reg, byCharacterOnly, basis } = own;
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <MyRegistrationCard
+        banner
+        item={{ reg, tournament, team: teamFromRegistrations(registrations, reg.teamRegistrationId), byCharacterOnly }}
+        ownOnTournament={basis}
+      />
+    </div>
+  );
+}
+
 /** `guest` — не увійшов через Discord: минулий турнір бачить повністю, а
  * поточний — лише шапку, правила/призи й кнопку заявки (форма заявки веде
  * сюди по правила). Сітку поточного турніру гостям дають окремим
@@ -244,6 +276,8 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
         )}
       </div>
 
+      <OwnRegistrationBanner tournament={tournament} registrations={registrations} />
+
       {limited ? (
         <>
           <RulesPrizes tournament={tournament} />
@@ -261,7 +295,7 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
                 {updatedAt && <span className="hint" style={{ margin: 0 }}>оновлено о {updatedAt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}</span>}
                 <button type="button" className="btn btn-ghost btn-sm" disabled={refreshing} title="Перечитати сітку" onClick={reload}>↻</button>
               </div>
-              <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} />
+              <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} balanceTeams={tournament.balanceStats?.teams} />
             </div>
           )}
 

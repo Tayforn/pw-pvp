@@ -72,6 +72,35 @@ describe('маршрути персонажа', () => {
   });
 });
 
+describe('«Мої заявки» — /my (шлях гравця)', () => {
+  it('розбирається й будується назад; хвостовий слеш — те саме', () => {
+    expect(parse('/my')).toEqual({ name: 'my' });
+    expect(parse('/my/')).toEqual({ name: 'my' });
+    expect(routeUrl({ name: 'my' })).toBe('/my');
+    expect(parse(routeUrl({ name: 'my' }))).toEqual({ name: 'my' });
+    // сусідні адреси не зачеплено
+    expect(parse('/register')).toEqual({ name: 'register' });
+    expect(parse('/mystery')).toEqual({ name: 'home' });
+  });
+
+  it('відкрита всім: і гостю без входу, і учаснику клану', () => {
+    expect(ROUTE_ACCESS.my).toBe('public');
+    expect(canOpen('my', GUEST)).toBe(true);
+    expect(canOpen('my', { member: true, admin: false })).toBe(true);
+  });
+
+  it('у сайдбарі гостя — «Мої заявки» одразу після «Заявки»; на /my підсвічена лише вона', () => {
+    const html = renderToStaticMarkup(<Sidebar route={{ name: 'my' }} viewer={GUEST} onNavigate={() => {}} />);
+    const labels = [...html.matchAll(/<span>([^<]+)<\/span><\/button>/g)].map((m) => m[1]);
+    expect(labels).toEqual(['Турніри', 'Заявка', 'Мої заявки', 'Правила', 'Персонаж']);
+    expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Мої заявки/);
+    expect(html.match(/class="tab active"/g)).toHaveLength(1);
+    // учаснику клану — теж
+    const member = renderToStaticMarkup(<Sidebar route={{ name: 'register' }} viewer={{ member: true, admin: false }} onNavigate={() => {}} />);
+    expect(member).toContain('Мої заявки');
+  });
+});
+
 describe('лялька із заявки в адмінці — /admin/doll/:registrationId', () => {
   const ADMIN = { member: false, admin: true };
 

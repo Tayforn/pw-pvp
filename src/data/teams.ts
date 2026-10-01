@@ -7,7 +7,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, hasRulesVersion, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor } from './gearRules';
 import { evaluateTeams, teamStrengthFromSnapshot, type BalancePlayer, type FormTeamsResult } from './balance';
 import { resolveBuffOptions, type BuffOptions } from './ruleFlags';
 import { ratingOf, type PlayerRating } from './ratings';
@@ -57,16 +57,38 @@ export function scoreBreakdown(r: Registration, version: string, ratings: Map<st
   return { gear, adjust, rating, total: gear + adjust + rating };
 }
 
-/** Заявка персонажем зі скором v2, яку адмінка ще не перерахувала зі знімка:
- * item_points порахував клієнт гравця, а checked ставить лише перерахунок
- * (src/doll/recompute.ts). Такі рядки — «не перевірено», і жеребка їх чекає. */
-export function isUnverifiedV2(r: Pick<Registration, 'itemPoints' | 'itemBreakdown'>): boolean {
-  return r.itemPoints != null && r.itemBreakdown?.checked !== true;
+/** Версія шкали, якою мають бути пораховані бали за речі заявок турніру: його
+ * версія (rulesVersionFor), а якої немає в реєстрі — поточна (так само рахує
+ * перерахунок зі знімка, src/doll/recompute.ts, — інакше рядок не став би
+ * «перевіреним» ніколи). */
+export function itemPointsVersionFor(t: Pick<Tournament, 'balanceRulesVersion'>): string {
+  const v = rulesVersionFor(t);
+  return hasRulesVersion(v) ? v : currentRulesVersion();
+}
+
+/** Чому заявка зі скором v2 «не перевірено»: client — item_points порахував
+ * клієнт гравця (checked ставлять лише перерахунок в адмінці й бекенд заявок);
+ * version — перевірено, але за іншою версією шкали, ніж рахується турнір (нову
+ * версію збережено після подачі — жеребка змішала б бали двох версій); null —
+ * перевірено (або заявка таблична, без itemPoints). */
+export function unverifiedReason(
+  r: Pick<Registration, 'itemPoints' | 'itemBreakdown'>, t: Pick<Tournament, 'balanceRulesVersion'>,
+): 'client' | 'version' | null {
+  if (r.itemPoints == null) return null;
+  if (r.itemBreakdown?.checked !== true) return 'client';
+  return r.itemBreakdown.ver === itemPointsVersionFor(t) ? null : 'version';
+}
+
+/** Заявка персонажем зі скором v2, яку адмінка ще не перерахувала зі знімка за
+ * версією шкали турніру (unverifiedReason). Такі рядки — «не перевірено», і
+ * жеребка їх чекає: адмін перераховує їх зі знімка (src/data/itemPointsRecalc.ts). */
+export function isUnverifiedV2(r: Pick<Registration, 'itemPoints' | 'itemBreakdown'>, t: Pick<Tournament, 'balanceRulesVersion'>): boolean {
+  return unverifiedReason(r, t) !== null;
 }
 
 /** Підтверджені гравці з неперевіреним скором v2 — поки вони є, команди не формуються. */
-export function unverifiedForBalance(regs: Registration[]): Registration[] {
-  return regs.filter((r) => r.kind === 'player' && r.status === 'confirmed' && isUnverifiedV2(r));
+export function unverifiedForBalance(regs: Registration[], t: Pick<Tournament, 'balanceRulesVersion'>): Registration[] {
+  return regs.filter((r) => r.kind === 'player' && r.status === 'confirmed' && isUnverifiedV2(r, t));
 }
 
 /** Чи є в турнірі заявки зі скором v2 — тоді рядки без itemPoints адмінка позначає «таблиця». */

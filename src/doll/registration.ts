@@ -9,12 +9,15 @@
 // (model/itemScore.ts). Скор заявки = клас + itemPoints + рівень + джин
 // (registrationScore у gearRules.ts); адмін перераховує зі знімка. Ручної
 // анкети немає: заявку блокують лише відсутня зброя й порожній слот броні.
+// Гість без Discord-ролі подається чернеткою цього браузера (draftForRegistration) —
+// той самий розрахунок, лише документ не з профілю, а з локального сховища.
 // =========================================================
 
 import { classPointsFor, currentRulesVersion, hasRulesVersion, rulesFor } from '../data/gearRules';
 import { loadRulesFromDb } from '../data/rulesStore';
 import type { DollPower, ItemBreakdown } from '../data/types';
 import { getCharacter, listCharacters, type CharacterRecord, type CharacterSummary } from './api/characters';
+import { browserStorage, draftKey, loadDraft, type DraftStorage } from './api/draft';
 import { ensureCats } from './data/catalog';
 import { ensureRefData } from './data/refLoader';
 import { validateDoc, type CharacterDoc } from './model/doc';
@@ -27,6 +30,9 @@ import { CLS_CHAR, charLevelOf, dollFacts, gearFromCharacter, genieOf, type Char
 export type { CharacterSummary };
 
 export interface CharacterForRegistration {
+  /** saved — збережений персонаж (вхід через Discord); draft — чернетка цього браузера (гість). */
+  source: 'saved' | 'draft';
+  /** Для чернетки — запис-замінник: id 'new' (сторінка /characters/new), ревізія 0. */
   rec: CharacterRecord;
   doc: CharacterDoc;
   result: CharacterGear;
@@ -72,6 +78,38 @@ export async function characterForRegistration(id: string, opts: RegistrationOpt
   const v = validateDoc(rec.doc);
   const doc = v.ok ? v.doc : v.recoverable;
   if (!doc) throw new Error('Документ персонажа пошкоджено — відкрий його на сторінці персонажа й збережи ще раз.');
+  return fromDoc('saved', rec, doc, opts);
+}
+
+// ── Чернетка цього браузера (гість без Discord-ролі) ──────────────────
+// Гравець без ролі в Discord зберегти персонажа в профіль не може, тож на
+// фул-рандом подається персонажем-чернеткою з /characters/new (локальне сховище
+// браузера, api/draft.ts). Знімок чернетки йде в заявку так само, як знімок
+// збереженого персонажа; character_id заявки — null.
+
+/** id чернетки в адресі сторінки персонажа (/characters/new) і у виборі персонажа на заявці. */
+export const DRAFT_ID = 'new';
+
+/** Коротко про чернетку для вибору персонажа; null — чернетки немає, вона порожня чи зламана. */
+export function draftCharacter(storage: DraftStorage | null = browserStorage()): CharacterSummary | null {
+  const got = loadDraft(draftKey('anon', DRAFT_ID), storage);
+  const d = got.doc;
+  if (!d || (!d.name && d.items.length === 0 && d.sets.length === 0)) return null;
+  return { id: DRAFT_ID, name: d.name, cls: d.cls, level: d.level, revision: 0, updatedAt: '', items: d.items.length, sets: d.sets.length };
+}
+
+/** Як characterForRegistration, але з чернетки цього браузера. Кидає Error з поясненням. */
+export async function draftForRegistration(opts: RegistrationOptions = {}, storage: DraftStorage | null = browserStorage()): Promise<CharacterForRegistration> {
+  const got = loadDraft(draftKey('anon', DRAFT_ID), storage);
+  if (!got.doc) {
+    throw new Error(got.error ? 'Чернетку персонажа пошкоджено (' + got.error + ') — відкрий сторінку «Персонаж» і збери його заново.' : 'У цьому браузері немає чернетки персонажа — створи її на сторінці «Персонаж».');
+  }
+  const doc = got.doc;
+  const rec: CharacterRecord = { id: DRAFT_ID, name: doc.name, cls: doc.cls, level: doc.level, revision: 0, updatedAt: '', doc };
+  return fromDoc('draft', rec, doc, opts);
+}
+
+async function fromDoc(source: 'saved' | 'draft', rec: CharacterRecord, doc: CharacterDoc, opts: RegistrationOptions): Promise<CharacterForRegistration> {
   // Версії шкали з бази — щоб версія турніру знайшлась (main.tsx їх уже вантажить; тут — гарантія).
   await Promise.all([ensureRefData(), ensureCats(docCats(doc)), loadRulesFromDb()]);
   const rulesVersion = opts.rulesVersion && hasRulesVersion(opts.rulesVersion) ? opts.rulesVersion : currentRulesVersion();
@@ -96,7 +134,7 @@ export async function characterForRegistration(id: string, opts: RegistrationOpt
     genie: rules.genie[genie],
   });
   return {
-    rec, doc, result, power, rulesVersion, items,
+    source, rec, doc, result, power, rulesVersion, items,
     itemPoints: items.itemPoints, itemBreakdown: breakdown, blockReason: submitBlockReason(result.missing),
   };
 }

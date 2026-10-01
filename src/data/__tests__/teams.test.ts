@@ -2,7 +2,8 @@
 // teams.ts: скор заявки для жеребки/адмінки — registrationScore (бали за речі
 // v2, коли є; інакше таблиця анкети), корекція адміна й Ело поверх; старий
 // блок dollScore у версії шкали (скор з еталонів, прибрано) нічого не змінює.
-// Плюс помічники «не перевірено» (checked) для блокування жеребки й бейджа «таблиця».
+// Плюс помічники «не перевірено» (checked і версія шкали турніру) для блокування
+// жеребки й бейджа «таблиця».
 // Supabase — заглушка (клієнт потрібен лише RPC/select, яких тут не кличемо).
 // =========================================================
 
@@ -13,7 +14,7 @@ vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: 
 
 import { BUILTIN_RULES_VERSION, classPointsFor, computeGearScoreWith, normalizeRules, registerRules, rulesFor } from '../gearRules';
 import type { PlayerRating } from '../ratings';
-import { hasItemPointsRows, isUnverifiedV2, playerScore, playersForBalance, scoreBreakdown, unverifiedForBalance } from '../teams';
+import { hasItemPointsRows, isUnverifiedV2, itemPointsVersionFor, playerScore, playersForBalance, scoreBreakdown, unverifiedForBalance, unverifiedReason } from '../teams';
 import type { ItemBreakdown, PlayerGear, Registration, Tournament } from '../types';
 
 const GEAR: PlayerGear = {
@@ -29,7 +30,7 @@ function reg(over: Partial<Registration> = {}): Registration {
     kind: 'player', teamRegistrationId: null, gear: GEAR, attackLevel: null, defenseLevel: null, scoreAdjust: 0, scoreAdjustNote: null,
     characterId: 'c1', characterRev: 3, characterSnapshot: { v: 2 }, dollConfirmedAt: null,
     dollPower: { off: 20000, def: 30000, pa: 50, pz: 40, engine: 1 },
-    itemPoints: 268.68, itemBreakdown: BD,
+    itemPoints: 268.68, itemBreakdown: BD, rejectReason: null,
     ...over,
   };
 }
@@ -86,12 +87,34 @@ describe('scoreBreakdown / playerScore: гір — registrationScore', () => {
 
 describe('isUnverifiedV2 / unverifiedForBalance / hasItemPointsRows', () => {
   it('не перевірено = є itemPoints, а checked не true; перевірено — лише checked: true', () => {
-    expect(isUnverifiedV2(reg())).toBe(true);
-    expect(isUnverifiedV2(reg({ itemBreakdown: null }))).toBe(true);
-    expect(isUnverifiedV2(reg({ itemBreakdown: { ...BD, checked: true } }))).toBe(false);
+    expect(isUnverifiedV2(reg(), T)).toBe(true);
+    expect(isUnverifiedV2(reg({ itemBreakdown: null }), T)).toBe(true);
+    expect(isUnverifiedV2(reg({ itemBreakdown: { ...BD, checked: true } }), T)).toBe(false);
     // табличні рядки перевіряти нічого
-    expect(isUnverifiedV2(reg({ itemPoints: null, itemBreakdown: null }))).toBe(false);
-    expect(isUnverifiedV2(reg({ itemPoints: null, itemBreakdown: BD }))).toBe(false);
+    expect(isUnverifiedV2(reg({ itemPoints: null, itemBreakdown: null }), T)).toBe(false);
+    expect(isUnverifiedV2(reg({ itemPoints: null, itemBreakdown: BD }), T)).toBe(false);
+    expect(unverifiedReason(reg(), T)).toBe('client');
+    expect(unverifiedReason(reg({ itemBreakdown: { ...BD, checked: true } }), T)).toBeNull();
+  });
+
+  it('перевірено, але за іншою версією шкали, ніж рахується турнір (нову збережено після подачі), — теж «не перевірено»', () => {
+    registerRules({ version: 'balance-v9.5', note: 'тест', createdAt: '2026-10-01T00:00:00Z', builtin: false }, rules, false);
+    const checkedOld = reg({ itemBreakdown: { ...BD, ver: 'balance-v9.5', checked: true } });
+    // турнір до жеребки рахується поточною версією (тут — вбудованою), рядок — старою
+    expect(itemPointsVersionFor(T)).toBe(V);
+    expect(unverifiedReason(checkedOld, T)).toBe('version');
+    expect(isUnverifiedV2(checkedOld, T)).toBe(true);
+    // версію турніру зафіксовано жеребкою — порівнюємо з нею
+    const fixed = { ...T, balanceRulesVersion: 'balance-v9.5' };
+    expect(itemPointsVersionFor(fixed)).toBe('balance-v9.5');
+    expect(isUnverifiedV2(checkedOld, fixed)).toBe(false);
+    expect(unverifiedReason(reg({ itemBreakdown: { ...BD, checked: true } }), fixed)).toBe('version');
+    // версії турніру немає в реєстрі — перерахунок рахує поточною, тож і порівнюємо з нею (інакше «не перевірено» назавжди)
+    const lost = { ...T, balanceRulesVersion: 'balance-v0.0-видалена' };
+    expect(itemPointsVersionFor(lost)).toBe(V);
+    expect(isUnverifiedV2(reg({ itemBreakdown: { ...BD, checked: true } }), lost)).toBe(false);
+    // жеребку блокує й такий рядок — адмін перерахує його зі знімка
+    expect(unverifiedForBalance([checkedOld, reg({ id: 'r2', nickname: 'B', itemBreakdown: { ...BD, checked: true } })], T).map((r) => r.id)).toEqual(['r1']);
   });
 
   it('жеребку блокують лише підтверджені гравці з неперевіреним скором v2', () => {
@@ -103,8 +126,8 @@ describe('isUnverifiedV2 / unverifiedForBalance / hasItemPointsRows', () => {
       reg({ id: 'r5', nickname: 'E', kind: 'team', itemPoints: 1 }),
       reg({ id: 'r6', nickname: 'F', itemPoints: null, itemBreakdown: null }),
     ];
-    expect(unverifiedForBalance(regs).map((r) => r.id)).toEqual(['r1']);
-    expect(unverifiedForBalance(regs.slice(1))).toEqual([]);
+    expect(unverifiedForBalance(regs, T).map((r) => r.id)).toEqual(['r1']);
+    expect(unverifiedForBalance(regs.slice(1), T)).toEqual([]);
     expect(hasItemPointsRows(regs)).toBe(true);
     expect(hasItemPointsRows([regs[5]])).toBe(false);
     expect(hasItemPointsRows([regs[4]])).toBe(false); // team-рядки не рахуються

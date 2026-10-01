@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // tournaments.ts тягне клієнт Supabase — тут його заміняє заглушка, що запам'ятовує
-// insert/update і віддає один турнір на select (для перевірки «реєстрація відкрита»).
+// insert/update і віддає один турнір на select (для перевірки «реєстрація відкрита»);
+// select заявок (id нової заявки, статус за ніком) — з черги lookups, фільтри — у selects.
 type DbError = { code?: string; message?: string } | null;
 const db = vi.hoisted(() => ({
   tournament: null as Record<string, unknown> | null,
@@ -9,11 +10,27 @@ const db = vi.hoisted(() => ({
   /** Помилки наступних insert/update по черзі (порожня черга — успіх). */
   insertErrors: [] as Array<{ code?: string; message?: string } | null>,
   updateErrors: [] as Array<{ code?: string; message?: string } | null>,
+  /** Відповіді наступних select із registrations (порожня черга — {id: 'reg-new'}). */
+  lookups: [] as Array<{ data: unknown; error: { code?: string; message?: string } | null }>,
+  selects: [] as Array<{ table: string; calls: unknown[][] }>,
 }));
 vi.mock('../../app/supabaseClient', () => ({
   supabase: {
     from: (table: string) => ({
-      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: db.tournament, error: null }) }) }),
+      select: (cols?: string) => {
+        const calls: unknown[][] = [['select', cols]];
+        db.selects.push({ table, calls });
+        const b: Record<string, unknown> = {};
+        for (const m of ['eq', 'neq', 'ilike', 'in', 'or', 'order', 'limit']) {
+          b[m] = (...args: unknown[]) => {
+            calls.push([m, ...args]);
+            return b;
+          };
+        }
+        b.maybeSingle = async () =>
+          table === 'tournaments' ? { data: db.tournament, error: null } : db.lookups.shift() ?? { data: { id: 'reg-new' }, error: null };
+        return b;
+      },
       insert: async (row: Record<string, unknown>) => {
         db.writes.push({ table, op: 'insert', row });
         return { error: db.insertErrors.shift() ?? null };
@@ -28,7 +45,10 @@ vi.mock('../../app/supabaseClient', () => ({
   },
 }));
 
-import { isMissingColumnError, likePattern, registrationFromRow, submitRegistration, updateRegistrationItemPoints, type RegistrationRow } from '../tournaments';
+import {
+  LIVE_DUPLICATE_TEXT, fetchPlayerStatusByNickname, findLiveRegistration, isMissingColumnError, likePattern, registrationFromRow, setRegistrationStatus, submitRegistration,
+  updateRegistrationItemPoints, type RegistrationRow,
+} from '../tournaments';
 import { isPastTournament, type ItemBreakdown } from '../types';
 
 describe('likePattern (екранування ніка для ilike)', () => {
@@ -146,7 +166,7 @@ describe('submitRegistration / updateRegistrationItemPoints (0032)', () => {
     bracket_type: 'single_elim', bracket_size: null, team_size: 3, created_by: null, visibility: 'public', third_place_match: false, bracket_new_look: true,
     team_mode: 'balanced_random',
   };
-  const character = { id: 'c1', revision: 3, snapshot: { v: 2, name: 'Tayforn' }, power: { off: 100, def: 200, pa: 50, pz: 40, engine: 1 } };
+  const character = { snapshot: { v: 2, name: 'Tayforn' }, power: { off: 100, def: 200, pa: 50, pz: 40, engine: 1 } };
   const lastInsert = () => {
     const w = db.writes.find((x) => x.op === 'insert');
     if (!w) throw new Error('insert не викликано');
@@ -163,14 +183,78 @@ describe('submitRegistration / updateRegistrationItemPoints (0032)', () => {
     db.writes.length = 0;
     db.insertErrors.length = 0;
     db.updateErrors.length = 0;
+    db.lookups.length = 0;
+    db.selects.length = 0;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  // ── Шлях гравця: id нової заявки («Мої заявки» шукають свою заявку за ним) ──
+
+  it('після insert повертає id живої заявки з цим ніком на турнір (не відхиленої)', async () => {
+    db.lookups.push({ data: { id: 'r-77' }, error: null });
+    await expect(submitRegistration({ tournamentId: 't1', nickname: ' Dark_Lord ', rulesAck: true })).resolves.toEqual({ id: 'r-77' });
+    const q = db.selects.find((x) => x.table === 'registrations')!;
+    expect(q.calls).toEqual(expect.arrayContaining([
+      ['select', 'id, created_at, character_id, nonce:item_breakdown->>nonce'], ['eq', 'tournament_id', 't1'], ['eq', 'kind', 'player'], ['neq', 'status', 'rejected'], ['ilike', 'nickname', 'Dark\\_Lord'],
+    ]));
+  });
+
+  it('findLiveRegistration: id, час створення, персонаж і мітка спроби живої заявки з ніком; нічого — null', async () => {
+    db.lookups.push({ data: { id: 'r-5', created_at: '2026-10-01T10:00:00Z', character_id: 'c1', nonce: 'n-12345678' }, error: null });
+    await expect(findLiveRegistration('t1', 'Tayforn')).resolves.toEqual({ id: 'r-5', createdAt: '2026-10-01T10:00:00Z', characterId: 'c1', nonce: 'n-12345678' });
+    db.lookups.push({ data: { id: 'r-6', created_at: '2026-10-01T10:00:00Z', nonce: null }, error: null });
+    await expect(findLiveRegistration('t1', 'Гість')).resolves.toEqual({ id: 'r-6', createdAt: '2026-10-01T10:00:00Z', characterId: null, nonce: null });
+    db.lookups.push({ data: null, error: null });
+    await expect(findLiveRegistration('t1', 'Ніхто')).resolves.toBeNull();
+    db.lookups.push({ data: null, error: { code: '500', message: 'мережа' } });
+    await expect(findLiveRegistration('t1', 'Tayforn')).rejects.toMatchObject({ message: 'мережа' });
+  });
+
+  it('fetchPlayerStatusByNickname: нік тримає жива заявка — її статус, навіть коли є й відхилена (повторна подача, 0033)', async () => {
+    db.lookups.push({ data: { status: 'pending' }, error: null });
+    await expect(fetchPlayerStatusByNickname('t1', 'Tayforn')).resolves.toBe('pending');
+    const regs = db.selects.filter((x) => x.table === 'registrations');
+    expect(regs).toHaveLength(1);
+    expect(regs[0].calls).toEqual(expect.arrayContaining([['eq', 'tournament_id', 't1'], ['eq', 'kind', 'player'], ['ilike', 'nickname', 'Tayforn'], ['neq', 'status', 'rejected']]));
+    // живої немає — лише тоді відхилена (до 0033 вона блокує нік)
+    db.selects.length = 0;
+    db.lookups.push({ data: null, error: null }, { data: { status: 'rejected' }, error: null });
+    await expect(fetchPlayerStatusByNickname('t1', 'Tayforn')).resolves.toBe('rejected');
+    const two = db.selects.filter((x) => x.table === 'registrations');
+    expect(two).toHaveLength(2);
+    expect(two[1].calls.some((c) => c[0] === 'neq')).toBe(false);
+    // ні живої, ні відхиленої — null; помилка — нагору
+    db.lookups.push({ data: null, error: null }, { data: null, error: null });
+    await expect(fetchPlayerStatusByNickname('t1', 'Tayforn')).resolves.toBeNull();
+    db.lookups.push({ data: null, error: { code: '500', message: 'мережа' } });
+    await expect(fetchPlayerStatusByNickname('t1', 'Tayforn')).rejects.toMatchObject({ message: 'мережа' });
+  });
+
+  it('заявку прийнято, а id прочитати не вдалося — не помилка подачі: id null', async () => {
+    db.lookups.push({ data: null, error: { code: '500', message: 'мережа' } });
+    await expect(submitRegistration({ tournamentId: 't1', nickname: 'Tayforn', rulesAck: true })).resolves.toEqual({ id: null });
+    expect(inserts()).toHaveLength(1);
+    // insert упав — до читання id не доходить
+    db.selects.length = 0;
+    db.insertErrors.push({ code: '23505', message: 'duplicate key value violates unique constraint "registrations_tournament_nickname_uidx"' });
+    await expect(submitRegistration({ tournamentId: 't1', nickname: 'Tayforn', rulesAck: true })).rejects.toMatchObject({ code: '23505' });
+    expect(db.selects.filter((x) => x.table === 'registrations')).toHaveLength(0);
+  });
+
+  it('прямий insert ніколи не пише character_id (чий персонаж — перевіряє лише бекенд): null, знімок — як є', async () => {
+    const snapshot = { v: 2, name: '' };
+    await submitRegistration({ tournamentId: 't1', nickname: 'Гість', rulesAck: true, character: { snapshot, power: null } });
+    const w = lastInsert();
+    expect(w.row).toMatchObject({ character_id: null, character_rev: null });
+    expect(w.row.character_snapshot).toBe(snapshot);
+    expect(w.row).not.toHaveProperty('doll_power');
   });
 
   it('заявка без itemPoints/itemBreakdown не пише колонок 0032 (до міграції insert не падає)', async () => {
     await submitRegistration({ tournamentId: 't1', nickname: 'Tayforn', rulesAck: true, character });
     const w = lastInsert();
     expect(w.table).toBe('registrations');
-    expect(w.row).toMatchObject({ tournament_id: 't1', nickname: 'Tayforn', rules_ack: true, member_nicknames: null, character_id: 'c1', character_rev: 3, doll_power: character.power });
+    expect(w.row).toMatchObject({ tournament_id: 't1', nickname: 'Tayforn', rules_ack: true, member_nicknames: null, character_id: null, character_rev: null, doll_power: character.power });
     expect(w.row.character_snapshot).toBe(character.snapshot);
     expect(w.row).not.toHaveProperty('item_points');
     expect(w.row).not.toHaveProperty('item_breakdown');
@@ -217,7 +301,7 @@ describe('submitRegistration / updateRegistrationItemPoints (0032)', () => {
     expect(ins[0].row).toMatchObject({ item_points: 268.68, item_breakdown: BREAKDOWN });
     expect(ins[1].row).not.toHaveProperty('item_points');
     expect(ins[1].row).not.toHaveProperty('item_breakdown');
-    expect(ins[1].row).toMatchObject({ tournament_id: 't1', nickname: 'Tayforn', character_id: 'c1', character_rev: 3, doll_power: character.power });
+    expect(ins[1].row).toMatchObject({ tournament_id: 't1', nickname: 'Tayforn', character_id: null, character_rev: null, doll_power: character.power });
     expect(ins[1].row.character_snapshot).toBe(character.snapshot);
     expect(Object.keys(ins[1].row).sort()).toEqual(Object.keys(ins[0].row).filter((k) => k !== 'item_points' && k !== 'item_breakdown').sort());
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('0032'));
@@ -260,5 +344,79 @@ describe('submitRegistration / updateRegistrationItemPoints (0032)', () => {
     expect(isMissingColumnError({ message: 'item_points must be >= 0' })).toBe(false); // CHECK, не відсутня колонка
     expect(isMissingColumnError({ code: '23505', message: 'duplicate key' })).toBe(false);
     expect(isMissingColumnError({})).toBe(false);
+  });
+});
+
+describe('шлях гравця: причина відхилення (0033)', () => {
+  beforeEach(() => {
+    db.writes.length = 0;
+    db.updateErrors.length = 0;
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('registrationFromRow: reject_reason — обрізаний текст; до міграції, порожньо чи не рядок — null', () => {
+    expect(registrationFromRow({ ...ROW, status: 'rejected', reject_reason: '  інший трактат  ' }).rejectReason).toBe('інший трактат');
+    expect(registrationFromRow(ROW).rejectReason).toBeNull();
+    expect(registrationFromRow({ ...ROW, reject_reason: '   ' }).rejectReason).toBeNull();
+    expect(registrationFromRow({ ...ROW, reject_reason: 5 as unknown as string }).rejectReason).toBeNull();
+  });
+
+  it('відхилення пише статус і причину (порожня — null, щоб не лишалась стара; довга — до 200)', async () => {
+    await expect(setRegistrationStatus('r1', 'rejected', '  лялька не збігається з грою ')).resolves.toEqual({ reasonSaved: true });
+    await setRegistrationStatus('r2', 'rejected', '');
+    await setRegistrationStatus('r3', 'rejected', 'x'.repeat(250));
+    expect(db.writes).toEqual([
+      { table: 'registrations', op: 'update', id: 'r1', row: { status: 'rejected', reject_reason: 'лялька не збігається з грою' } },
+      { table: 'registrations', op: 'update', id: 'r2', row: { status: 'rejected', reject_reason: null } },
+      { table: 'registrations', op: 'update', id: 'r3', row: { status: 'rejected', reject_reason: 'x'.repeat(200) } },
+    ]);
+    // будь-який інший статус стирає стару причину; відхилення без аргументу причини (старі виклики) — лише статус
+    db.writes.length = 0;
+    await expect(setRegistrationStatus('r1', 'confirmed')).resolves.toEqual({ reasonSaved: true });
+    await setRegistrationStatus('r1', 'pending', 'ігнорується');
+    await setRegistrationStatus('r1', 'rejected');
+    expect(db.writes.map((w) => w.row)).toEqual([{ status: 'confirmed', reject_reason: null }, { status: 'pending', reject_reason: null }, { status: 'rejected' }]);
+  });
+
+  it('підтвердження до 0033 (колонки немає): повтор лише зі статусом, без зайвих попереджень гравцю', async () => {
+    db.updateErrors.push({ code: 'PGRST204', message: "Could not find the 'reject_reason' column of 'registrations' in the schema cache" });
+    await expect(setRegistrationStatus('r1', 'confirmed')).resolves.toEqual({ reasonSaved: true });
+    expect(db.writes.map((w) => w.row)).toEqual([{ status: 'confirmed', reject_reason: null }, { status: 'confirmed' }]);
+  });
+
+  it('підтвердити відхилену, коли нік уже тримає жива заявка (0033), — зрозумілий текст замість сирого 23505', async () => {
+    const dup = { code: '23505', message: 'duplicate key value violates unique constraint "registrations_tournament_nickname_uidx"' };
+    db.updateErrors.push(dup);
+    await expect(setRegistrationStatus('r1', 'confirmed')).rejects.toThrow(LIVE_DUPLICATE_TEXT);
+    expect(db.writes).toHaveLength(1);
+    // і в повторі до 0033 (теоретично) — так само
+    db.writes.length = 0;
+    db.updateErrors.push({ code: '42703', message: 'column "reject_reason" does not exist' }, { message: 'violates unique constraint "registrations_tournament_nickname_uidx"' });
+    await expect(setRegistrationStatus('r1', 'pending')).rejects.toThrow(LIVE_DUPLICATE_TEXT);
+    // інша помилка підтвердження — як є
+    db.updateErrors.push({ code: '42501', message: 'new row violates row-level security policy' });
+    await expect(setRegistrationStatus('r1', 'confirmed')).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('до 0033 (колонки немає): повтор лише зі статусом; причину не збережено — так і кажемо; інша помилка — нагору', async () => {
+    db.updateErrors.push({ code: 'PGRST204', message: "Could not find the 'reject_reason' column of 'registrations' in the schema cache" });
+    await expect(setRegistrationStatus('r1', 'rejected', 'дубль акаунта')).resolves.toEqual({ reasonSaved: false });
+    expect(db.writes.map((w) => w.row)).toEqual([{ status: 'rejected', reject_reason: 'дубль акаунта' }, { status: 'rejected' }]);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('0033'));
+    // без причини втрачати нічого — reasonSaved true
+    db.writes.length = 0;
+    db.updateErrors.push({ code: '42703', message: 'column "reject_reason" of relation "registrations" does not exist' });
+    await expect(setRegistrationStatus('r1', 'rejected', '  ')).resolves.toEqual({ reasonSaved: true });
+    expect(db.writes).toHaveLength(2);
+    db.writes.length = 0;
+    db.updateErrors.push({ code: '42501', message: 'new row violates row-level security policy' });
+    await expect(setRegistrationStatus('r1', 'rejected', 'x')).rejects.toMatchObject({ code: '42501' });
+    expect(db.writes).toHaveLength(1);
+  });
+
+  it('isMissingColumnError з назвою колонки: текст про неї, а не про колонки 0032', () => {
+    expect(isMissingColumnError({ message: 'column reject_reason does not exist' }, 'reject_reason')).toBe(true);
+    expect(isMissingColumnError({ message: 'column item_points does not exist' }, 'reject_reason')).toBe(false);
+    expect(isMissingColumnError({ code: 'PGRST204', message: 'x' }, 'reject_reason')).toBe(true);
   });
 });

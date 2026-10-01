@@ -239,6 +239,9 @@ export interface Registration {
    * 0032 або звичайна анкета: скор тоді табличний, з gear (registrationScore). */
   itemPoints: number | null;
   itemBreakdown: ItemBreakdown | null;
+  /** Причина відхилення від адміна (0033, ≤ 200 символів) — гравець бачить її у статусі
+   * заявки. null — без причини, не відхилено або до міграції (колонки ще немає). */
+  rejectReason: string | null;
 }
 
 /** Балансний фул-рандом = командний турнір з індивідуальною реєстрацією. */

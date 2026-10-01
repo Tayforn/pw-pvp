@@ -911,7 +911,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const enoughPlayers = S > 0 && players.length >= 2 * S;
   const stats = t.balanceStats;
   // Неперевірений скор v2 серед підтверджених — жеребка чекає перерахунку зі знімків.
-  const unverified = unverifiedForBalance(regs);
+  const unverified = unverifiedForBalance(regs, t);
   const formBlocked = unverified.length > 0;
   const formBlockTitle = formBlocked ? `${unverifiedLabel(unverified.length)} — спершу перерахуй зі знімків` : undefined;
 
@@ -973,7 +973,7 @@ export default function TeamsPanel({ tournament: t }: { tournament: Tournament }
   const formBlock = formBlocked ? (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className="badge warn" title="Бали за речі цих заявок порахував клієнт гравця — перед жеребкою адмінка перераховує їх зі знімка ляльки за версією шкали турніру">
+        <span className="badge warn" title="Бали за речі цих заявок порахував клієнт гравця або їх пораховано за іншою версією шкали — перед жеребкою адмінка перераховує їх зі знімка ляльки за версією шкали турніру">
           {unverifiedLabel(unverified.length)}
         </span>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={recalcAllRun}>Перерахувати всі зі знімків</button>

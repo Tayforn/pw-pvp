@@ -26,7 +26,8 @@ import { readJson } from '../core/__tests__/testData';
 import type { CharacterDoc } from '../model/doc';
 import { scoreItems } from '../model/itemScore';
 import { docFrom, loadRef, lookup } from '../model/__tests__/testDoc';
-import { characterForRegistration, submitBlockReason } from '../registration';
+import { DRAFT_ID, characterForRegistration, draftCharacter, draftForRegistration, submitBlockReason } from '../registration';
+import { draftKey } from '../api/draft';
 
 beforeAll(() => {
   loadRef();
@@ -132,6 +133,47 @@ describe('characterForRegistration: скор v2 у заявці', () => {
   it('пошкоджений документ — помилка з поясненням', async () => {
     api.rec = { id: 'c1', name: 'x', cls: 'js', level: 105, revision: 1, updatedAt: '', doc: { v: 99 } };
     await expect(characterForRegistration('c1')).rejects.toThrow(/пошкоджено/);
+  });
+});
+
+describe('чернетка цього браузера (гість без Discord-ролі)', () => {
+  /** localStorage-подібне сховище з чернеткою під ключем сторінки /characters/new. */
+  function storeWith(doc: unknown) {
+    const m = new Map<string, string>();
+    if (doc !== undefined) m.set(draftKey('anon', DRAFT_ID), typeof doc === 'string' ? doc : JSON.stringify(doc));
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+  }
+
+  it('скор чернетки — той самий, що в збереженого персонажа з тим самим документом', async () => {
+    const doc = { ...docFrom('typical-js'), genie: GENIE_100 };
+    useDoc(doc);
+    const saved = await characterForRegistration('c1');
+    const draft = await draftForRegistration({}, storeWith(doc));
+    expect(draft.source).toBe('draft');
+    expect(saved.source).toBe('saved');
+    expect(draft.rec).toMatchObject({ id: DRAFT_ID, name: doc.name, cls: doc.cls, level: doc.level, revision: 0 });
+    expect(draft.itemPoints).toBe(saved.itemPoints);
+    expect(draft.itemPoints).toBe(189.01);
+    expect(draft.itemBreakdown).toEqual(saved.itemBreakdown);
+    expect(draft.result.gear).toEqual(saved.result.gear);
+    expect(draft.blockReason).toBeNull();
+    // версія й розмір команди турніру — так само
+    const six = await draftForRegistration({ teamSize: 6 }, storeWith(doc));
+    expect(six.itemBreakdown.sum.cls).toBe(classPointsFor(rules, 'archer', 6));
+  });
+
+  it('draftCharacter: імʼя, клас, рівень для вибору; порожня, відсутня чи зламана чернетка — null', () => {
+    const doc = docFrom('typical-js');
+    expect(draftCharacter(storeWith(doc))).toMatchObject({ id: DRAFT_ID, name: doc.name, cls: 'js', level: doc.level, items: doc.items.length });
+    expect(draftCharacter(storeWith(undefined))).toBeNull();
+    expect(draftCharacter(storeWith('{не json'))).toBeNull();
+    expect(draftCharacter(null)).toBeNull();
+    expect(draftCharacter(storeWith({ ...doc, name: '', items: [], sets: [], main: {} }))).toBeNull();
+  });
+
+  it('без чернетки чи зі зламаною — помилка з поясненням, куди йти', async () => {
+    await expect(draftForRegistration({}, storeWith(undefined))).rejects.toThrow(/немає чернетки персонажа/);
+    await expect(draftForRegistration({}, storeWith('{"v":99}'))).rejects.toThrow(/пошкоджено/);
   });
 });
 

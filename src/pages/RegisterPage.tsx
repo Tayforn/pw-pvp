@@ -1,11 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+// =========================================================
+// Заявка на турнір. Фул-рандом — лише персонажем з ляльки: учасник клану
+// (вхід через Discord) обирає збереженого персонажа, гравець без Discord-ролі —
+// чернетку цього браузера (/characters/new). Заявку на фул-рандом подає бекенд
+// (data/registerApi.ts: скор рахує сервер), запасний шлях — прямий insert.
+//
+// Шлях гравця: якщо своя заявка на турнір уже є (id чи нік із записів цього
+// браузера) — замість форми її статус (на розгляді / підтверджено / відхилено з
+// причиною / вибув, після жеребки — команда); відхилену можна подати знову
+// («Подати знову» чи ?again=1 з «Моїх заявок»). Заявка, знайдена лише за своїм
+// персонажем (character_id), форму не ховає — картка над формою (до 0034 чужий
+// character_id міг підставити будь-хто). Пошук своїх заявок не вдався — форма
+// (без записів браузера) або помилка з «Спробувати ще» (data/myRegistrations.ts,
+// registerGate).
+// =========================================================
+
+import { useEffect, useMemo, useState, useRef } from 'react';
 import PageMeta from '../app/PageMeta';
 import { routeUrl } from '../app/useRoute';
 import { errorMessage } from '../app/errorMessage';
-import { hasRegistered, markRegistered } from '../app/registeredTournaments';
-import { isBalancedRandom, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
-import { fetchPublicTournaments, fetchTournament, submitRegistration } from '../data/tournaments';
+import { markRegistered, refsForTournament } from '../app/registeredTournaments';
+import { isBalancedRandom, isPastTournament, isRegistrationOpen, type PlayerGear, type Tournament } from '../data/types';
+import { fetchPlayerStatusByNickname, fetchPublicTournaments, fetchTournament, findLiveRegistration, submitRegistration } from '../data/tournaments';
+import { newNonce, registerPlayer, type RegisterOutcome } from '../data/registerApi';
+import { loadMyRegistrations, registerGate, type MyRegistrationItem, type RegisterGate } from '../data/myRegistrations';
 import { isGearComplete } from '../components/GearFields';
+import MyRegistrationCard from '../components/MyRegistrationCard';
 import RulesList from '../components/RulesList';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import { parseRulesMd } from '../data/ruleCatalog';
@@ -17,8 +36,12 @@ import { rulesVersionFor } from '../data/teams';
 import type { CharacterForRegistration, CharacterSummary } from '../doll/registration';
 
 // Модуль ляльки (каталоги, формули) — окремий чанк: вантажимо лише коли
-// учасник клану відкрив форму фул-рандому.
+// відкрито форму фул-рандому.
 const loadDollReg = () => import('../doll/registration');
+/** id чернетки у виборі персонажа — те саме, що DRAFT_ID у doll/registration.ts (тут без імпорту чанка). */
+const DRAFT_OPTION = 'new';
+/** Пояснення для гравця без Discord-ролі (рішення власника, шлях гравця). */
+const DRAFT_NOTE = 'Без Discord-ролі гільдії заявку подають персонажем із чернетки цього браузера; збережи чернетку, поки турнір не закінчиться.';
 const CLS_NAME: Record<string, string> = { by: 'Воїн', ga: 'Маг', ya: 'Танк', rl: 'Друїд', ij: 'Прист', js: 'Лучник', fx: 'Сін', sj: 'Шаман', ej: 'Страж', rg: 'Містик' };
 
 /** «1 пункт · 2 пункти · 5 пунктів». */
@@ -40,12 +63,14 @@ export default function RegisterPage() {
   // яких немає в публічному переліку) — fetchTournament(id) навмисно без
   // фільтра visibility, працює для будь-кого за посиланням.
   const pinnedId = useMemo(() => new URLSearchParams(window.location.search).get('t'), []);
+  // ?again=1 — «Подати знову» з «Моїх заявок»: відхилена заявка не ховає форму.
+  const [again, setAgain] = useState(() => new URLSearchParams(window.location.search).get('again') === '1');
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [pinned, setPinned] = useState<Tournament | null | undefined>(pinnedId ? undefined : null);
   const [tournamentId, setTournamentId] = useState('');
   const [nickname, setNickname] = useState('');
-  const { me: discordMe, login } = useMe();
+  const { me: discordMe, loading: meLoading, login } = useMe();
   // Версії шкали з бази — скор і тир персонажа рахуються за версією турніру.
   useRules();
   const [members, setMembers] = useState<string[]>([]);
@@ -56,6 +81,8 @@ export default function RegisterPage() {
   // Фул-рандом — лише персонажем з ляльки (рішення власника 25.09.2026: «все має
   // йти через ляльку»); ручних полів спорядження немає. '' — персонажа не обрано.
   const [chars, setChars] = useState<CharacterSummary[] | null>(null);
+  // Гість — чернетка цього браузера: undefined — ще читаємо, null — немає.
+  const [draft, setDraft] = useState<CharacterSummary | null | undefined>(undefined);
   const [charId, setCharId] = useState('');
   const [charLoad, setCharLoad] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; data?: CharacterForRegistration; err?: string }>({ status: 'idle' });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -63,7 +90,12 @@ export default function RegisterPage() {
   const [rulesAck, setRulesAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // Подана заявка: як прийнята (сервер / напряму) і примітки скору від сервера.
+  const [done, setDone] = useState<RegisterOutcome | null>(null);
+  // Свої заявки на обраний турнір (статус замість форми).
+  const [own, setOwn] = useState<{ status: 'loading' | 'ready' | 'error'; items: MyRegistrationItem[]; key: string }>({ status: 'loading', items: [], key: '' });
+  // «Спробувати ще» після збою пошуку своїх заявок — перезапускає ефект нижче.
+  const [ownRetry, setOwnRetry] = useState(0);
 
   useEffect(() => {
     if (pinnedId) {
@@ -124,6 +156,46 @@ export default function RegisterPage() {
     return () => { alive = false; };
   }, [discordMe, isBalanced, chars]);
 
+  // Гість на фул-рандомі — чернетка цього браузера (без входу персонажа в профілі немає).
+  // Перечитуємо й при поверненні на вкладку: чернетку часто збирають у сусідній.
+  useEffect(() => {
+    if (meLoading || discordMe || !isBalanced) return;
+    let alive = true;
+    const read = () => {
+      loadDollReg()
+        .then((m) => m.draftCharacter())
+        .then((d) => { if (alive) setDraft(d); })
+        .catch(() => { if (alive) setDraft(null); });
+    };
+    read();
+    window.addEventListener('focus', read);
+    return () => {
+      alive = false;
+      window.removeEventListener('focus', read);
+    };
+  }, [meLoading, discordMe, isBalanced]);
+
+  // Свої заявки на цей турнір: id, запамʼятовані браузером, і (вхід через Discord,
+  // фул-рандом) заявки своїх персонажів. Поки персонажі вантажаться — чекаємо, щоб
+  // не блимнути формою перед статусом.
+  const ownCharIds = isBalanced && discordMe ? (chars ? chars.map((c) => c.id) : null) : [];
+  const ownKey = tournamentId && !meLoading && ownCharIds ? tournamentId + '|' + ownCharIds.join(',') : '';
+  useEffect(() => {
+    if (!ownKey || !tournament) return;
+    const refs = refsForTournament(tournament.id);
+    if (!refs.length && !ownCharIds?.length) {
+      setOwn({ status: 'ready', items: [], key: ownKey });
+      return;
+    }
+    let alive = true;
+    setOwn((s) => ({ status: 'loading', items: s.key === ownKey ? s.items : [], key: ownKey }));
+    loadMyRegistrations({ refs, characterIds: ownCharIds, lastNickname: readLastNickname(), tournamentId: tournament.id })
+      .then((items) => { if (alive) setOwn({ status: 'ready', items, key: ownKey }); })
+      .catch(() => { if (alive) setOwn({ status: 'error', items: [], key: ownKey }); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownKey, tournament?.id, ownRetry]);
+
   // Інший турнір — спорядження скинуто (clearGear вище), тож і вибір персонажа теж.
   useEffect(() => {
     setCharId('');
@@ -140,14 +212,16 @@ export default function RegisterPage() {
     }
     setCharLoad({ status: 'loading' });
     // Скор v2 — за версією шкали, закріпленою за турніром (до жеребки — поточна), і розміром його команди.
+    const opts = { rulesVersion: tournament ? rulesVersionFor(tournament) : null, teamSize: tournament?.teamSize ?? null };
     loadDollReg()
-      .then((m) => m.characterForRegistration(id, { rulesVersion: tournament ? rulesVersionFor(tournament) : null, teamSize: tournament?.teamSize ?? null }))
+      .then((m) => (id === DRAFT_OPTION && !discordMe ? m.draftForRegistration(opts) : m.characterForRegistration(id, opts)))
       .then((data) => {
         setCharLoad({ status: 'ready', data });
         if (data.result.gear) setGear(data.result.gear);
         setAttackLevel(data.result.attackLevel);
         setDefenseLevel(data.result.defenseLevel);
-        setNickname(data.rec.name);
+        // Чернетка може бути без імені — тоді нік лишається з поля.
+        if (data.rec.name.trim()) setNickname(data.rec.name);
       })
       .catch((e) => setCharLoad({ status: 'error', err: errorMessage(e, String(e)) }));
   };
@@ -168,10 +242,22 @@ export default function RegisterPage() {
   const membersValid = !isTeam || members.every((m) => m.trim());
   // Фул-рандом — лише персонажем, на якому є зброя й броня (gear з ляльки повний).
   const gearValid = !isBalanced || (!!charData?.result.gear && isGearComplete(gear));
-  // Клієнтська перевірка — доповнює серверний unique-індекс (той блокує лише
-  // повтор ТОГО САМОГО нікнейму); ця блокує ще одну заявку з ІНШИМ нікнеймом
-  // з того самого браузера.
-  const alreadyRegistered = !!tournamentId && hasRegistered(tournamentId);
+  // Свої заявки на турнір. Клієнтська перевірка доповнює серверний unique-індекс
+  // (той блокує лише повтор ТОГО САМОГО нікнейму): жива своя заявка (на розгляді
+  // чи підтверджена) не дає подати ще одну з ІНШИМ нікнеймом з того самого
+  // браузера; відхилена — дає (повторна подача): статус із «Подати знову»,
+  // натиснув — форма, а картка лишається над нею. Знайдена лише за персонажем —
+  // картка над формою, подавати можна. Що саме показати — registerGate.
+  const ownCurrent = own.key === ownKey;
+  const ownItems = ownCurrent && own.status === 'ready' ? own.items : [];
+  const refsHere = tournamentId ? refsForTournament(tournamentId) : [];
+  const gate: RegisterGate = tournamentId
+    ? registerGate({ own: { status: own.status, items: own.items, current: ownCurrent }, refs: refsHere, again })
+    : { view: 'form', rejected: [], foreign: [], basis: [] };
+
+  // Мітка спроби подачі: та сама для повторів після збою (бекенд міг уже записати заявку —
+  // за міткою її й упізнаємо), нова — після прийнятої заявки.
+  const nonceRef = useRef<string | null>(null);
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -185,38 +271,44 @@ export default function RegisterPage() {
     setConfirmOpen(false);
     setBusy(true);
     setErr(null);
+    const nick = nickname.trim();
+    const draftDoc = charData?.source === 'draft';
+    const nonce = (nonceRef.current ??= newNonce());
     try {
-      await submitRegistration({
-        tournamentId,
-        nickname: nickname.trim(),
-        rulesAck,
-        memberNicknames: isTeam ? members.map((m) => m.trim()) : undefined,
-        ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
-        // Скор v2 (0032): бали за речі й розклад — до міграції submitRegistration повторює insert без них.
-        ...(charData
-          ? {
-              character: {
-                id: charData.rec.id, revision: charData.rec.revision, snapshot: charData.doc, power: charData.power,
-                itemPoints: charData.itemPoints, itemBreakdown: charData.itemBreakdown,
-              },
-            }
-          : {}),
-      });
-      markRegistered(tournamentId);
-      // У fixed-командному поле — назва команди, не нік; його не запам'ятовуємо.
-      if (!isTeam) saveLastNickname(nickname.trim());
-      setDone(true);
-    } catch (e) {
-      const msg = errorMessage(e, String(e));
-      setErr(
-        msg.includes('duplicate key') || msg.includes('registrations_tournament_nickname')
-          ? `Ц${isTeam ? 'я назва команди' : 'ей нікнейм'} уже зареєстрован${isTeam ? 'а' : 'ий'} на цей турнір.`
-          // RLS (0027) не пропускає заявку без rules_ack; та сама відмова — коли
-          // реєстрацію закрили, поки форма була відкрита.
-          : msg.includes('row-level security')
-            ? 'Заявку не прийнято: підтвердь ознайомлення з правилами (галочка нижче) і перевір, чи реєстрація ще відкрита.'
-            : msg,
+      const outcome = await registerPlayer(
+        {
+          isTeam,
+          // Запасний шлях — прямий insert, як було до бекенда.
+          direct: {
+            tournamentId,
+            nickname: nick,
+            rulesAck,
+            memberNicknames: isTeam ? members.map((m) => m.trim()) : undefined,
+            ...(isBalanced && isGearComplete(gear) ? { gear, attackLevel, defenseLevel } : {}),
+            // Скор v2 (0032): бали за речі й розклад — до міграції submitRegistration повторює insert без них.
+            // character_id прямий insert не пише (чий персонаж, перевіряє лише бекенд; чернетка гостя
+            // в профілі й не має персонажа) — лише знімок.
+            ...(charData
+              ? { character: { snapshot: charData.doc, power: charData.power, itemPoints: charData.itemPoints, itemBreakdown: charData.itemBreakdown } }
+              : {}),
+          },
+          // Фул-рандом — спершу бекенд: скор рахує сервер (свій персонаж — з бази, чернетка — з тіла).
+          server:
+            isBalanced && charData
+              ? { tournamentId, nickname: nick, rulesAck: true, nonce, ...(draftDoc ? { doc: charData.doc } : { characterId: charData.rec.id }) }
+              : undefined,
+        },
+        // findLive — бекенд міг записати заявку, але не встигнути відповісти.
+        { submitDirect: submitRegistration, statusByNickname: fetchPlayerStatusByNickname, findLive: findLiveRegistration },
       );
+      nonceRef.current = null;
+      markRegistered(tournamentId, outcome.id, nick);
+      // У fixed-командному поле — назва команди, не нік; його не запам'ятовуємо.
+      if (!isTeam) saveLastNickname(nick);
+      setDone(outcome);
+      setAgain(false);
+    } catch (e) {
+      setErr(errorMessage(e, String(e)));
     } finally {
       setBusy(false);
     }
@@ -227,7 +319,8 @@ export default function RegisterPage() {
     if (pinned === undefined) return <p className="hint">Завантаження…</p>;
     if (pinned === null) return <p className="hint">Турнір не знайдено.</p>;
     if (!isRegistrationOpen(pinned)) {
-      const passed = pinned.status === 'registration_open';
+      // Минулий: завершений/скасований або дата минула (реєстрацію могли й не закрити).
+      const passed = isPastTournament(pinned);
       return (
         <div>
           <PageMeta title="Заявка на турнір — PW PvP" />
@@ -236,6 +329,12 @@ export default function RegisterPage() {
             <h2>{pinned.name}</h2>
           </div>
           <p className="hint">{passed ? 'Турнір уже пройшов.' : 'Реєстрація на цей турнір зараз не відкрита.'}</p>
+          {/* Своя заявка на цей турнір — статус і (після жеребки) команда навіть після закриття реєстрації. */}
+          {ownItems.length > 0 && (
+            <div className="myreg-list" style={{ margin: '14px 0' }}>
+              {ownItems.map((it) => <MyRegistrationCard key={it.reg.id} item={it} ownOnTournament={ownItems.map((x) => x.reg)} />)}
+            </div>
+          )}
           <p>
             <a className="link" href={routeUrl({ name: 'tournament', id: pinned.id })}>Сторінка турніру</a>
           </p>
@@ -261,23 +360,62 @@ export default function RegisterPage() {
             <>
               <p className="hint">
                 Адмін підтвердить участь. Команду дізнаєшся на сторінці турніру після закриття реєстрації — команду собі не обирають.
-                Помилився в ляльці? Онови персонажа й напиши адміну.
+                {charData?.source === 'draft'
+                  ? ' Заявку подано чернеткою цього браузера — не видаляй її й не очищуй дані сайту, поки турнір не закінчиться: адмін може попросити звірити ляльку.'
+                  : ' Помилився в ляльці? Онови персонажа й напиши адміну.'}
               </p>
-              <p style={{ margin: 0 }}>
-                <a className="link" href={routeUrl({ name: 'tournament', id: tournamentId })}>Сторінка турніру</a>
-              </p>
+              {done.warn.length > 0 && (
+                <p className="hint">Примітки до скору: {done.warn.join('; ')}.</p>
+              )}
             </>
           ) : (
             <p className="hint">Адмін підтвердить участь перед стартом турніру.</p>
           )}
+          <p style={{ margin: 0, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <a className="link" href={routeUrl({ name: 'my' })} data-goto="my">Мої заявки — статус</a>
+            <a className="link" href={routeUrl({ name: 'tournament', id: tournamentId })}>Сторінка турніру</a>
+          </p>
         </div>
-      ) : alreadyRegistered ? (
+      ) : gate.view === 'checking' ? (
+        <p className="hint">Перевіряю, чи є вже твоя заявка на цей турнір…</p>
+      ) : gate.view === 'error' ? (
+        // Свої заявки знайти не вдалося, а з цього браузера на турнір уже подавали — не форма, а повтор.
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
+          <p className="form-err" style={{ margin: 0 }}>
+            Не вдалося перевірити, чи є вже твоя заявка на цей турнір (з цього браузера на нього вже подавали). Перевір інтернет і спробуй ще раз.
+          </p>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOwnRetry((n) => n + 1)}>
+              Спробувати ще
+            </button>
+            <a className="link" href={routeUrl({ name: 'my' })} data-goto="my">Мої заявки</a>
+          </div>
+        </div>
+      ) : gate.view === 'status' ? (
+        // Своя заявка вже є — її статус замість форми; відхилена — з «Подати знову».
+        <div className="myreg-list">
+          {gate.cards.map((it) => (
+            <MyRegistrationCard key={it.reg.id} item={it} ownOnTournament={gate.basis} onReapply={() => setAgain(true)} />
+          ))}
+        </div>
+      ) : gate.view === 'unknown' ? (
         <div className="card">
-          <p className="hint" style={{ margin: 0 }}>З цього браузера вже подано заявку на цей турнір.</p>
+          <p className="hint" style={{ margin: 0 }}>
+            З цього браузера вже подано заявку на цей турнір. Її статус — у{' '}
+            <a className="link" href={routeUrl({ name: 'my' })} data-goto="my">Моїх заявках</a>.
+          </p>
         </div>
       ) : (
-        // 560 для фул-рандому: картці персонажа з розкладом по речах при 480 тісно
-        // (рядки розкладу переносились би навіть на десктопі).
+        <>
+        {/* Над формою: при повторній подачі — відхилена заявка з причиною (видно, що виправити);
+            заявки, знайдені лише за своїм персонажем, — для відома, подати свою вони не заважають. */}
+        {(gate.rejected.length > 0 || gate.foreign.length > 0) && (
+          <div className="myreg-list" style={{ marginBottom: 16, maxWidth: isBalanced ? 560 : 480 }}>
+            {[...gate.rejected, ...gate.foreign].map((it) => <MyRegistrationCard key={it.reg.id} item={it} noActions />)}
+          </div>
+        )}
+        {/* 560 для фул-рандому: картці персонажа з розкладом по речах при 480 тісно
+            (рядки розкладу переносились би навіть на десктопі). */}
         <form className="card" onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: isBalanced ? 560 : 480 }}>
           {pinnedId ? (
             <div className="field">
@@ -305,20 +443,45 @@ export default function RegisterPage() {
               Команду формує система випадково після закриття реєстрації. Заявка — лише персонажем з ляльки: спорядження береться з неї, адмін звіряє в грі.
             </p>
           )}
-          {isBalanced && !discordMe && (
+          {isBalanced && !discordMe && draft !== undefined && !draft && (
+            // Гість без чернетки: створити персонажа в ляльці (чернетка браузера) або увійти.
             <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <b>Потрібен персонаж з ляльки</b>
               <span className="hint" style={{ margin: 0 }}>
-                На цей турнір подаються персонажем: увійди через Discord, створи персонажа на сторінці «Персонаж» і обери його тут.
+                На цей турнір подаються персонажем. Учасники клану входять через Discord і обирають збереженого персонажа. {DRAFT_NOTE} Збери персонажа на сторінці «Персонаж» і повернись сюди.
               </span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <button type="button" className="btn btn-primary btn-sm" onClick={login}>
+                <a className="btn btn-primary btn-sm" href={routeUrl({ name: 'character', id: DRAFT_OPTION })}>
+                  Зібрати персонажа
+                </a>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={login}>
                   Увійти через Discord
                 </button>
-                <a className="btn btn-ghost btn-sm" href={routeUrl({ name: 'characters' })}>
-                  Мої персонажі
-                </a>
               </div>
+            </div>
+          )}
+          {isBalanced && !discordMe && draft !== null && (
+            // Гість із чернеткою — той самий вибір, що в учасника клану, з однією опцією.
+            <div className="field">
+              <label htmlFor="regChar">Яким персонажем ідеш?</label>
+              <select id="regChar" value={charId} onChange={(e) => pickCharacter(e.target.value)} disabled={draft === undefined || meLoading}>
+                <option value="">{draft === undefined ? 'Шукаю чернетку персонажа…' : '— обери персонажа —'}</option>
+                {draft && (
+                  <option value={DRAFT_OPTION}>
+                    Чернетка цього браузера: {draft.name || 'без імені'} · {CLS_NAME[draft.cls] ?? draft.cls} · {draft.level}
+                  </option>
+                )}
+              </select>
+              <small className="hint">
+                {DRAFT_NOTE}{' '}
+                <a className="link" href={routeUrl({ name: 'character', id: DRAFT_OPTION })} target="_blank" rel="noreferrer">
+                  Відкрити чернетку
+                </a>
+                {' · '}
+                <button type="button" className="link" onClick={login}>
+                  увійти через Discord
+                </button>
+              </small>
             </div>
           )}
           {isBalanced && discordMe && (
@@ -373,7 +536,7 @@ export default function RegisterPage() {
           {isBalanced && charData && (
             <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <b>
-                Скор із персонажа «{charData.rec.name}»
+                {charData.source === 'draft' ? 'Скор із чернетки' : 'Скор із персонажа'} «{charData.rec.name || nickname.trim() || 'без імені'}»
                 {charScore != null && charTier ? `: ${charScore} · тир ${charTier}` : ''}
               </b>
               {charData.result.gear ? (
@@ -388,7 +551,7 @@ export default function RegisterPage() {
                 </span>
               )}
               <a className="link" href={routeUrl({ name: 'character', id: charData.rec.id })} target="_blank" rel="noreferrer">
-                Відкрити персонажа
+                {charData.source === 'draft' ? 'Відкрити чернетку' : 'Відкрити персонажа'}
               </a>
               <small className="hint" style={{ margin: 0 }}>Змінив персонажа в іншій вкладці? Обери його тут ще раз, щоб підтягнути зміни.</small>
             </div>
@@ -427,6 +590,7 @@ export default function RegisterPage() {
             {busy ? 'Надсилання…' : 'Подати заявку'}
           </button>
         </form>
+        </>
       )}
       {confirmOpen && charData?.result.gear && (() => {
         const g = charData.result.gear;
@@ -442,7 +606,7 @@ export default function RegisterPage() {
               <div className="modal-body">
                 <div className="doll-confirm-hero">
                   <div>
-                    <div className="doll-confirm-name">{charData.rec.name}</div>
+                    <div className="doll-confirm-name">{charData.rec.name || nickname.trim()}</div>
                     <div className="doll-confirm-sub">
                       {CLASS_LABELS[g.charClass]} · рівень {charData.doc.level}
                       {g.build ? ' · ' + BUILD_LABELS[g.build] : ''}
