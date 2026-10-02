@@ -35,7 +35,7 @@ import { CLASS_BY_SM, SLOTS, defaultSockets, lbl } from '../../core/constants';
 import { classRestriction, computeStats, gemDop, meetsReq, refineBonuses } from '../../core/stats';
 import type { DollState, Item, TipCtx } from '../../core/types';
 import { iconStyle } from '../../data/assets';
-import { catItems, getItem, isStaleDataError, useCatalog } from '../../data/catalog';
+import { catItems, pickableItems, getItem, isStaleDataError, useCatalog } from '../../data/catalog';
 import { DOC_LIMITS, SLOT_CAT, isSetSlotKey, type Cat, type ItemInst, type SlotKey } from '../../model/doc';
 import { gemOk } from '../../model/gemOk';
 import { CFG_MAIN, effectiveSlots, findSet, instStats, inventoryOf, ownSlots, toDollState, whereWorn, type HydratedInst } from '../../model/hydrate';
@@ -283,7 +283,7 @@ export function PickerModal({ target }: { target: PickerTarget }) {
   const { ready, error, retry } = useCatalog([cat]);
   // Камені для блоку «Одразу налаштувати» — окремо: їхня помилка не має ховати список речей.
   const ob = useCatalog(sockets > 0 ? ['ob'] : []);
-  const items = ready ? catItems(cat) : null;
+  const items = ready ? pickableItems(cat) : null;
   const gemsAll: Item[] | null = sockets > 0 && ob.ready ? catItems('ob') : null;
   const build: DollState = useMemo(() => toDollState(model, cfgId), [model, cfgId]);
   const gearAttr = useMemo(() => computeStats(build).gearAttr, [build]);

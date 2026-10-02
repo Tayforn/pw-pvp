@@ -36,7 +36,7 @@ import { BuffCfgModal } from '../modals/BuffCfgModal';
 import { BuffPickModal, buffPickRows, PICK_CLASSES } from '../modals/BuffPickModal';
 import { DeleteSetModal } from '../modals/DeleteSetModal';
 import { EditorModal, replaceBasePatch, restoreBasePatch, STAT_OPTIONS } from '../modals/EditorModal';
-import { classText, genieBlockText, genieGridRows, GenieModal, kindShort, onLand, terrainText } from '../modals/GenieModal';
+import { classText, genieBlockText, genieGridRows, GenieModal, kindShort, terrainText } from '../modals/GenieModal';
 import { OpponentModal, parseOppNum } from '../modals/OpponentModal';
 import { isNoopPatch, keyStats, PickerModal, withSocket } from '../modals/PickerModal';
 import { BuffTip } from '../tip/BuffTip';
@@ -256,13 +256,14 @@ describe('пікер', () => {
   });
 
   it('слот: рядки списку — один поточний із tabIndex 0, бейдж «надіто», клавіатура без зайвих табів', () => {
-    // Джин: 5 речей каталогу — усі в межах вікна рядків; надіта «Душа Тай Инь» (#1) обрана й позначена.
+    // Джин: 4 речі для вибору («Тао Лі» прибрано з вибору, 02.10.2026); надіта «Душа Тай Инь» (#1) обрана й позначена.
     const doc = docFrom('typical-by');
     const html = renderIn(doc, <PickerModal target={{ cfgId: CFG_MAIN, slot: 'pk' }} />);
     const text = visible(html);
-    expect((html.match(/class="doll-pk-row/g) || []).length).toBe(5);
+    expect((html.match(/class="doll-pk-row/g) || []).length).toBe(4);
+    expect(text).not.toContain('Тао Лі');
     expect((html.match(/class="doll-pk-row is-cur"[^>]*tabindex="0"/g) || []).length).toBe(1);
-    expect((html.match(/class="doll-pk-row"[^>]*tabindex="-1"/g) || []).length).toBe(4);
+    expect((html.match(/class="doll-pk-row"[^>]*tabindex="-1"/g) || []).length).toBe(3);
     expect(html).toMatch(/is-cur"[^>]*aria-current="true"/);
     expect(html).toContain('<span class="doll-pick-tag">надіто</span>');
     expect(text).toContain('Душа Тай Инь');
@@ -402,7 +403,7 @@ describe('вікно джина', () => {
   const EMPTY_G = { level: 1, luck: 0, skills: [] as number[] };
   const fullDoc = (): CharacterDoc => ({ ...docFrom('typical-by'), genie: { level: 100, luck: 91, skills: CHEAP } });
 
-  it('без джина: вікно xl з двома панелями, 81 наземна плитка, вид з каталогу pk, пігулка «не заповнено»', () => {
+  it('без джина: вікно xl з двома панелями, усі 91 плитка, вид з каталогу pk, пігулка «не заповнено»', () => {
     const doc = docFrom('typical-by');
     const html = renderIn(doc, <GenieModal />);
     const text = visible(html);
@@ -411,10 +412,11 @@ describe('вікно джина', () => {
     expect(html).toContain('doll-modal-xl doll-modal-split doll-modal-genie');
     expect(text).toContain('Джин');
     expect(text).toContain('Збірка · 0 / 8');
-    expect((html.match(/class="doll-gw-tile/g) || []).length).toBe(81);
-    expect(text).toContain('Усі вміння · 81 наземних');
-    // вид: 5 речей каталогу + «без джина»; у фікстурі надіта «Душа Тай Инь»
-    expect((html.match(/class="doll-gw-kind(?: is-on)?"/g) || []).length).toBe(6);
+    expect((html.match(/class="doll-gw-tile/g) || []).length).toBe(91);
+    expect(text).toContain('Усі вміння · 91');
+    // вид: 4 речі для вибору + «без джина»; у фікстурі надіта «Душа Тай Инь»
+    expect((html.match(/class="doll-gw-kind(?: is-on)?"/g) || []).length).toBe(5);
+    expect(text).not.toContain('Тао Лі');
     expect(html).toMatch(/class="doll-gw-kind is-on" aria-pressed="true"[^>]*>Тай Инь</);
     expect(text).toContain('без джина');
     // смуга — два рядки: «Вид» з пігулками (і «без джина»), потім рівень, удача й пігулка балів
@@ -426,14 +428,13 @@ describe('вікно джина', () => {
     expect(text).toContain('не заповнено · 0 у скор');
     expect(text).not.toContain('макс.'); // підказка «макс. удачі» лише для заповненого джина
     // можна додати стільки, скільки правила пускають на 1 рівні з удачею 0
-    const avail = GENIE_SKILLS.filter((s) => onLand(s) && !whyBlocked(s.ref, EMPTY_G, clsBit('by'))).length;
+    const avail = GENIE_SKILLS.filter((s) => !whyBlocked(s.ref, EMPTY_G, clsBit('by'))).length;
     expect(avail).toBeGreaterThan(0);
     expect(text).toContain('можна додати: ' + avail);
-    // перемикач «Наземні / Усі 91» (не «Суша»): підказка каже, що саме ховається
-    expect(html).toMatch(/aria-checked="true"[^>]*>Наземні</);
-    expect(html).toContain('title="Наземні: ховає 10 вмінь, що працюють лише у воді чи в повітрі"');
-    expect(text).not.toContain('Суша');
-    expect(text).toContain('Усі 91');
+    // перемикача місцевості немає (рішення власника 02.10.2026): у сітці всі 91 вміння
+    expect(text).not.toContain('Наземні');
+    expect(html).not.toContain('Які вміння показати');
+    expect(text).toContain('Усі вміння · 91');
     expect(text).toContain('лише доступні');
     expect(html).toContain('aria-label="Пошук вміння"');
     expect(text).toContain('Обери вміння в сітці');
@@ -441,21 +442,20 @@ describe('вікно джина', () => {
     expect(text).toContain('Готово');
     // одна плитка з tabIndex 0 (перша), решта −1
     expect((html.match(/tabindex="0"/g) || []).length).toBe(1);
-    expect((html.match(/tabindex="-1"/g) || []).length).toBe(81); // 80 плиток + корінь вікна
+    expect((html.match(/tabindex="-1"/g) || []).length).toBe(91); // 90 плиток + корінь вікна
     expect(text).not.toMatch(/NaN|undefined|Infinity|\[object/);
   });
 
-  it('фільтри сітки: наземні 81 / усі 91, пошук за назвою, «лише доступні» за правилами (збірка лишається)', () => {
+  it('фільтри сітки: усі 91, пошук за назвою, «лише доступні» за правилами (збірка лишається)', () => {
     const bit = clsBit('by');
-    expect(genieGridRows({ terrain: 'land', q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(81);
-    expect(genieGridRows({ terrain: 'all', q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(91);
-    expect(genieGridRows({ terrain: 'all', q: 'жало', onlyAvail: false, cfg: EMPTY_G, bit }).map((s) => s.ref)).toEqual([10001]);
-    const avail = genieGridRows({ terrain: 'all', q: '', onlyAvail: true, cfg: EMPTY_G, bit });
+    expect(genieGridRows({ q: '', onlyAvail: false, cfg: EMPTY_G, bit })).toHaveLength(91);
+    expect(genieGridRows({ q: 'жало', onlyAvail: false, cfg: EMPTY_G, bit }).map((s) => s.ref)).toEqual([10001]);
+    const avail = genieGridRows({ q: '', onlyAvail: true, cfg: EMPTY_G, bit });
     expect(avail.every((s) => !whyBlocked(s.ref, EMPTY_G, bit))).toBe(true);
     expect(avail.length).toBeGreaterThan(0);
     expect(avail.length).toBeLessThan(91);
     const full = { level: 100, luck: 91, skills: CHEAP };
-    expect(genieGridRows({ terrain: 'all', q: '', onlyAvail: true, cfg: full, bit }).map((s) => s.ref).sort()).toEqual([...CHEAP].sort());
+    expect(genieGridRows({ q: '', onlyAvail: true, cfg: full, bit }).map((s) => s.ref).sort()).toEqual([...CHEAP].sort());
   });
 
   it('повна збірка і відкрите вміння: плитки «у збірці» з ✓, поточна — aria-current і tabIndex 0, решта недоступні з причиною; картка «Якщо прибрати»', () => {
@@ -465,7 +465,7 @@ describe('вікно джина', () => {
     expect((html.match(/class="doll-gw-mark"/g) || []).length).toBe(8);
     expect((html.match(/aria-pressed="true" aria-current="true"/g) || []).length).toBe(1);
     expect(html).toMatch(/class="doll-gw-tile is-picked is-cur"[^>]*aria-label="Одужання — у збірці"/);
-    expect((html.match(/class="doll-gw-tile is-blocked"/g) || []).length).toBe(81 - 8);
+    expect((html.match(/class="doll-gw-tile is-blocked"/g) || []).length).toBe(91 - 8);
     expect(html).toMatch(/aria-disabled="true"/);
     expect(html).toMatch(/aria-label="[^"]+ — не додати: у джина лише 8 вмінь — спершу прибери якесь"/);
     expect((html.match(/tabindex="0"/g) || []).length).toBe(1);
@@ -520,7 +520,7 @@ describe('вікно джина', () => {
     expect(text).toContain('лише перегляд');
     expect(html).toMatch(/aria-label="Рівень джина" disabled=""/);
     expect(html).toMatch(/aria-label="Удача джина" disabled=""/);
-    expect((html.match(/class="doll-gw-kind[^"]*" aria-pressed="(?:true|false)" title="[^"]*" disabled=""/g) || []).length).toBe(5);
+    expect((html.match(/class="doll-gw-kind[^"]*" aria-pressed="(?:true|false)" title="[^"]*" disabled=""/g) || []).length).toBe(4);
     expect(html).not.toMatch(/aria-label="Вищий рівень джина"(?! disabled)/);
     expect(html).toMatch(/aria-label="Відкрити: Одужання"/);
   });
@@ -539,8 +539,6 @@ describe('вікно джина', () => {
     expect(terrainText(0x4000 | 0x10000)).toBe('лише на суші та в повітрі');
     expect(kindShort('Душа Тай Чин')).toBe('Тай Чин');
     expect(kindShort("Прическа 'Тао Лі'")).toBe('Тао Лі');
-    expect(onLand(GENIE_SKILLS.find((s) => s.ref === 10141)!)).toBe(false); // «Ловкость ветра» — лише повітря
-    expect(GENIE_SKILLS.filter(onLand)).toHaveLength(81);
   });
 });
 

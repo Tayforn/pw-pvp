@@ -4,8 +4,7 @@
 // 1) «Вид» і пігулки виду (5 речей каталогу pk → слот pk Головного, «без
 // джина» — зняти); 2) рівень і удача з кроками −/+, «макс. N», праворуч
 // пігулка діапазону шкали й балів. Ліворуч: «Збірка n/8» (клік по слоту —
-// прибрати), 4 підсумки й 5 стихій, пошук, «Наземні / Усі 91» (типово
-// «Наземні» ховає 10 вмінь, що працюють лише у воді чи в повітрі), «лише доступні»,
+// прибрати), 4 підсумки й 5 стихій, пошук (показуються всі вміння), «лише доступні»,
 // сітка плиток 32 px зі спрайта (src/data/genieIcon.ts). Праворуч — картка
 // вміння: назва, рівні 1–10 лише для чисел тексту, факти з таблиці правил
 // (рівень джина від, спорідненість, клас, місцевість), опис із сегментів
@@ -34,7 +33,7 @@ import {
 import { genieIconStyle } from '../../../data/genieIcon';
 import { useRules } from '../../../data/rulesStore';
 import type { Item } from '../../core/types';
-import { catItems, isStaleDataError, useCatalog } from '../../data/catalog';
+import { pickableItems, isStaleDataError, useCatalog } from '../../data/catalog';
 import { genieSkillText, useGenieText } from '../../data/genieText';
 import { CLS_KEYS } from '../../model/doc';
 import { CFG_MAIN } from '../../model/hydrate';
@@ -48,22 +47,14 @@ import { isCoarsePointer } from '../tip/useTip';
 import { ModalShell } from './ModalShell';
 import '../doll-panels.css';
 
-export type GenieTerrain = 'land' | 'all';
 
 /** Джин, якого ще не заповнювали: так його бачать і операції (ops.genieOr). */
 const EMPTY_GENIE: GenieCfg = { level: 1, luck: 0, skills: [] };
 
-/** Наземне вміння: без обмеження місцевості або з сушею в масці;
- * перемикач «Наземні» ховає лише ті, що тільки для води чи повітря. */
-export function onLand(s: GenieSkill): boolean {
-  return !((s.ter & (TERRAIN_WATER | TERRAIN_AIR)) !== 0 && (s.ter & TERRAIN_LAND) === 0);
-}
-
-/** Плитки сітки за фільтрами: місцевість, пошук за назвою, «лише доступні» (у збірці — лишаються). */
-export function genieGridRows(opts: { terrain: GenieTerrain; q: string; onlyAvail: boolean; cfg: GenieCfg; bit: number }): GenieSkill[] {
+/** Плитки сітки за фільтрами: пошук за назвою, «лише доступні» (у збірці — лишаються). */
+export function genieGridRows(opts: { q: string; onlyAvail: boolean; cfg: GenieCfg; bit: number }): GenieSkill[] {
   const q = opts.q.trim().toLowerCase();
   return GENIE_SKILLS.filter((s) => {
-    if (opts.terrain === 'land' && !onLand(s)) return false;
     if (q && !s.name.toLowerCase().includes(q)) return false;
     if (opts.onlyAvail && !opts.cfg.skills.includes(s.ref) && whyBlocked(s.ref, opts.cfg, opts.bit)) return false;
     return true;
@@ -154,15 +145,10 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
 
   // Вид джина — 5 речей каталогу pk; надіта — у слоті pk Головного.
   const pk = useCatalog(['pk']);
-  const kinds: Item[] | null = pk.ready ? catItems('pk') : null;
+  const kinds: Item[] | null = pk.ready ? pickableItems('pk') : null;
   const curKind = doc.main.pk ? model.items.get(doc.main.pk) : undefined;
   const curKindId = curKind?.inst.id;
 
-  // «Наземні» типово; якщо відкрито на вмінні лише для води/повітря — одразу «Усі», щоб його було видно.
-  const [terrain, setTerrain] = useState<GenieTerrain>(() => {
-    const s = initialRef != null ? genieSkill(initialRef) : undefined;
-    return s && !onLand(s) ? 'all' : 'land';
-  });
   const [q, setQ] = useState('');
   const [onlyAvail, setOnlyAvail] = useState(false);
   const [lvl, setLvl] = useState(1);
@@ -175,13 +161,8 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
 
   const txt = useGenieText();
 
-  const rows = useMemo(() => genieGridRows({ terrain, q, onlyAvail, cfg: g, bit }), [terrain, q, onlyAvail, g, bit]);
-  const landN = useMemo(() => GENIE_SKILLS.filter(onLand).length, []);
-  const landHint = 'Наземні: ховає ' + (GENIE_SKILLS.length - landN) + ' вмінь, що працюють лише у воді чи в повітрі';
-  const availN = useMemo(
-    () => GENIE_SKILLS.filter((s) => (terrain === 'all' || onLand(s)) && !g.skills.includes(s.ref) && !whyBlocked(s.ref, g, bit)).length,
-    [terrain, g, bit],
-  );
+  const rows = useMemo(() => genieGridRows({ q, onlyAvail, cfg: g, bit }), [q, onlyAvail, g, bit]);
+  const availN = useMemo(() => GENIE_SKILLS.filter((s) => !g.skills.includes(s.ref) && !whyBlocked(s.ref, g, bit)).length, [g, bit]);
 
   const skill = cur != null ? genieSkill(cur) : undefined;
   const curRef = skill?.ref ?? null;
@@ -423,7 +404,7 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
           </div>
 
           <div className="doll-gw-sec">
-            <span>Усі вміння · {terrain === 'land' ? landN + ' наземних' : GENIE_SKILLS.length}</span>
+            <span>Усі вміння · {GENIE_SKILLS.length}</span>
             <i>можна додати: {availN}</i>
           </div>
           <div className="doll-gw-filter">
@@ -441,14 +422,6 @@ export function GenieModal({ initialRef }: { initialRef?: number }) {
                 focusTile(tabRef);
               }}
             />
-            <div className="doll-seg doll-seg-xs" role="radiogroup" aria-label="Які вміння показати" title={landHint}>
-              <button type="button" role="radio" aria-checked={terrain === 'land'} className={terrain === 'land' ? 'is-on' : ''} title={landHint} onClick={() => setTerrain('land')}>
-                Наземні
-              </button>
-              <button type="button" role="radio" aria-checked={terrain === 'all'} className={terrain === 'all' ? 'is-on' : ''} title="Усі вміння, і ті, що працюють лише у воді чи в повітрі" onClick={() => setTerrain('all')}>
-                Усі {GENIE_SKILLS.length}
-              </button>
-            </div>
             <label className="doll-gw-avail">
               <input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} /> лише доступні
             </label>

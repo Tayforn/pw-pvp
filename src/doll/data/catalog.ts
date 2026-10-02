@@ -141,6 +141,17 @@ export function catItems(cat: string): Item[] | null {
   return entries.get(cat)?.items ?? null;
 }
 
+/** Речі, яких немає у виборі (рішення власника): вид джина «Тао Лі» (pk id 5, 02.10.2026).
+ * З каталогу їх не видаляємо — ляльки, де річ уже надіта, читаються як раніше. */
+export const HIDDEN_FROM_PICK: Readonly<Record<string, ReadonlySet<number>>> = { pk: new Set([5]) };
+
+/** Речі категорії для вибору (пікер, види джина) — без HIDDEN_FROM_PICK. */
+export function pickableItems(cat: string): Item[] | null {
+  const items = catItems(cat);
+  const hidden = HIDDEN_FROM_PICK[cat];
+  return items && hidden ? items.filter((it) => !hidden.has(it.id)) : items;
+}
+
 /**
  * Підставити категорії каталогу готовими масивами — без fetch: бекенд у Node
  * (src/server/scorer.ts — статичні JSON-імпорти, вбудовані в бандл) і тести.
