@@ -11,29 +11,7 @@ import type { Tournament, TournamentSeries } from '../data/types';
 import { isRegistrationOpen, STATUS_LABELS } from '../data/types';
 import { fetchPublicTournaments, subscribeToTournamentChanges } from '../data/tournaments';
 import { fetchPodium, type Podium as PodiumData } from '../data/bracket';
-import Podium from '../components/Podium';
-
-interface WinStat {
-  nickname: string;
-  count: number;
-}
-
-/** Порядок рядків складу під п'єдесталом (1 → 2 → 3). */
-const PODIUM_PLACES = [
-  { key: 'first' as const, medal: '🥇' },
-  { key: 'second' as const, medal: '🥈' },
-  { key: 'third' as const, medal: '🥉' },
-];
-
-/** Українська форма слова "перемога" залежно від числа (1/2-4/5+, з винятком
- * для 11-14, які завжди "перемог" попри останню цифру). */
-function winsWord(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'перемога';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'перемоги';
-  return 'перемог';
-}
+import WinnersCard, { type WinStat } from '../components/WinnersCard';
 
 export default function HomePage({ series, onNavigate }: { series: TournamentSeries[]; onNavigate: (r: Route) => void }) {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -124,41 +102,14 @@ export default function HomePage({ series, onNavigate }: { series: TournamentSer
         ✍ Зареєструватися
       </a>
 
-      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
-        <h3 style={{ marginTop: 0 }}>{latest ? `Переможці: ${latest.name}` : 'Переможці'}</h3>
-        {!latest && <p className="hint">Ще не було жодного турніру.</p>}
-        {latest && !podium && <span className="badge warn">{STATUS_LABELS[latest.status]}</span>}
-        {latest && podium && <Podium podium={podium} caption={latest.eventDate} />}
-        {/* Склади згенерованих команд фул-рандому — на п'єдесталі лише назва
-            команди, а перемога зарахована гравцям, тож показуємо, хто це. */}
-        {latest && podium && PODIUM_PLACES.some((p) => podium.members[p.key]?.length) && (
-          <div className="hint" style={{ textAlign: 'center', marginTop: 6 }}>
-            {PODIUM_PLACES.map((p) => {
-              const members = podium.members[p.key];
-              return members && members.length > 0 ? (
-                <div key={p.key}>{p.medal} {podium[p.key]}: {members.join(', ')}</div>
-              ) : null;
-            })}
-          </div>
-        )}
-
-        {winStats.length > 0 && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-            <h4 style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Статистика перемог
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {winStats.slice(0, 10).map((s, i) => (
-                <div key={s.nickname} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="hint" style={{ margin: 0, width: 18, textAlign: 'right' }}>{i + 1}.</span>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.nickname}</span>
-                  <span className="badge mute">{s.count} {winsWord(s.count)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <WinnersCard
+        name={latest?.name ?? null}
+        eventDate={latest?.eventDate ?? null}
+        statusLabel={latest ? STATUS_LABELS[latest.status] : null}
+        podium={podium}
+        stats={winStats}
+        onOpen={latest ? () => onNavigate({ name: 'tournament', id: latest.id }) : null}
+      />
 
       <h3>Найближчі турніри</h3>
       {loading ? (
