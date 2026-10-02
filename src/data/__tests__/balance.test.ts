@@ -127,7 +127,7 @@ describe('formTeams', () => {
     expect(a.snapshot.inputHash).not.toBe(b.snapshot.inputHash);
     expect(a.snapshot.players.map((x) => x[0])).toEqual(players.map((p) => p.id).sort());
     expect(a.snapshot.algoVersion).toBe(ALGO_VERSION); // teams-ls-v5: сила й правило 4 для пар
-    expect(a.snapshot.players[0].length).toBe(5); // id, клас, score, kill, amp
+    expect(a.snapshot.players[0].length).toBe(6); // id, клас, score, kill, amp, сторона шляху
   });
 });
 
@@ -611,6 +611,24 @@ describe('teamStrengthFromSnapshot: сила при читанні зі скла
   const m = (registrationId: string, charClass: CharClass, score: number) => ({ registrationId, charClass, score });
   const before = [m('a', 'archer', 250), m('c', 'cleric', 100), m('s', 'seeker', 150)];
   const after = [m('a', 'archer', 250), m('w', 'wizard', 100), m('s', 'seeker', 150)];
+
+  it('сторона зі знімка (v6) важить при bySide: демон-Лучник без бафу демона дає менше; без сторони — сильніша', () => {
+    // таблиця, де Лучник-демон фізикам нічого не дає, а мудрець — як рекомендовано
+    const pct = JSON.parse(JSON.stringify(RECOMMENDED_BUFFS_PCT)) as BuffRules['pct'];
+    pct.archer.noKx.je = { phys: 0, mag: 0 };
+    const bs = withBuffs(rules, { pct, bySide: true });
+    const withSide = (side: 'rs' | 'je' | null) => ({
+      ...stats,
+      players: stats.players.map((p) => (p[0] === 'a' ? ([p[0], p[1], p[2], p[3], p[4], side] as typeof p) : p)),
+    });
+    const rs = teamStrengthFromSnapshot(before, withSide('rs'), bs);
+    const je = teamStrengthFromSnapshot(before, withSide('je'), bs);
+    const none = teamStrengthFromSnapshot(before, stats, bs);
+    expect(je.buff).toBeLessThan(rs.buff);
+    expect(none.buff).toBeCloseTo(rs.buff, 9); // без сторони — сильніша (мудрець)
+    // без bySide сторона не важить
+    expect(teamStrengthFromSnapshot(before, withSide('je'), withBuffs(rules, { pct })).buff).toBeCloseTo(rs.buff, 9);
+  });
 
   it('заміна Приста на Мага з тим самим скором змінює силу, а не гір', () => {
     const b = teamStrengthFromSnapshot(before, stats, on);

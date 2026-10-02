@@ -14,7 +14,7 @@ vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: 
 
 import { BUILTIN_RULES_VERSION, classPointsFor, computeGearScoreWith, normalizeRules, registerRules, rulesFor } from '../gearRules';
 import type { PlayerRating } from '../ratings';
-import { hasItemPointsRows, isUnverifiedV2, itemPointsVersionFor, playerScore, playersForBalance, scoreBreakdown, unverifiedForBalance, unverifiedReason } from '../teams';
+import { hasItemPointsRows, isUnverifiedV2, itemPointsVersionFor, playerScore, playersForBalance, sideOfRegistration, scoreBreakdown, unverifiedForBalance, unverifiedReason } from '../teams';
 import type { ItemBreakdown, PlayerGear, Registration, Tournament } from '../types';
 
 const GEAR: PlayerGear = {
@@ -82,6 +82,11 @@ describe('scoreBreakdown / playerScore: гір — registrationScore', () => {
     expect(ps[0].score).toBe(294);
     expect(ps[1].score).toBe(computeGearScoreWith(GEAR, rules, 3));
     expect(ps[0].cls).toBe('archer');
+    // сторона шляху — з ляльки заявки; не обрано / немає знімка — null
+    expect(ps.map((p) => p.side)).toEqual([null, null]);
+    const sided = playersForBalance(T, [reg({ characterSnapshot: { v: 2, path: 'je' } }), reg({ id: 'r6', nickname: 'F', characterSnapshot: { v: 2, path: 'rs' } }), reg({ id: 'r7', nickname: 'G', characterSnapshot: { v: 2, path: 'xx' } })]);
+    expect(sided.map((p) => p.side)).toEqual(['je', 'rs', null]);
+    expect(sideOfRegistration({ characterSnapshot: null })).toBeNull();
   });
 });
 

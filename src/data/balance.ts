@@ -35,7 +35,7 @@ import type { BalanceSnapshot, CharClass } from './types';
 import { ROLES, isPhysClass, type BalanceRules, type BuffRules, type BuffSide, type KxMode, type Role } from './gearRules';
 import type { BuffOptions } from './ruleFlags';
 
-export const ALGO_VERSION = 'teams-ls-v5';
+export const ALGO_VERSION = 'teams-ls-v6';
 
 /** Повний ДД — kill не нижче цього (Лук/Сін/Шаман/Маг у ДД-збірці). */
 export const FULL_DD_KILL = 0.8;
@@ -288,8 +288,16 @@ export function teamStrengthFromSnapshot(
   const b = stats.buffs;
   if (!b?.enabled) return { total, buff: 0, strength: total };
   const killById = new Map<string, number | undefined>();
-  for (const p of stats.players) killById.set(p[0], p[3]);
-  const team = members.map((m) => ({ cls: m.charClass, score: m.score, kill: killById.get(m.registrationId) ?? rules.composition.profiles[m.charClass].kill, side: null }));
+  const sideById = new Map<string, BuffSide | null>();
+  for (const p of stats.players) {
+    killById.set(p[0], p[3]);
+    sideById.set(p[0], p[5] === 'rs' || p[5] === 'je' ? p[5] : null);
+  }
+  // сторона — зі знімка (з v6); старі знімки й заміни без неї — сильніша сторона
+  const team = members.map((m) => ({
+    cls: m.charClass, score: m.score, kill: killById.get(m.registrationId) ?? rules.composition.profiles[m.charClass].kill,
+    side: sideById.get(m.registrationId) ?? null,
+  }));
   let buff = 0;
   for (const p of team) buff += (p.score * buffPctTo(p, team, rules, b.kx, stats.teamSize)) / 100;
   return { total, buff, strength: total + buff };
@@ -599,7 +607,8 @@ export function formTeams(input: BalancePlayer[], opts: FormTeamsOptions): FormT
   const cands = list.filter((s) => s.penalty <= list[0].penalty + rules.epsilon).slice(0, rules.topN);
   const chosen = cands[Math.floor(rng() * cands.length)];
 
-  const snapshotPlayers: Array<[string, CharClass, number, number, number]> = players.map((p) => [p.id, p.cls, p.score, p.kill, p.amp]);
+  // v6: + сторона шляху (бафи за стороною дарувальника, коли bySide)
+  const snapshotPlayers: Array<[string, CharClass, number, number, number, BuffSide | null]> = players.map((p) => [p.id, p.cls, p.score, p.kill, p.amp, p.side ?? null]);
   const snapshot: BalanceSnapshot = {
     algoVersion: ALGO_VERSION,
     rulesVersion: opts.rulesVersion,

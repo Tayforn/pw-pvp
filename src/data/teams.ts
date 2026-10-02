@@ -7,7 +7,7 @@
 import { supabase } from '../app/supabaseClient';
 import type { BalanceStats, Registration, Tier, Tournament } from './types';
 import { isBalancedRandom } from './types';
-import { currentRulesVersion, hasRulesVersion, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor } from './gearRules';
+import { currentRulesVersion, hasRulesVersion, playerProfile, ratingBonus, registrationScore, rulesFor, tierFor, type BuffSide } from './gearRules';
 import { evaluateTeams, teamStrengthFromSnapshot, type BalancePlayer, type FormTeamsResult } from './balance';
 import { resolveBuffOptions, type BuffOptions } from './ruleFlags';
 import { ratingOf, type PlayerRating } from './ratings';
@@ -103,6 +103,14 @@ export function playerScore(r: Registration, version: string, ratings: Map<strin
 
 /** Підтверджені гравці з анкетою → вхід алгоритму (score за версією правил турніру,
  * з ручною корекцією і бонусом за рейтинг, якщо рейтинги передано). */
+/** Сторона шляху з ляльки заявки (doc.path: 'rs' мудрець / 'je' демон); не обрано чи
+ * немає знімка — null (жеребка тоді бере сильнішу сторону бафів). */
+export function sideOfRegistration(r: Pick<Registration, 'characterSnapshot'>): BuffSide | null {
+  const s = r.characterSnapshot;
+  const path = s && typeof s === 'object' && !Array.isArray(s) ? (s as { path?: unknown }).path : null;
+  return path === 'rs' || path === 'je' ? path : null;
+}
+
 export function playersForBalance(t: Tournament, regs: Registration[], ratings?: Map<string, PlayerRating>): BalancePlayer[] {
   const version = rulesVersionFor(t);
   const comp = rulesFor(version).balance.composition;
@@ -110,6 +118,7 @@ export function playersForBalance(t: Tournament, regs: Registration[], ratings?:
     .filter((r) => r.kind === 'player' && r.status === 'confirmed' && r.gear)
     .map((r) => ({
       id: r.id, nickname: r.nickname, cls: r.gear!.charClass, score: playerScore(r, version, ratings, t.teamSize)!, createdAt: r.createdAt,
+      side: sideOfRegistration(r),
       ...playerProfile(r.gear!.charClass, r.gear!.build, comp),
     }));
 }

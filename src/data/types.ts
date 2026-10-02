@@ -114,9 +114,10 @@ export interface BalanceSnapshot {
   teamCount: number;
   reservePolicy: string;
   inputHash: string;
-  /** [registrationId, клас, score, kill, amp] — відсортовано за id; kill/amp
-   * (профіль для рольового шару, teams-ls-v2) у старих знімках відсутні. */
-  players: Array<[string, CharClass, number, number?, number?]>;
+  /** [registrationId, клас, score, kill, amp, сторона шляху] — відсортовано за id;
+   * kill/amp (профіль для рольового шару, teams-ls-v2) у старих знімках відсутні,
+   * сторона ('rs' мудрець / 'je' демон / null — не обрано в ляльці) — з teams-ls-v6. */
+  players: Array<[string, CharClass, number, number?, number?, ('rs' | 'je' | null)?]>;
   /** Бафи тімейтів (teams-ls-v5): enabled — чи рахувались у силі (галочка у
    * шкалі × правила турніру), source — що казали правила турніру ('none' =
    * «бафи не дозволені»), kx — колонка таблиці, bySide — чи важила сторона.
