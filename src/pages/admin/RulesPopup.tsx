@@ -173,7 +173,8 @@ export default function RulesPopup({ teamSize, teamMode, initial, drawLocked, co
                         inputMode="numeric"
                         value={typeof st.value === 'number' ? st.value : ''}
                         disabled={locked || st.on === false}
-                        style={{ width: 80, padding: '6px 8px', fontSize: 14 }}
+                        className="inline-num"
+                        aria-label={item.labelAdmin.replace('[N]', 'N')}
                         onChange={(e) => setValue(row, e.target.value === '' ? 0 : Number(e.target.value))}
                       />
                       {chips}

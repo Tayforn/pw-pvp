@@ -402,6 +402,19 @@ html[data-theme="light"] .theme-ico-moon { display: inline; }
 .field-row .field > span, .gear-fields .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .checkbox-row { display: flex; align-items: center; gap: 9px; font-size: 14.5px; cursor: pointer; }
 .checkbox-row input { accent-color: var(--accent); width: 17px; height: 17px; cursor: pointer; }
+/* Числове поле в рядку з галочкою (правила турніру: «Кайт / інвіз не довше ніж [N] с») —
+   як поля форми, лише компактне. */
+.checkbox-row input.inline-num {
+  width: 76px; height: 32px; padding: 0 10px; cursor: text;
+  background-color: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2); border-radius: var(--radius);
+  color: var(--text); font: inherit; font-size: 14px; font-variant-numeric: tabular-nums;
+  color-scheme: dark; transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+.checkbox-row input.inline-num:focus {
+  outline: none; border-color: var(--accent);
+  background-color: rgba(var(--accent-3-rgb), 0.06); box-shadow: 0 0 0 3px rgba(var(--accent-3-rgb), 0.15);
+}
+.checkbox-row input.inline-num:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
@@ -488,7 +501,8 @@ html[data-theme="light"] code { background: rgba(120, 84, 38, 0.12); color: var(
 html[data-theme="light"] .field select {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%235c4a2a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
-html[data-theme="light"] .field input, html[data-theme="light"] .field select, html[data-theme="light"] .field textarea {
+html[data-theme="light"] .field input, html[data-theme="light"] .field select, html[data-theme="light"] .field textarea,
+html[data-theme="light"] .checkbox-row input.inline-num {
   color-scheme: light;
 }
 
