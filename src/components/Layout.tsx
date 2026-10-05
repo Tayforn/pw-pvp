@@ -5,7 +5,7 @@
 // /series/:slug, /t/:id) — рендеримо рівно одну сторінку за route.name.
 //
 // Доступ (app/access.ts): гість без входу через Discord бачить лише заявку,
-// «Мої заявки», правила, минулі турніри й ляльку персонажа; /t/:id/bracket — окрема
+// «Мої заявки», правила, минулі турніри, ляльку персонажа і звірку зі скріншотами; /t/:id/bracket — окрема
 // сторінка без шапки й меню (посилання «Поділитися»), відкрита всім.
 // Лялька із заявки (/admin/doll/:id) — лише адміну: не-адмін бачить заглушку
 // з посиланням на адмінку (там форма входу).
@@ -44,6 +44,8 @@ import DevBracketPage from '../pages/DevBracketPage';
 import BracketSharePage from '../pages/BracketSharePage';
 
 const CharacterPage = lazy(() => import('../pages/CharacterPage'));
+// Звірка ляльки зі скріншотами — теж каталог і спрайти, теж ледачий чанк.
+const CheckPage = lazy(() => import('../pages/CheckPage'));
 // Знімок ляльки із заявки в адмінці — той самий редактор, той самий ледачий чанк ляльки.
 const AdminDollPage = lazy(() => import('../pages/AdminDollPage'));
 // Лише dev-збірка: у проді import.meta.env.DEV = false, і гілка з чанком зникає з бандла.
@@ -132,7 +134,7 @@ export default function Layout() {
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-goto]');
       const name = a?.dataset.goto;
-      if (name && ['home', 'tournaments', 'register', 'my', 'rules', 'admin', 'characters'].includes(name)) {
+      if (name && ['home', 'tournaments', 'register', 'my', 'rules', 'admin', 'characters', 'check'].includes(name)) {
         e.preventDefault();
         go({ name } as Route);
       }
@@ -183,6 +185,17 @@ export default function Layout() {
       <LazyPageBoundary key={id ?? 'list'}>
         <Suspense fallback={lazyFallback}>
           <CharacterPage id={id} onNavigate={go} />
+        </Suspense>
+      </LazyPageBoundary>
+    );
+  }
+
+  else if (route.name === 'check') {
+    const id = route.id ?? null;
+    page = (
+      <LazyPageBoundary key={'check:' + (id ?? 'list')}>
+        <Suspense fallback={lazyFallback}>
+          <CheckPage id={id} onNavigate={go} />
         </Suspense>
       </LazyPageBoundary>
     );

@@ -1,0 +1,90 @@
+/* =========================================================
+   ЗВІРКА зі скріншотами — сторінка /check: вибір персонажа, зона для
+   скріншотів і звіт. Кольори — лише токени сайту; клітинки іконок завжди на
+   темній поверхні, як у ляльці (спрайти гри темні).
+   ========================================================= */
+
+.chk { --chk-bad: #ff8a8a; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+html[data-theme='light'] .chk { --chk-bad: var(--bad); }
+.chk-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.chk-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.chk-head h3 { margin: 0; font-size: 17px; }
+.chk-head .hint { margin: 0; flex: 1 1 260px; }
+
+/* ── Смужка персонажа ───────────────────────────────────── */
+.chk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 12px 18px; }
+.chk-bar-name { font-weight: 700; font-size: 16px; }
+.chk-bar-meta { color: var(--text-mute); font-size: 13px; }
+.chk-bar-end { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+/* ── Скріншоти ──────────────────────────────────────────── */
+.chk-drop {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 16px; text-align: center;
+  border: 1px dashed var(--line-2); border-radius: var(--radius-lg); color: var(--text-dim); font-size: 14px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.chk-drop.is-over { border-color: var(--accent); background: rgba(255, 255, 255, 0.03); }
+.chk-drop b { color: var(--text); }
+.chk-drop kbd { padding: 1px 6px; border: 1px solid var(--line-2); border-radius: var(--radius); font: inherit; font-size: 12.5px; color: var(--text); }
+.chk-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.chk-busy { color: var(--accent-3); font-size: 14px; }
+.chk-shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.chk-shot {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--radius-lg); background: rgba(255, 255, 255, 0.02);
+}
+.chk-shot.is-empty { border-style: dashed; color: var(--text-mute); }
+.chk-shot-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; }
+.chk-shot-s { font-size: 13px; color: var(--text-dim); }
+.chk-shot img { align-self: flex-start; max-width: 100%; max-height: 150px; border-radius: var(--radius); border: 1px solid var(--line); }
+.chk-x { padding: 2px 8px; border: 0; background: none; color: var(--text-mute); cursor: pointer; font-size: 15px; }
+.chk-x:hover { color: var(--bad); }
+.chk-tips { margin: 0; padding-left: 18px; color: var(--text-mute); font-size: 13px; line-height: 1.5; }
+
+/* ── Комплекти ──────────────────────────────────────────── */
+.chk-report { display: flex; flex-direction: column; gap: 16px; }
+.chk-cfgs { display: flex; flex-wrap: wrap; gap: 8px; }
+.chk-cfg {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--text-dim); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2); border-radius: var(--radius-pill);
+}
+.chk-cfg:hover { color: var(--text); border-color: var(--accent-2); }
+.chk-cfg.is-on { color: var(--text); border-color: var(--accent); background: rgba(var(--warn-rgb), 0.1); }
+.chk-cfg-n { font-size: 12.5px; color: var(--text-mute); font-weight: 400; }
+
+/* ── Речі ───────────────────────────────────────────────── */
+.chk-cell {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; box-sizing: border-box;
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: #141416; box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.45);
+}
+.chk-thumb { display: block; image-rendering: pixelated; }
+.chk-row {
+  display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr); gap: 10px 16px; align-items: center;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.chk-slot { font-weight: 700; }
+.chk-side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chk-side-t { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.chk-side-l { display: block; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-mute); }
+.chk-act { grid-column: 2 / -1; }
+.chk-fixes { display: flex; flex-wrap: wrap; gap: 8px; }
+.chk-note { font-size: 13px; color: var(--text-dim); }
+.chk-ok { margin: 0; color: var(--good); font-size: 14px; }
+.chk-warn { margin: 0; color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+.chk-same summary { cursor: pointer; color: var(--text-dim); font-size: 14px; }
+.chk-same ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px 16px; }
+.chk-same li { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13.5px; }
+
+/* ── Характеристики ─────────────────────────────────────── */
+.chk-table { width: 100%; max-width: 640px; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.chk-table th { text-align: left; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-mute); font-weight: 600; }
+.chk-table th, .chk-table td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+.chk-table td + td, .chk-table th + th { text-align: right; padding-right: 0; padding-left: 12px; }
+.chk-table tr.is-bad td { color: var(--chk-bad); }
+.chk-table tr.is-bad td:first-child { font-weight: 700; }
+.chk-table tr.is-mute td { color: var(--text-mute); }
+
+@media (max-width: 640px) {
+  .chk-row { grid-template-columns: minmax(0, 1fr); }
+  .chk-act { grid-column: auto; }
+}
