@@ -1,13 +1,13 @@
 // =========================================================
 // СКАН СКРІНШОТІВ — стик із браузером: картинка гравця → растр (через canvas,
-// бо це може бути й JPEG), каталог і спрайти іконок для сканера, вирізки
-// клітинок зі скріншота для показу. Решта сканера про DOM не знає.
+// бо це може бути й JPEG), каталог і спрайти іконок для сканера. Решта сканера
+// про DOM не знає.
 // =========================================================
 
 import { spriteUrl } from '../data/assets';
 import { catItems, ensureCats } from '../data/catalog';
-import { SLOT_CAT, SLOT_KEYS, type SlotKey } from '../model/doc';
-import { ICON, slotRect, type EquipScan, type ScanSource } from './equip';
+import { SLOT_CAT, SLOT_KEYS } from '../model/doc';
+import type { ScanSource } from './equip';
 import { decodePng } from './png';
 import type { Raster } from './raster';
 
@@ -62,9 +62,10 @@ function sprite(url: string): Promise<Raster> {
   return p;
 }
 
-/** Каталог і спрайти всіх слотів, завантажені й розкодовані, — джерело для scanEquip. */
+/** Каталог і спрайти всіх слотів, завантажені й розкодовані, — джерело для scanEquip.
+ * Заодно вантажимо камені (`ob`): їх потребує заповнення ляльки (fill.ts). */
 export async function loadScanSource(): Promise<ScanSource> {
-  await ensureCats(SCAN_CATS);
+  await ensureCats([...SCAN_CATS, 'ob']);
   const ready = new Map<string, Raster>();
   await Promise.all(
     SCAN_CATS.flatMap((cat) =>
@@ -78,20 +79,4 @@ export async function loadScanSource(): Promise<ScanSource> {
     items: (cat) => catItems(cat),
     sprite: (cat, gender) => ready.get(cat + ':' + gender) ?? null,
   };
-}
-
-/** Вирізки клітинок слотів зі скріншота (data-URL 32×32) — показати гравцеві, що побачив сканер. */
-export function slotThumbs(shot: Raster, scan: EquipScan): Partial<Record<SlotKey, string>> {
-  const full = canvasOf(shot.w, shot.h);
-  full.ctx.putImageData(new ImageData(new Uint8ClampedArray(shot.data), shot.w, shot.h), 0, 0);
-  const cell = canvasOf(ICON, ICON);
-  const out: Partial<Record<SlotKey, string>> = {};
-  for (const slot of SLOT_KEYS) {
-    const r = slotRect(scan, slot);
-    if (r.x < 0 || r.y < 0 || r.x + r.w > shot.w || r.y + r.h > shot.h) continue; // клітинку обрізано
-    cell.ctx.clearRect(0, 0, ICON, ICON);
-    cell.ctx.drawImage(full.canvas, r.x, r.y, r.w, r.h, 0, 0, ICON, ICON);
-    out[slot] = cell.canvas.toDataURL('image/png');
-  }
-  return out;
 }

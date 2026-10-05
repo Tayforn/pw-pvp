@@ -6,6 +6,10 @@
 // /api/pvp/characters). Сторінка — окремий ледачий чанк: каталог і спрайти
 // ляльки важать мегабайти, і решта сайту не має їх тягнути.
 //
+// Нового персонажа можна заповнити зі скріншотів гри («Зі скріншотів» у смужці
+// чернетки, src/doll/scan): речі, клас, стать, рівень, камені й атрибути — а
+// числа вікна «Персонаж» лишаються над лялькою підказкою «гра / лялька».
+//
 // Вкладка сету тримається в ?set=<id>: F5 і посилання відкривають той самий
 // сет, а маршрут лишається один.
 //
@@ -15,7 +19,7 @@
 // по меню сайту й «Назад / Вперед», браузер — перед закриттям вкладки.
 // =========================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLeaveGuard } from '../app/leaveGuard';
 import PageMeta from '../app/PageMeta';
 import { useMe } from '../app/useMe';
@@ -28,8 +32,14 @@ import { browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, useD
 import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
 import { mergeImported } from '../doll/model/importCalc';
+import type { FillResult } from '../doll/scan/fill';
+import type { StatsScan } from '../doll/scan/stats';
+import StatsHint from '../doll/scan/ui/StatsHint';
 import { BarTrashButton, SavePill, clsLabel } from '../doll/ui/CharBar';
 import DollEditor from '../doll/ui/DollEditor';
+
+// Сканер скріншотів (шаблони цифр, розбір іконок) — лише тим, хто відкрив панель.
+const ShotsPanel = lazy(() => import('../doll/scan/ui/ShotsPanel'));
 
 const SET_PARAM = 'set';
 
@@ -179,6 +189,9 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   const { doc, setDoc, reset, saveState, loadError, loadWarning, conflict, takeTheirs, keepMine } = useDraft(key);
   const [activeCfg, setActiveCfg] = useActiveCfg();
   const [importOpen, setImportOpen] = useState(false);
+  const [shotsOpen, setShotsOpen] = useState(false);
+  // Числа вікна «Персонаж» зі скріншота — підказка «гра / лялька», доки сторінку не перезавантажено.
+  const [shotStats, setShotStats] = useState<StatsScan | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(
     loadError
@@ -210,6 +223,22 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
     setImportOpen(false);
     const fix = saveBlockers(merged);
     setNotice('Білд із Хелпера перенесено (речей: ' + next.items.length + ').' + (fix ? ' Перед збереженням: ' + fix + '.' : ''));
+  };
+
+  const fillFromShots = (res: FillResult, stats: StatsScan | null) => {
+    const merged = mergeImported(doc, res.doc);
+    reset(merged);
+    setActiveCfg(CFG_MAIN);
+    setShotsOpen(false);
+    if (stats) setShotStats(stats);
+    const fix = saveBlockers(merged);
+    setNotice(
+      'Ляльку заповнено зі скріншотів (речей: ' +
+        res.picks.length +
+        '). Камені й атрибути — припущення: перевір їх. Заточки, роли й гравіювання постав сам' +
+        (stats ? ' — таблиця «Числа з гри» покаже, де ще різниця.' : '.') +
+        (fix ? ' Перед збереженням: ' + fix + '.' : ''),
+    );
   };
 
   const openTheirs = () => {
@@ -246,6 +275,10 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   const barEnd = (
     <>
       <SavePill text={saveBad ? 'не збережено' : 'чернетка'} tone={saveBad ? 'bad' : 'mute'} title={SAVE_TEXT[saveState]} />
+      <button type="button" className="btn btn-ghost btn-sm" aria-expanded={shotsOpen} aria-label="Заповнити зі скріншотів" onClick={() => setShotsOpen((v) => !v)}>
+        <span className="doll-page-hint-long">Зі скріншотів</span>
+        <span className="doll-page-hint-short">Скріни</span>
+      </button>
       <button type="button" className="btn btn-ghost btn-sm" aria-expanded={importOpen} aria-label="Імпорт із Хелпера" onClick={() => setImportOpen((v) => !v)}>
         <span className="doll-page-hint-long">Імпорт із Хелпера</span>
         <span className="doll-page-hint-short">Імпорт</span>
@@ -298,7 +331,13 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
         </div>
       )}
       {notice && <Notice text={notice} onClose={() => setNotice(null)} />}
+      {shotsOpen && (
+        <Suspense fallback={<p className="hint">Завантажую розпізнавання скріншотів…</p>}>
+          <ShotsPanel base={doc} hasWork={hasWork} onFill={fillFromShots} onStats={setShotStats} onClose={() => setShotsOpen(false)} />
+        </Suspense>
+      )}
       {importOpen && <ImportPanel hasWork={hasWork} onImport={importDoc} onClose={() => setImportOpen(false)} />}
+      {shotStats && <StatsHint doc={doc} cfgId={activeCfg} stats={shotStats} onClose={() => setShotStats(null)} />}
     </>
   );
 

@@ -1,0 +1,65 @@
+/* =========================================================
+   ЛЯЛЬКА ЗІ СКРІНШОТІВ — панель «Заповнити зі скріншотів» у редакторі нового
+   персонажа (зона для скріншотів, що розпізнано, що буде заповнено) і
+   підказка «гра / лялька» з числами вікна «Персонаж». Кольори — лише токени сайту.
+   ========================================================= */
+
+.shot { --shot-bad: #ff8a8a; display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; }
+html[data-theme='light'] .shot { --shot-bad: var(--bad); }
+.shot-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.shot-head h3 { margin: 0; font-size: 16px; }
+.shot-head .hint { margin: 0; flex: 1 1 240px; }
+.shot-x { margin-left: auto; padding: 2px 8px; border: 0; background: none; color: var(--text-mute); cursor: pointer; font-size: 15px; }
+.shot-x:hover { color: var(--text); }
+
+/* ── Зона для скріншотів ────────────────────────────────── */
+.shot-drop {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 16px; text-align: center;
+  border: 1px dashed var(--line-2); border-radius: var(--radius-lg); color: var(--text-dim); font-size: 14px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.shot-drop.is-over { border-color: var(--accent); background: rgba(255, 255, 255, 0.03); }
+.shot-drop kbd { padding: 1px 6px; border: 1px solid var(--line-2); border-radius: var(--radius); font: inherit; font-size: 12.5px; color: var(--text); }
+.shot-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.shot-busy { color: var(--accent-3); }
+.shot-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.shot-tile {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--radius-lg); background: rgba(255, 255, 255, 0.02);
+}
+.shot-tile.is-empty { border-style: dashed; color: var(--text-mute); }
+.shot-tile b { font-size: 14px; }
+.shot-tile span { font-size: 13px; color: var(--text-dim); }
+.shot-tile img { align-self: flex-start; max-width: 100%; max-height: 120px; border-radius: var(--radius); border: 1px solid var(--line); }
+.shot-tips { margin: 0; padding-left: 18px; color: var(--text-mute); font-size: 13px; line-height: 1.5; }
+
+/* ── Що буде заповнено ──────────────────────────────────── */
+.shot-plan { display: grid; gap: 8px; margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); font-size: 14px; }
+.shot-plan dt { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-mute); }
+.shot-plan dd { margin: 0; color: var(--text); line-height: 1.5; }
+.shot-plan .is-guess { color: var(--text-dim); }
+.shot-items { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 16px; }
+.shot-items li { min-width: 0; }
+.shot-items i { font-style: normal; color: var(--text-mute); }
+.shot-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+
+/* ── Підказка «гра / лялька» ────────────────────────────── */
+.shot-hint { --shot-bad: #ff8a8a; display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; }
+html[data-theme='light'] .shot-hint { --shot-bad: var(--bad); }
+.shot-hint p { margin: 0; font-size: 13.5px; color: var(--text-dim); line-height: 1.5; }
+.shot-diffs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 4px 20px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.shot-diffs li { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.shot-diffs span { flex: 1 1 auto; min-width: 0; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-diffs b { font-weight: 600; white-space: nowrap; }
+.shot-diffs i { font-style: normal; color: var(--shot-bad); white-space: nowrap; min-width: 52px; text-align: right; }
+.shot-hint summary { cursor: pointer; font-size: 13.5px; color: var(--text-dim); }
+.shot-table { width: 100%; max-width: 560px; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.shot-table th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-mute); font-weight: 600; }
+.shot-table th, .shot-table td { padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); }
+.shot-table td + td, .shot-table th + th { text-align: right; padding-right: 0; padding-left: 12px; }
+.shot-table tr.is-bad td { color: var(--shot-bad); }
+.shot-table tr.is-mute td { color: var(--text-mute); }
+
+@media (max-width: 640px) {
+  .shot, .shot-hint { padding: 14px; }
+}

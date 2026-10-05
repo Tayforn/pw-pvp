@@ -43,8 +43,3 @@ export function readShots(shots: Raster[], src: ScanSource, opts: EquipOpts = {}
     return { stats: statsOk, equip: equipOk, reasons };
   });
 }
-
-/** Розпізнати один знімок. */
-export function readShot(shot: Raster, src: ScanSource, opts: EquipOpts = {}): ShotRead {
-  return readShots([shot], src, opts)[0];
-}

@@ -2,17 +2,17 @@
 // Сканер скріншотів на трьох парах від різних гравців: equip-1 / stats-1 (лучник,
 // масштаб інтерфейсу 1.00), f2 / f1 (страж) і l2 / l1 (містик) — обидві з
 // масштабом 1.04. Очікувані іконки звірено очима, числа — зі скріншотів.
-// Лялька є лише для лучника, і у фікстурі вона зі «старим» трактатом у сеті:
-// звірка має знайти розбіжність, виправити її з інвентаря і після цього
-// збігтися з грою по всіх числах.
+// Справжня лялька є лише для лучника (doll-1.json): на ній перевіряємо, що рушій
+// дає ті самі числа, що й вікно «Персонаж», коли в ляльці надіто те саме, що в грі.
 // =========================================================
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadTestRefData, testCatalog } from '../../core/__tests__/testData';
 import { SLOT_CAT, SLOT_KEYS, validateDoc, type CharacterDoc, type SlotKey } from '../../model/doc';
+import { equip as putOn } from '../../model/ops';
 import { scanEquip, type EquipScan, type ScanSource } from '../equip';
 import { resample, type Raster } from '../raster';
-import { applyFixes, compareStats, matchConfigs, reconcile } from '../reconcile';
+import { compareStats, dollNumbers } from '../compare';
 import { scanStats, type StatKey, type StatsScan } from '../stats';
 import dollJson from './fixtures/doll-1.json';
 import { fixture, testSource } from './load';
@@ -174,66 +174,36 @@ describe('scanStats', () => {
   });
 });
 
-describe('reconcile', () => {
-  let equip: EquipScan;
+describe('compareStats — гра проти ляльки', () => {
+  /** Комплект «ПЗ» ляльки лучника — те, що надіто на скріншотах. */
+  const CFG = 's0000m';
   let stats: StatsScan;
   beforeAll(() => {
-    equip = ok(scanEquip(equipShot, src, { gender: doc.gender, cls: doc.cls, level: doc.level }));
     stats = ok(scanStats(statsShot));
   });
 
-  it('визначає надітий сет і знаходить не ту річ', () => {
-    const rec = reconcile(doc, equip, stats, lookup);
-    expect(rec.cfg.name).toBe('ПЗ');
-    const diffs = rec.cfg.slots.filter((d) => d.status !== 'same');
-    expect(diffs.map((d) => [d.slot, d.status, d.fixIids])).toEqual([['qn', 'swap', ['f']]]);
-    // Головний відрізняється ще й зброєю
-    const main = rec.configs.find((c) => c.cfgId === 'main');
-    expect(main?.slots.filter((d) => d.status !== 'same').map((d) => d.slot).sort()).toEqual(['qn', 'ta']);
+  it('у фікстурі в сеті не той трактат — числа розходяться', () => {
+    const bad = compareStats(doc, CFG, stats, lookup).filter((r) => r.ok === false).map((r) => r.key);
+    expect(bad).toEqual(expect.arrayContaining(['hp', 'vit', 'str', 'dex', 'physMin', 'physDef', 'magDef', 'acc', 'eva']));
   });
 
-  it('до виправлення числа розходяться, після — збігаються всі', () => {
-    const rec = reconcile(doc, equip, stats, lookup);
-    expect(rec.stats?.filter((r) => r.ok === false).map((r) => r.key)).toEqual(
-      expect.arrayContaining(['hp', 'vit', 'str', 'dex', 'physMin', 'physDef', 'magDef', 'acc', 'eva']),
-    );
-    expect(rec.applied).toEqual(['qn']);
-    expect(rec.fixed?.sets.find((s) => s.name === 'ПЗ')?.slots.qn).toBe('f');
-    expect(rec.statsFixed?.filter((r) => r.ok !== true)).toEqual([]);
-    // сам документ не змінено
-    expect(doc.sets.find((s) => s.name === 'ПЗ')?.slots.qn).toBe('3');
+  it('з тим самим трактатом, що в грі, збігаються всі 26 чисел', () => {
+    const fixed = putOn(doc, CFG, 'qn', 'f');
+    const rows = compareStats(fixed, CFG, stats, lookup);
+    expect(rows).toHaveLength(26);
+    expect(rows.filter((r) => r.ok !== true)).toEqual([]);
+    // «Сили Духу» лялька не рахує — у звірці її немає
+    expect(rows.some((r) => r.key === 'soul')).toBe(false);
   });
 
-  it('без скріншота спорядження вибирає конфігурацію за числами', () => {
-    const fixed = applyFixes(doc, matchConfigs(doc, equip, lookup)[2]).doc;
-    const rec = reconcile(fixed, null, stats, lookup);
-    expect(rec.cfg.name).toBe('ПЗ');
-    expect(rec.stats?.every((r) => r.ok)).toBe(true);
-    expect(rec.fixed).toBeNull();
+  it('Головний комплект — інша зброя, інші числа', () => {
+    expect(dollNumbers(doc, 'main', lookup).pa).toBe(85);
+    expect(dollNumbers(putOn(doc, CFG, 'qn', 'f'), CFG, lookup).pa).toBe(35);
   });
 
-  it('кільця на руках навхрест — не розбіжність', () => {
-    const swapped: CharacterDoc = { ...doc, sets: doc.sets.map((s) => (s.name === 'ПЗ' ? { ...s, slots: { ...s.slots, cr: s.slots.cd, cd: s.slots.cr } } : s)) };
-    const cfg = matchConfigs(swapped, equip, lookup).find((c) => c.name === 'ПЗ');
-    expect(cfg?.slots.filter((d) => d.slot === 'cr' || d.slot === 'cd').map((d) => d.status)).toEqual(['same', 'same']);
-  });
-
-  it('порожній у грі слот проти зайнятого в ляльці — «зайва річ»', () => {
-    const scan: EquipScan = { ...equip, slots: { ...equip.slots, wy: { ...equip.slots.wy, state: 'empty', ids: [] } } };
-    const cfg = matchConfigs(doc, scan, lookup).find((c) => c.name === 'ПЗ');
-    expect(cfg?.slots.find((d) => d.slot === 'wy')?.status).toBe('extra');
-  });
-
-  it('не впізнано однозначно, але найсхожіша іконка — та, що в ляльці: збіг', () => {
-    const vague = { ...equip.slots.wy, state: 'unknown' as const, ids: [] };
-    const cfg = (scan: EquipScan) => matchConfigs(doc, scan, lookup).find((c) => c.name === 'ПЗ')?.slots.find((d) => d.slot === 'wy')?.status;
-    expect(cfg({ ...equip, slots: { ...equip.slots, wy: vague } })).toBe('same');
-    expect(cfg({ ...equip, slots: { ...equip.slots, wy: { ...vague, an: 12 } } })).toBe('unsure');
-  });
-
-  it('compareStats: непрочитане число не вважається розбіжністю', () => {
+  it('непрочитане число не вважається розбіжністю', () => {
     const partial: StatsScan = { ...stats, values: { ...stats.values, hp: undefined }, unread: ['hp'] };
-    const row = compareStats(doc, 's0000m', partial, lookup).find((r) => r.key === 'hp');
+    const row = compareStats(doc, CFG, partial, lookup).find((r) => r.key === 'hp');
     expect([row?.game, row?.ok]).toEqual([null, null]);
   });
 });

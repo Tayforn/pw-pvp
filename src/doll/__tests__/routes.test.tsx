@@ -72,38 +72,6 @@ describe('маршрути персонажа', () => {
   });
 });
 
-describe('звірка зі скріншотами — /check', () => {
-  it('розбирається з персонажем і без; routeUrl — зворотне до розбору', () => {
-    expect(parse('/check')).toEqual({ name: 'check' });
-    expect(parse('/check/')).toEqual({ name: 'check' });
-    expect(parse('/check/new')).toEqual({ name: 'check', id: 'new' });
-    expect(parse('/check/ab12_x-9')).toEqual({ name: 'check', id: 'ab12_x-9' });
-    // id зі спецсимволами в сторінку не потрапляє — просто вибір персонажа
-    expect(parse('/check/' + encodeURIComponent('<x>'))).toEqual({ name: 'check' });
-    expect(routeUrl({ name: 'check' })).toBe('/check');
-    expect(routeUrl({ name: 'check', id: 'new' })).toBe('/check/new');
-    expect(parse(routeUrl({ name: 'check', id: 'k7' }))).toEqual({ name: 'check', id: 'k7' });
-    // сусідів не зачеплено
-    expect(parse('/characters/check')).toEqual({ name: 'character', id: 'check' });
-  });
-
-  it('відкрита гостю (звіряє чернетку) і учаснику клану', () => {
-    expect(ROUTE_ACCESS.check).toBe('public');
-    expect(canOpen('check', GUEST)).toBe(true);
-    expect(canOpen('check', { member: true, admin: false })).toBe(true);
-  });
-
-  it('у сайдбарі — окремий пункт «Звірка» після «Персонажа»; на /check/:id підсвічений лише він', () => {
-    const html = renderToStaticMarkup(<Sidebar route={{ name: 'check', id: 'new' }} viewer={GUEST} onNavigate={() => {}} />);
-    expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Звірка/);
-    expect(html.match(/class="tab active"/g)).toHaveLength(1);
-    // сама лялька «Звірку» не підсвічує
-    const doll = renderToStaticMarkup(<Sidebar route={{ name: 'character', id: 'new' }} viewer={GUEST} onNavigate={() => {}} />);
-    expect(doll).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Персонаж/);
-    expect(doll.match(/class="tab active"/g)).toHaveLength(1);
-  });
-});
-
 describe('«Мої заявки» — /my (шлях гравця)', () => {
   it('розбирається й будується назад; хвостовий слеш — те саме', () => {
     expect(parse('/my')).toEqual({ name: 'my' });
@@ -124,7 +92,7 @@ describe('«Мої заявки» — /my (шлях гравця)', () => {
   it('у сайдбарі гостя — «Мої заявки» одразу після «Заявки»; на /my підсвічена лише вона', () => {
     const html = renderToStaticMarkup(<Sidebar route={{ name: 'my' }} viewer={GUEST} onNavigate={() => {}} />);
     const labels = [...html.matchAll(/<span>([^<]+)<\/span><\/button>/g)].map((m) => m[1]);
-    expect(labels).toEqual(['Турніри', 'Заявка', 'Мої заявки', 'Правила', 'Персонаж', 'Звірка']);
+    expect(labels).toEqual(['Турніри', 'Заявка', 'Мої заявки', 'Правила', 'Персонаж']);
     expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Мої заявки/);
     expect(html.match(/class="tab active"/g)).toHaveLength(1);
     // учаснику клану — теж
