@@ -506,7 +506,7 @@ describe('Готовність до турніру', () => {
     expect(text).toContain('Розклад по речах · 189.01 б.');
     expect(text).toContain('Головний');
     expect(text).toContain('Небесний лук');
-    expect(text).toContain('Шлем героя');
+    expect(text).toContain('Шолом героя');
     expect(text).toContain('клас 8 · рівень 10 · джин 0');
     // примітки про нерозпізнані речі — у плашці стану повністю, а не обрізаними рядками розкладу
     expect(text).not.toContain('не розпізнала');

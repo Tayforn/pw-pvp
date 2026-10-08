@@ -127,7 +127,7 @@ describe('скор v2 «від речей»: заявка власника', () 
     const shg = b.main.filter((r) => r.catId === 83);
     expect(shg.map((r) => [r.cfg, r.points, r.why])).toEqual([[0, 0, 'ШГ уже зараховано'], [1, 35, 'ШГ 15 · +12 12 · кам 8']]);
     expect(b.pairBonus).toBe(5);
-    expect(b.warn).toContain('«Шлем героя» у 2 екземплярах');
+    expect(b.warn).toContain('«Шолом героя» у 2 екземплярах');
     // Незмінена копія в сеті — та сама річ: без змін і без примітки.
     const { doc: d2, iid: copy } = duplicateInstance(base, '1');
     const same = scoreItems(equip(d2, 's0000i', 'ft', copy!), rules, lookup);

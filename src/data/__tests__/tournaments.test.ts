@@ -94,7 +94,7 @@ const BREAKDOWN: ItemBreakdown = {
   v: 1, ver: 'balance-v1.0',
   sum: { cls: 8, lvl: 7, genie: 10, main: 251.85, sets: 11.83, setsRaw: 11.83, pair: 5 },
   rows: [[0, 'ta', 1927, 101.17, 'r9r2 60 · +12 25 · кам 1.2 · ka 15'], [2, 'ta', 1816, 21, 'свап: ПЗ 21'], [1, 'qn', 92, 8]],
-  warn: ['«Шлем героя» у 2 екземплярах'],
+  warn: ['«Шолом героя» у 2 екземплярах'],
 };
 
 describe('registrationFromRow: item_points / item_breakdown (0032)', () => {

@@ -182,7 +182,7 @@ describe('готовність до турніру', () => {
     expect(notes).toContain('джин: у джина буває лише одне початкове вміння');
     expect(notes.some((n) => n.startsWith('у старій анкеті стояла галочка ШГ'))).toBe(true);
     expect(notes.some((n) => n.startsWith('у старій анкеті стояла галочка Вознєс'))).toBe(false); // галочки Вознєса не було
-    // «Шлем героя» надіто (фікстура) — нагадування немає
+    // «Шолом героя» надіто (фікстура) — нагадування немає
     const worn = { ...base, sheet: { ...OLD_SHEET, shg: true, voznes: true } };
     expect(issues(worn).notes.some((n) => n.includes('галочка'))).toBe(false);
   });
@@ -197,9 +197,9 @@ describe('готовність до турніру', () => {
     expect(rings).toHaveLength(2);
     expect(rings[0]).toMatch(/^Кільце 1: лялька не розпізнала «.+» — зараховано як «Луна і нижче»$/);
     // інші примітки скору (не про грейди) — теж, кожна один раз
-    const items = { ...scoreItems(doc, rules, lookup), warn: ['«Шлем героя» у 2 екземплярах', '«Шлем героя» у 2 екземплярах'] };
+    const items = { ...scoreItems(doc, rules, lookup), warn: ['«Шолом героя» у 2 екземплярах', '«Шолом героя» у 2 екземплярах'] };
     const dup = readinessIssues(doc, hydrate(doc, lookup), facts, items).notes.filter((n) => n.includes('екземплярах'));
-    expect(dup).toEqual(['«Шлем героя» у 2 екземплярах']);
+    expect(dup).toEqual(['«Шолом героя» у 2 екземплярах']);
     // без результату скору — лише gradeNotes
     expect(readinessIssues(doc, hydrate(doc, lookup), facts).notes.filter((n) => n.includes('не розпізнала'))).toEqual(facts.gradeNotes);
   });

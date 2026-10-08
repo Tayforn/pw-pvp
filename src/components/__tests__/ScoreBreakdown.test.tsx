@@ -26,7 +26,7 @@ const B: ItemBreakdown = {
     [1, 'wy', 54, 3.83, '+9 3.8'],
     [1, 'qn', 92, 8],
   ],
-  warn: ['«Шлем героя» у 2 екземплярах'],
+  warn: ['«Шолом героя» у 2 екземплярах'],
 };
 const NAMES: Record<string, string> = { 'ta:1927': 'Комплект твердині', 'ta:1816': 'Вітер мисливця-тіні', 'qn:56': 'Феникс', 'wy:54': 'Плащ тишины', 'qn:92': 'Девять кудзу' };
 const resolver = (catId: number, slot: string): string | null => NAMES[slot + ':' + catId] ?? null;
@@ -54,7 +54,7 @@ describe('ScoreBreakdown', () => {
     expect(t).toContain('Розклад по речах · 268.68 б.');
     expect(t).toContain('Головний 106.17 б.');
     expect(t).toContain('Головний 251.85 · сети 11.83 (до стелі 31) · ШГ + Вознєс 5 · клас 8 · рівень 7 · джин 10');
-    expect(t).toContain('«Шлем героя» у 2 екземплярах');
+    expect(t).toContain('«Шолом героя» у 2 екземплярах');
     expect(t).not.toMatch(/NaN|undefined|Infinity|\[object/);
   });
 

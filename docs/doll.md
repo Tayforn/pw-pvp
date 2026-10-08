@@ -102,6 +102,11 @@ src/doll/
    `public/assets/items/fe/**`, `yo.png`, `item-cells.png` → `src/doll/data/sprites/`.
    `fu-states.png` і `figure.svg` не потрібні. Нова категорія — це вже зміна коду
    (`CATS` у `catalog.ts`, `SLOTS` у ядрі), а не лише даних.
+   Увага: `name` речей і частин сетів (`sets.json` → `xh[].name`) у pvp
+   переклад за `pw_id` з клієнтських файлів гри (elements.data), тож
+   копіювання json із pw-calc поверне старі (часто російські) назви. Також
+   `core/__tests__/golden/tips.json` містить назви речей (рядок назви, рядки
+   сету, `◆ камінь`), узгоджені з перекладеним каталогом.
 2. `npx vite-node scripts/doll-data-ver.ts` оновить `DOLL_DATA_VER`
    (`--check` лише перевіряє).
 3. `npx vite-node scripts/doll-addon-codes.ts` оновить білий список кодів ролів

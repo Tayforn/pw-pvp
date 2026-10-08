@@ -127,7 +127,7 @@ describe('fillFromShots — нова лялька зі скріншотів', ()
   it('страж і містик: комплектна броня свого класу, зброя — та, що на скріншоті', () => {
     expect(picked(pairs.seeker.fill)).toMatchObject({ ta: 1767, rv: 367, tg: 342, rx: 303, mj: 292, ft: 184, st: 180, qn: 91 });
     expect(picked(pairs.mystic.fill)).toMatchObject({ ta: 1743, rv: 353, tg: 336, rx: 309, mj: 290, ft: 83, wy: 40, st: 177, cd: 180 });
-    // заглушку каталогу «Не используется» з тією ж іконкою шолома не беремо
+    // заглушку каталогу «Не використовується» з тією ж іконкою шолома не беремо
     expect(pairs.seeker.fill.picks.find((p) => p.slot === 'ft')?.others).toContain(171);
   });
 

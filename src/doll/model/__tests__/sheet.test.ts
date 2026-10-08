@@ -169,10 +169,10 @@ describe('анкета персонажа', () => {
     expect(normalizeGemCounts('x')).toBeNull();
   });
 
-  it('ШГ і Вознєс — з ляльки: «Шлем героя» і «Плащ вознесения» в Головному чи в сеті, точка з речі', () => {
+  it('ШГ і Вознєс — з ляльки: «Шолом героя» і «Плащ вознесіння» в Головному чи в сеті, точка з речі', () => {
     const items = [inst('h', 'ft', SHG_ITEM.id, { r: 11 }), inst('c', 'wy', VOZNES_ITEM.id, { r: 7 }), inst('x', 'ft', 179)];
     const none = dollFacts(mkDoc({ items, main: { ft: 'x' } }), rules, lookup);
-    expect([none.shgRefine, none.voznesRefine]).toEqual([null, null]); // «Шлем генерала» — не ШГ; плащ лише в інвентарі
+    expect([none.shgRefine, none.voznesRefine]).toEqual([null, null]); // «Шолом генерала» — не ШГ; плащ лише в інвентарі
     const main = dollFacts(mkDoc({ items, main: { ft: 'h', wy: 'c' } }), rules, lookup);
     expect([main.shgRefine, main.voznesRefine]).toEqual([11, 7]);
     const inSet = dollFacts(mkDoc({ items, main: { ft: 'x' }, sets: [mkSet('s1', { ft: 'h', wy: 'c' })] }), rules, lookup);
