@@ -15,6 +15,7 @@ import { describeSnapshotBuffs } from '../data/ruleFlags';
 import { useRules } from '../data/rulesStore';
 import { rulesVersionFor, teamMembers, teamRows, teamStrengthFor } from '../data/teams';
 import BracketView from '../components/BracketView';
+import BetsCard from '../components/bets/BetsCard';
 import RulesList from '../components/RulesList';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
 import { setNamesOf } from '../components/ScoreBreakdown';
@@ -298,6 +299,9 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
               <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} balanceTeams={tournament.balanceStats?.teams} />
             </div>
           )}
+
+          {/* Ставки в юанях — коефіцієнти всім, хто бачить сітку; ставити — з Discord. */}
+          <BetsCard tournament={tournament} bracket={bracket} registrations={registrations} onLogin={onLogin} />
 
           {/* Фул-рандом: після генерації сітки склади команд НЕ ховаємо (у сітці
               лише назви — гравець інакше не знайде свою команду), а згортаємо
