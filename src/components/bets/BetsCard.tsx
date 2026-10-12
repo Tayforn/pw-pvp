@@ -6,9 +6,15 @@
 // публічної bet_pools, лише оплачені ставки). Ставку приймає бекенд ладдера за
 // Discord-сесією; юані гравець передає скарбнику в грі, і в пул ставка йде, коли
 // суперадмін підтвердить оплату.
+//
+// Наведення на ринок чи учасника (і на свою ставку) підсвічує їх на сітці
+// (onHighlight → BracketView.highlight): матч — сам матч, учасник — його шлях.
+// Обраний для ставки учасник лишається підсвіченим, поки відкрита форма, — на
+// телефоні наведення немає.
 // =========================================================
 
 import { useEffect, useMemo, useState } from 'react';
+import type { BracketHighlight } from '../BracketView';
 import './bets.css';
 import { useMe } from '../../app/useMe';
 import { formatPrice, formatPriceExact, formatPriceInputMask, parsePriceInput } from '../../app/formatPrice';
@@ -33,14 +39,17 @@ interface Props {
   bracket: BracketMatch[];
   registrations: Registration[];
   onLogin: () => void;
+  /** що підсвітити на сітці (null — нічого) */
+  onHighlight?: (h: BracketHighlight | null) => void;
 }
 
-export default function BetsCard({ tournament, bracket, registrations, onLogin }: Props) {
+export default function BetsCard({ tournament, bracket, registrations, onLogin, onHighlight }: Props) {
   const { me } = useMe();
   const [pools, setPools] = useState<PoolRow[]>([]);
   const [mine, setMine] = useState<Bet[] | null>(null);
   const [tick, setTick] = useState(0);
   const [sel, setSel] = useState<{ matchId: string | null; pickId: string } | null>(null);
+  const [hovered, setHovered] = useState<BracketHighlight | null>(null);
   const tid = tournament.id;
   const settings = tournament.bets;
 
@@ -63,6 +72,15 @@ export default function BetsCard({ tournament, bracket, registrations, onLogin }
     fetchMyBets(tid).then((b) => { if (alive) setMine(b); }, () => { /* покажемо без «Моїх» */ });
     return () => { alive = false; };
   }, [me, tid, tick, bracket, settings]);
+
+  // Наведене, інакше обраний для ставки учасник.
+  const hlTeam = hovered ? hovered.teamId ?? null : sel?.pickId ?? null;
+  const hlMatch = hovered ? hovered.matchId ?? null : sel?.matchId ?? null;
+  useEffect(() => {
+    onHighlight?.(hlTeam || hlMatch ? { teamId: hlTeam, matchId: hlMatch } : null);
+  }, [onHighlight, hlTeam, hlMatch]);
+  // Картка зникла (сторінка змінилась) — не лишати сітку підсвіченою.
+  useEffect(() => () => onHighlight?.(null), [onHighlight]);
 
   const markets = useMemo<Market[]>(() => {
     const info = bracketInfo(bracket);
@@ -110,7 +128,12 @@ export default function BetsCard({ tournament, bracket, registrations, onLogin }
         const open = mk.state.kind === 'open';
         const chosen = sel && sel.matchId === mk.matchId ? sel.pickId : null;
         return (
-          <div key={mk.matchId ?? 'tournament'} className="bet-market">
+          <div
+            key={mk.matchId ?? 'tournament'}
+            className="bet-market"
+            onPointerEnter={() => setHovered({ matchId: mk.matchId })}
+            onPointerLeave={() => setHovered(null)}
+          >
             <div className="bet-market-head">
               <b>{mk.title}</b>
               <span className={'badge ' + st.tone}>{st.text}</span>
@@ -122,10 +145,15 @@ export default function BetsCard({ tournament, bracket, registrations, onLogin }
                   key={pid}
                   type="button"
                   className={'bet-pick' + (chosen === pid ? ' sel' : '')}
-                  disabled={!open}
+                  // не disabled: на вимкнену кнопку браузер не шле наведення, а підсвітка на сітці потрібна й тут
+                  aria-disabled={!open}
                   aria-pressed={chosen === pid}
                   title={open ? 'Поставити на цього учасника' : undefined}
-                  onClick={() => setSel(chosen === pid ? null : { matchId: mk.matchId, pickId: pid })}
+                  onClick={() => open && setSel(chosen === pid ? null : { matchId: mk.matchId, pickId: pid })}
+                  onPointerEnter={() => setHovered({ teamId: pid, matchId: mk.matchId })}
+                  onPointerLeave={() => setHovered({ matchId: mk.matchId })}
+                  onFocus={() => setHovered({ teamId: pid, matchId: mk.matchId })}
+                  onBlur={() => setHovered(null)}
                 >
                   <span className="bet-pick-name">{name(pid)}</span>
                   <span className="bet-odds">{formatOdds(oddsFor(pool, pid, c))}</span>
@@ -154,7 +182,7 @@ export default function BetsCard({ tournament, bracket, registrations, onLogin }
         );
       })}
 
-      {hasMine && <MyBets bets={mine!} tournament={tournament} bracket={bracket} pools={pools} onChanged={() => setTick((x) => x + 1)} />}
+      {hasMine && <MyBets bets={mine!} tournament={tournament} bracket={bracket} pools={pools} onChanged={() => setTick((x) => x + 1)} onHover={setHovered} />}
     </div>
   );
 }
@@ -229,8 +257,9 @@ function BetForm({ tournament, matchId, pickId, pickName, pool, onPlaced }: {
   );
 }
 
-function MyBets({ bets, tournament, bracket, pools, onChanged }: {
+function MyBets({ bets, tournament, bracket, pools, onChanged, onHover }: {
   bets: Bet[]; tournament: Tournament; bracket: BracketMatch[]; pools: PoolRow[]; onChanged: () => void;
+  onHover: (h: BracketHighlight | null) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -254,7 +283,12 @@ function MyBets({ bets, tournament, bracket, pools, onChanged }: {
       {bets.map((b) => {
         const o = outcomeLabel(settleBet(b, tournament, bracket, pools), b.payoutAmount != null);
         return (
-          <div key={b.id} className="bet-mine-row">
+          <div
+            key={b.id}
+            className="bet-mine-row"
+            onPointerEnter={() => onHover({ teamId: b.pickId, matchId: b.matchId })}
+            onPointerLeave={() => onHover(null)}
+          >
             <span className="grow">{marketLabel(b, bracket)} · на <b>{b.pickName}</b> · <span title={formatPriceExact(b.stake)}>{formatPrice(b.stake)}</span></span>
             <span className={'badge ' + o.tone}>{o.text}</span>
             {b.status === 'pending' && (
