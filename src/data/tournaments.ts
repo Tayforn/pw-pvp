@@ -6,7 +6,7 @@
 import { supabase } from '../app/supabaseClient';
 import {
   isRegistrationOpen,
-  type ArmorRefine, type ArmorSet, type BalanceStats, type DollPower, type Build, type CharClass, type CharLevel, type Gems, type ItemBreakdown, type ItemBreakdownRow, type RingGrade, type Genie, type PlayerGear, type Registration,
+  type ArmorRefine, type ArmorSet, type BalanceStats, type BetSettings, type DollPower, type Build, type CharClass, type CharLevel, type Gems, type ItemBreakdown, type ItemBreakdownRow, type RingGrade, type Genie, type PlayerGear, type Registration,
   type RegistrationKind, type RegistrationStatus, type SpecialSet, type TeamMode, type Tournament, type TournamentSeries,
   type TournamentStatus, type Tract, type WeaponGrade, type WeaponRefine,
 } from './types';
@@ -24,6 +24,9 @@ interface TournamentRow {
   balance_rules_version?: string | null; balance_stats?: BalanceStats | null;
   // 0027 — правила рядками; до міграції колонок немає
   rule_flags?: unknown; rule_flags_updated_at?: string | null;
+  // 0036 — ставки
+  bets_enabled?: boolean; bet_commission_pct?: number | string; bet_min_stake?: number | string;
+  bet_max_stake?: number | string | null; bet_treasurer?: string | null; outright_bets_closed_at?: string | null;
 }
 export interface RegistrationRow {
   id: string; tournament_id: string; nickname: string; rules_ack: boolean; status: RegistrationStatus; created_at: string;
@@ -65,6 +68,16 @@ const tournamentFromRow = (r: TournamentRow): Tournament => ({
   teamMode: r.team_mode ?? 'fixed', balanceSeed: r.balance_seed ?? null, bracketSeed: r.bracket_seed ?? null,
   balanceRulesVersion: r.balance_rules_version ?? null, balanceStats: r.balance_stats ?? null,
   ruleFlags: normalizeRuleFlags(r.rule_flags), ruleFlagsUpdatedAt: r.rule_flags_updated_at ?? null,
+  ...(r.bets_enabled !== undefined ? { bets: betSettingsFromRow(r) } : {}),
+});
+/** numeric/bigint PostgREST може віддати рядком. */
+const betSettingsFromRow = (r: TournamentRow): BetSettings => ({
+  enabled: !!r.bets_enabled,
+  commissionPct: Number(r.bet_commission_pct ?? 0) || 0,
+  minStake: Number(r.bet_min_stake ?? 1) || 1,
+  maxStake: r.bet_max_stake == null ? null : Number(r.bet_max_stake),
+  treasurer: r.bet_treasurer ?? null,
+  outrightClosedAt: r.outright_bets_closed_at ?? null,
 });
 /** Анкета зібрана лише коли є всі 9 полів (constraint registrations_gear_all_or_none гарантує «або все, або нічого»). */
 const gearFromRow = (r: RegistrationRow): PlayerGear | null => {

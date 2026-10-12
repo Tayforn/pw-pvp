@@ -1,7 +1,7 @@
 // =========================================================
 // Адмінка: логін (Supabase Auth, спільний з pw-events) + вкладки з адресою
 // в URL (/admin/<tab>, див. app/useRoute.ts): турніри (заявки, команди,
-// сітка), учасники, звіт балансу, версія шкали на двох вкладках зі спільною
+// сітка), учасники, звіт балансу, ставки в юанях (лише суперадмін), версія шкали на двох вкладках зі спільною
 // чернеткою («Шкала балів» / «Бафи й склад»), довідник рядків правил і
 // ГМ-акаунти.
 // Керування серіями прибрано з UI (див. коментар у TournamentEditor.tsx) —
@@ -30,6 +30,7 @@ import BracketPanel from './admin/BracketPanel';
 import AdminsManager from './admin/AdminsManager';
 import ParticipantsManager from './admin/ParticipantsManager';
 import BalanceReport from './admin/BalanceReport';
+import BetsTab from './admin/BetsTab';
 import AdminTabs, { ADMIN_TAB_TITLES } from './admin/AdminTabs';
 import ScaleTab from './admin/ScaleTab';
 import TeamTab from './admin/TeamTab';
@@ -285,6 +286,7 @@ export default function AdminPage({ series, tab, onTab, onNavigate }: { series: 
   switch (active) {
     case 'participants': body = <ParticipantsManager />; break;
     case 'report': body = <BalanceReport />; break;
+    case 'bets': body = <BetsTab currentUserId={session.user.id} />; break;
     // «Шкала балів» і «Бафи й склад» редагують ОДНУ чернетку версії
     // (data/rulesDraftStore), тому футер зі збереженням спільний.
     case 'scale': body = <><ScaleTab /><RulesFooter /></>; break;

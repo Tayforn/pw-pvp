@@ -33,6 +33,8 @@ interface BracketRow {
   next_match_slot: 1 | 2 | null;
   loser_next_match_id: string | null;
   loser_next_match_slot: 1 | 2 | null;
+  /** 0036; до міграції колонки немає */
+  bets_closed_at?: string | null;
 }
 
 const fromRow = (r: BracketRow): BracketMatch => ({
@@ -50,6 +52,7 @@ const fromRow = (r: BracketRow): BracketMatch => ({
   nextMatchSlot: r.next_match_slot,
   loserNextMatchId: r.loser_next_match_id,
   loserNextMatchSlot: r.loser_next_match_slot,
+  ...(r.bets_closed_at !== undefined ? { betsClosedAt: r.bets_closed_at } : {}),
 });
 
 export async function fetchBracket(tournamentId: string): Promise<BracketMatch[]> {

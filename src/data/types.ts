@@ -176,6 +176,22 @@ export interface Tournament {
    * із текстом лише в rulesMd (UI показує textarea). */
   ruleFlags: TournamentRuleFlags | null;
   ruleFlagsUpdatedAt?: string | null;
+  /** Ставки в юанях (0036); undefined — до міграції. */
+  bets?: BetSettings;
+}
+
+/** Налаштування ставок турніру (0036) — міняє лише суперадмін. */
+export interface BetSettings {
+  enabled: boolean;
+  /** Комісія тоталізатора, % від пулу ринку (0–50). */
+  commissionPct: number;
+  /** Мін/макс сума ставки в юанях (макс null — без обмеження). */
+  minStake: number;
+  maxStake: number | null;
+  /** Кому в грі передавати юані. */
+  treasurer: string | null;
+  /** Коли закрито прийом ставок на переможця турніру. */
+  outrightClosedAt: string | null;
 }
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
@@ -278,6 +294,8 @@ export interface BracketMatch {
   nextMatchSlot: 1 | 2 | null;
   loserNextMatchId: string | null;
   loserNextMatchSlot: 1 | 2 | null;
+  /** Коли закрито прийом ставок на матч (0036); undefined — до міграції. */
+  betsClosedAt?: string | null;
 }
 
 /** Реєстрація дозволена лише поки статус 'registration_open' і турнір ще не

@@ -16,7 +16,7 @@ export const APP_BASE: string = (() => {
 
 /** Вкладки адмінки — другий сегмент /admin/<tab>, щоб F5 і посилання
  * «відкрий вкладку Бафи» працювали. 'tournaments' — це просто /admin. */
-export const ADMIN_TABS = ['tournaments', 'participants', 'report', 'scale', 'buffs', 'rules', 'admins'] as const;
+export const ADMIN_TABS = ['tournaments', 'participants', 'report', 'bets', 'scale', 'buffs', 'rules', 'admins'] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 export const isAdminTab = (x: unknown): x is AdminTab => typeof x === 'string' && (ADMIN_TABS as readonly string[]).includes(x);
 

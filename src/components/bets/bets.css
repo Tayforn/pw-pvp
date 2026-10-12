@@ -1,0 +1,37 @@
+/* ── Ставки в юанях: картка на сторінці турніру й вкладка суперадміна ── */
+.bets-card { margin-bottom: 18px; display: flex; flex-direction: column; gap: 14px; }
+.bets-card h3, .bets-card h4 { margin: 0; }
+.bet-market { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.bet-market-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bet-market-head > b { font-size: 14.5px; }
+.bet-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.bet-pick {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+  padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.03); color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer;
+}
+.bet-pick:hover:not(:disabled) { border-color: var(--accent); }
+.bet-pick:disabled { cursor: default; opacity: 0.85; }
+.bet-pick.sel { border-color: var(--accent); background: rgba(var(--accent-3-rgb), 0.1); }
+.bet-pick.win { border-color: rgba(var(--good-rgb), 0.6); }
+.bet-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bet-odds { font-weight: 700; color: var(--accent-3); font-variant-numeric: tabular-nums; }
+.bet-form { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.bet-amount { display: flex; align-items: center; gap: 10px; }
+.bet-amount input { flex: 1 1 auto; }
+.bet-amount-short { font-weight: 700; color: var(--accent-3); min-width: 48px; font-variant-numeric: tabular-nums; }
+.bet-ok { color: var(--good); font-size: 13.5px; margin: 0; }
+.bet-mine { display: flex; flex-direction: column; gap: 6px; }
+.bet-mine-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; padding: 6px 0; border-top: 1px solid var(--line); }
+.bet-mine-row:first-child { border-top: 0; }
+.bet-mine-row .grow { flex: 1 1 200px; min-width: 0; }
+
+.bets-table-wrap { overflow-x: auto; }
+.bets-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.bets-table th, .bets-table td { padding: 7px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.bets-table th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+.bets-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bets-table .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.bets-table .sub { color: var(--text-mute); font-size: 12px; }
+.bets-sum { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
+.bets-sum b { color: var(--accent-3); font-variant-numeric: tabular-nums; }
