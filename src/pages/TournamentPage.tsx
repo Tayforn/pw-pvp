@@ -14,7 +14,7 @@ import { CLASS_LABELS, gemMixLabel, registrationScore, rulesFor, tierFor } from 
 import { describeSnapshotBuffs } from '../data/ruleFlags';
 import { useRules } from '../data/rulesStore';
 import { rulesVersionFor, teamMembers, teamRows, teamStrengthFor } from '../data/teams';
-import BracketView from '../components/BracketView';
+import BracketView, { type BracketHighlight } from '../components/BracketView';
 import BetsCard from '../components/bets/BetsCard';
 import RulesList from '../components/RulesList';
 import TierBadge, { type PlayerCardInfo } from '../components/PlayerPopover';
@@ -227,6 +227,8 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
   useRules();
   const { tournament, registrations, bracket, updatedAt, refreshing, reload } = useTournamentLive(id);
   const [copied, setCopied] = useState(false);
+  // Наведення в картці ставок — підсвітка на сітці.
+  const [betFocus, setBetFocus] = useState<BracketHighlight | null>(null);
 
   if (tournament === undefined) return <p className="hint">Завантаження…</p>;
   if (tournament === null) return <p className="hint">Турнір не знайдено.</p>;
@@ -296,12 +298,12 @@ export default function TournamentPage({ id, guest, onLogin }: { id: string; gue
                 {updatedAt && <span className="hint" style={{ margin: 0 }}>оновлено о {updatedAt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}</span>}
                 <button type="button" className="btn btn-ghost btn-sm" disabled={refreshing} title="Перечитати сітку" onClick={reload}>↻</button>
               </div>
-              <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} balanceTeams={tournament.balanceStats?.teams} />
+              <BracketView matches={bracket} registrations={registrations} bracketNewLook={tournament.bracketNewLook} title={tournament.name} balanceTeams={tournament.balanceStats?.teams} highlight={betFocus} />
             </div>
           )}
 
           {/* Ставки в юанях — коефіцієнти всім, хто бачить сітку; ставити — з Discord. */}
-          <BetsCard tournament={tournament} bracket={bracket} registrations={registrations} onLogin={onLogin} />
+          <BetsCard tournament={tournament} bracket={bracket} registrations={registrations} onLogin={onLogin} onHighlight={setBetFocus} />
 
           {/* Фул-рандом: після генерації сітки склади команд НЕ ховаємо (у сітці
               лише назви — гравець інакше не знайде свою команду), а згортаємо

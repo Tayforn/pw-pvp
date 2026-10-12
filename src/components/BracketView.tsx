@@ -179,6 +179,14 @@ interface Props {
   title?: string;
   /** склади зі знімка жеребки (tournament.balanceStats.teams) — класи й ранги в підказці й панелі */
   balanceTeams?: BalanceStats['teams'] | null;
+  /** підсвітка ззовні (наведення в картці ставок): команда — її шлях, як при наведенні
+   * на слот; лише матч — сам матч, решта приглушена, як при пошуку кількох команд */
+  highlight?: BracketHighlight | null;
+}
+
+export interface BracketHighlight {
+  teamId?: string | null;
+  matchId?: string | null;
 }
 
 /** Спільні для всіх карток параметри рендеру. */
@@ -187,6 +195,8 @@ interface MatchCtx {
   editable?: BracketEditable;
   /** підсвітка пошуку, коли збіглось кілька команд */
   hit: (pid: string | null) => boolean;
+  /** матч, підсвічений ззовні (картка ставок) */
+  hitMatchId: string | null;
   /** показувати склад команди другим рядком слота */
   showMembers: boolean;
   /** чи вміщається рядок складу в картку */
@@ -268,7 +278,7 @@ function TrnMatch({ m, ctx }: { m: BracketMatch; ctx: MatchCtx }) {
   // тоді ці позначки ховаємо (куди йде програвший — у підказці адреси матчу), а не обрізаємо керування.
   const crowded = !!editable && (showReset || customFmt);
   const dropRef = dropTarget ? matchRef(dropTarget, de) : null;
-  const cardHit = [m.participant1Id, m.participant2Id].some((pid) => !!pid && ctx.hit(pid));
+  const cardHit = ctx.hitMatchId === m.id || [m.participant1Id, m.participant2Id].some((pid) => !!pid && ctx.hit(pid));
   const state = m.winnerId ? ' trn-decided' : live ? ' trn-live' : !m.participant1Id && !m.participant2Id ? ' trn-pending' : '';
   const cls = 'trn-match' + state
     + (ctx.showMembers ? '' : ' no-members')
@@ -654,7 +664,7 @@ function pathEdgeSet(steps: PathStep[], toChampion: boolean): Set<string> {
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
-export default function BracketView({ matches, registrations, editable, bracketNewLook = true, title, balanceTeams }: Props) {
+export default function BracketView({ matches, registrations, editable, bracketNewLook = true, title, balanceTeams, highlight }: Props) {
   const [fullscreen, setFullscreen] = useState(false);
   const [view, setView] = useState<View>(initialView);
   const [query, setQuery] = useState('');
@@ -746,8 +756,12 @@ export default function BracketView({ matches, registrations, editable, bracketN
   const hits = useMemo(() => searchParticipants(query, participantIds, registrations, rosterOf), [query, participantIds, registrations, rosterOf]);
   const searchFocus = hits.length === 1 ? hits[0].id : null;
   const hoverPid = !editable ? (hover?.pid ?? null) : null;
-  const focusId = hoverPid ?? pinnedId ?? searchFocus;
-  const fromHover = !!hoverPid;
+  // Ззовні (картка ставок): команда — як наведення на слот; лише матч — перекриває
+  // закріплений шлях, інакше підсвітки матчу за ним не видно.
+  const extTeam = !editable ? (highlight?.teamId ?? null) : null;
+  const extMatch = !editable && !extTeam ? (highlight?.matchId ?? null) : null;
+  const focusId = hoverPid ?? extTeam ?? (extMatch ? null : pinnedId ?? searchFocus);
+  const fromHover = !!hoverPid || !!extTeam;
 
   const path = useMemo(() => (focusId ? teamPath(focusId, matches) : []), [focusId, matches]);
   const champPath = useMemo(() => (podium.first ? teamPath(podium.first, matches) : []), [podium.first, matches]);
@@ -851,6 +865,7 @@ export default function BracketView({ matches, registrations, editable, bracketN
   const ctx: MatchCtx = {
     data, editable, showMembers, fitsRoster, focusId, pathIds, dropOut, dropIn,
     hit: (pid) => !!pid && hitSet.has(pid),
+    hitMatchId: focusId ? null : extMatch,
     selectedId: panelMatch ? panelMatch.id : null,
     hoverPid,
     hoverMatchId: hoverPid ? (hover?.matchId ?? null) : null,
@@ -898,7 +913,7 @@ export default function BracketView({ matches, registrations, editable, bracketN
 
   const rootCls = [
     fullscreen && 'trn-fullscreen',
-    !focusId && hitSet.size > 0 && 'trn-filtering',
+    !focusId && (hitSet.size > 0 || !!extMatch) && 'trn-filtering',
     focusId && 'trn-path',
     focusId && (fromHover ? 'trn-path-hover' : 'trn-path-pin'),
   ].filter(Boolean).join(' ');
