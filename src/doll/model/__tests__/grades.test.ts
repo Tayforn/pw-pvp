@@ -3,7 +3,7 @@ import { normalizeRules } from '../../../data/gearRules';
 import { readJson } from '../../core/__tests__/testData';
 import type { Item } from '../../core/types';
 import type { Cat, CharacterDoc } from '../doc';
-import { armorPieceOf, armorSetOf, ringGradeOf, tractOf, weaponGradeOf } from '../grades';
+import { armorPieceOf, armorSetOf, isBeltR9r2, ringGradeOf, tractOf, weaponGradeOf } from '../grades';
 import { dollFacts } from '../sheet';
 import { docFrom, inst, loadRef, lookup, mkDoc, mkSet } from './testDoc';
 
@@ -191,5 +191,15 @@ describe('грейди в dollFacts', () => {
       'Зброя: лялька не розпізнала «Клинок Безсмертного короля» — зараховано як «Інше / нижче Нірвани»',
       'Броня: лялька не розпізнала «Поножі полуденної спеки» — зараховано як річ «Інше / нижче Нірвани» (сет броні — «R9»)',
     ]);
+  });
+});
+
+describe('пояс R9R2 (isBeltR9r2)', () => {
+  it('репутація 300 000, три зірки, ПА 5 / ПЗ 5 — так; R9R1, R9 і без репутації — ні', () => {
+    // «Амулет загибелі» R9R2 (36535, 36667), «Пояс чистоти» R9R2 (36530)
+    for (const id of [339, 330, 308]) expect(isBeltR9r2(item('st', id))).toBe(true);
+    // «Амулет загибелі» R9R1 (34798: ПА 3 / ПЗ 3), R9R1 лише з ПА 3, R9 (дві зірки), «Переможець» без репутації (ПА/ПЗ 6–8)
+    for (const id of [312, 319, 298, 442]) expect(isBeltR9r2(item('st', id))).toBe(false);
+    expect(isBeltR9r2(null)).toBe(false);
   });
 });

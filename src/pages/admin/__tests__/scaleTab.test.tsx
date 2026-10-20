@@ -64,6 +64,8 @@ describe('вкладка «Шкала балів»', () => {
     expect(t).toContain('Уничтоженный пруд духов');
     expect(t).toContain('Стелі свап-спорядження');
     expect(t).toContain('Стеля ПЗ свап-зброї');
+    expect(t).toContain('Пояс і намисто');
+    expect(t).toContain('лише камені'); // у вбудованій шкалі правило вимкнене
     expect(t).toContain('Сет броні (за річ — чверть)');
     expect(t).toContain('Точка броні (за річ — шоста)');
     expect(t).toContain('Джин (за удачею)');

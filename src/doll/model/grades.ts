@@ -163,6 +163,16 @@ export function ringGradeOf(it: Item | null): Graded<RingGrade> {
   return { grade, suspicious: grade === 'moon' && baseStat(it, 'ad') + baseStat(it, 'sx') >= SUSPECT_RING_PA_PZ };
 }
 
+/** Пояс R9R2 (слот st): репутація 300 000, три зірки й базові ПА 5 / ПЗ 5 — покоління
+ * «Амулета загибелі» 36535/36667 і «Пояса чистоти» 36530. R9R1-пояси тієї ж репутації мають
+ * ПА 3 / ПЗ 3 (чи лише ПА 3), R9 — дві зірки. Намиста R9R2 на сервері немає (рішення
+ * власника 20.10.2026), тож правило — лише для поясу. */
+const BELT_R9R2_PA_PZ = 5;
+export function isBeltR9r2(it: Item | null): boolean {
+  if (!it || rep(it) !== REP_R9 || tv(it) !== TV_THREE) return false;
+  return baseStat(it, 'ad') >= BELT_R9R2_PA_PZ && baseStat(it, 'sx') >= BELT_R9R2_PA_PZ;
+}
+
 /** Грейд трактату (слот qn) — за рангом, тож розпізнається завжди; порожній слот — t1_3. */
 export function tractOf(it: Item | null): Graded<Tract> {
   const h = it ? hf(it) : 0;

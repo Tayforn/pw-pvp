@@ -195,6 +195,47 @@ describe('скор v2 «від речей»: заявка власника', () 
   });
 });
 
+describe('скор v2: пояс і намисто за статами (jewelryFromStats)', () => {
+  const on = normalizeRules({ jewelryFromStats: true });
+  /** Власник без сетів: пояс «Ремень боевой песни» (ПЗ 5), намисто «Емблема Куба·Розлом» (ПА+ПЗ 10). */
+  const solo = (): CharacterDoc => ({ ...tay(), sets: [] });
+  const belt = (doc: CharacterDoc, r = rules) => scoreItems(doc, r, lookup).main.find((x) => x.slot === 'st')!;
+  const withBelt = (doc: CharacterDoc, it: ReturnType<typeof inst>): CharacterDoc => ({ ...doc, items: [...doc.items, it], main: { ...doc.main, st: it.i } });
+
+  it('версія без прапорця — як було: пояс і намисто лише за камені (0), скор не змінюється', () => {
+    expect(rules.jewelryFromStats).toBe(false);
+    expect(belt(solo()).points).toBe(0);
+    expect(on.jewelryFromStats).toBe(true);
+    expect(on.jewelryStatCap).toBe(12);
+  });
+
+  it('звичайні пояс і намисто — ПА + ПЗ × одиниця', () => {
+    const off = scoreItems(solo(), rules, lookup);
+    const res = scoreItems(solo(), on, lookup);
+    expect([belt(solo(), on).points, belt(solo(), on).why]).toEqual([5, 'ПА+ПЗ 5']);
+    const neck = res.main.find((x) => x.slot === 'vx')!;
+    expect([neck.catId, neck.points]).toEqual([157, 10]);
+    expect(res.itemPoints).toBe(Math.round((off.itemPoints + 15) * 100) / 100);
+  });
+
+  it('пояс R9R2 — як кільце R9R2: 12 + точка; R9R1-пояс — за статами', () => {
+    const r9r2 = belt(withBelt(solo(), inst('z1', 'st', 339, { r: 3 })), on);
+    expect([r9r2.points, r9r2.why]).toEqual([15, 'R9R2 як кільце 12 · +3 3']);
+    expect(belt(withBelt(solo(), inst('z1', 'st', 330)), on).points).toBe(12);
+    // «Амулет загибелі» R9R1 (ПА 3 / ПЗ 3) — за статами; точка тут не рахується
+    expect(belt(withBelt(solo(), inst('z1', 'st', 312, { r: 5 })), on).points).toBe(6);
+    // кілець, як і раніше, рахується два — пояс R9R2 їх не витісняє
+    const res = scoreItems(withBelt(solo(), inst('z1', 'st', 339)), on, lookup);
+    expect(res.main.filter((x) => (x.slot === 'cr' || x.slot === 'cd') && x.points > 0)).toHaveLength(2);
+  });
+
+  it('роли рахуються, але не більше стелі за річ', () => {
+    const rolled = belt(withBelt(solo(), inst('z1', 'st', 312, { x: [{ t: 'ad', v: 30 }, { t: 'sx', v: 30 }] })), on);
+    expect([rolled.points, rolled.why]).toEqual([12, 'ПА+ПЗ 66 · стеля 12']);
+    expect(belt(withBelt(solo(), inst('z1', 'st', 312, { x: [{ t: 'ad', v: 30 }] })), normalizeRules({ jewelryFromStats: true, jewelryStatCap: 40 })).points).toBe(36);
+  });
+});
+
 describe('скор v2: типові фікстури й сети', () => {
   // typical-js (лучник 105, v1.0): «Небесний лук» R9 +10 з Ракшаса (ПА 3) і Світлого духа (ПА 2), ka —
   // 36 + 12 + 5 + 15 = 68; ШГ +8 з 4 Безбрежності (11 рів.) — 15 + 8 + 4 × 8/24 = 24.33; Вознєс — 10 + 8 + 1.33 = 19.33;
