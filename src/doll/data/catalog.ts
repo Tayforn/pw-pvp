@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { Item } from '../core/types';
+import { CGD_HIDDEN } from './serverCgd';
 
 /** Білий список категорій: 17 слотів ляльки (кільця cr/cd → oq) + камені ob,
  * руни шліфовки wdf, кристали crystal. Що не звідси — каталог ігнорує
@@ -141,9 +142,10 @@ export function catItems(cat: string): Item[] | null {
   return entries.get(cat)?.items ?? null;
 }
 
-/** Речі, яких немає у виборі (рішення власника): вид джина «Тао Лі» (pk id 5, 02.10.2026).
+/** Речі, яких немає у виборі (рішення власника): вид джина «Тао Лі» (pk id 5, 02.10.2026);
+ * зайві копії РЦГД під 15 назвами ЦГД (serverCgd.ts, 20.10.2026) — у пікері один РЦГД на назву.
  * З каталогу їх не видаляємо — ляльки, де річ уже надіта, читаються як раніше. */
-export const HIDDEN_FROM_PICK: Readonly<Record<string, ReadonlySet<number>>> = { pk: new Set([5]) };
+export const HIDDEN_FROM_PICK: Readonly<Record<string, ReadonlySet<number>>> = { pk: new Set([5]), ta: new Set(CGD_HIDDEN) };
 
 /** Речі категорії для вибору (пікер, види джина) — без HIDDEN_FROM_PICK. */
 export function pickableItems(cat: string): Item[] | null {
