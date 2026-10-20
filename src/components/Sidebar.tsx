@@ -1,5 +1,5 @@
 // =========================================================
-// Сайдбар: статичні пункти (Головна/Турніри/Заявка/Мої заявки/Правила/Персонаж) +
+// Сайдбар: статичні пункти (Головна/Турніри/Заявка/Мої заявки/Правила/Персонаж/Соклани) +
 // Адмінка (лише для адміна) — відфільтровані за рівнем доступу
 // (app/access.ts): гість без входу бачить лише Турніри/Заявку/Мої заявки/Правила/Персонаж.
 // Пункт на серію прибрано — сайт спрощено до однієї активної серії,
@@ -25,12 +25,14 @@ const rulesIco = <svg {...S}><path d="M12 5.5C10 4 6.5 4 4 4.5v14c2.5-.5 6-.5 8 
 const adminIco = <svg {...S}><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" /></svg>;
 const myIco = <svg {...S}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4h6v3H9z" /><path d="M8.5 12.5l2 2 4-4" /><path d="M8.5 18h7" /></svg>;
 const charIco = <svg {...S}><circle cx="12" cy="5" r="2.2" /><path d="M8 21l1.2-7.5L7 12l1.5-4.2h7L17 12l-2.2 1.5L16 21" /><path d="M10.4 13.5h3.2" /></svg>;
+const clanIco = <svg {...S}><circle cx="9" cy="8" r="3" /><path d="M3.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6" /><circle cx="17" cy="9" r="2.4" /><path d="M15.5 14.3c2.8.3 5 2.8 5 5.7" /></svg>;
 
 function routeKey(r: Route): string {
   if (r.name === 'series') return `series:${r.slug}`;
   if (r.name === 'tournament') return `tournament:${r.id}`;
   // Будь-який персонаж підсвічує один пункт «Персонаж»; лялька із заявки — «Адмінку».
   if (r.name === 'character') return 'characters';
+  if (r.name === 'clan-character') return 'clan';
   if (r.name === 'admin-doll') return 'admin';
   return r.name;
 }
@@ -49,6 +51,7 @@ export default function Sidebar({ route, viewer, onNavigate }: Props) {
     { route: { name: 'my' }, label: 'Мої заявки', ico: myIco },
     { route: { name: 'rules' }, label: 'Правила', ico: rulesIco },
     { route: { name: 'characters' }, label: 'Персонаж', ico: charIco },
+    { route: { name: 'clan' }, label: 'Соклани', ico: clanIco },
     { route: { name: 'admin' }, label: 'Адмінка', ico: adminIco },
   ];
   // Показуємо лише те, що людина реально може відкрити.

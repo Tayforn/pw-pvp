@@ -132,6 +132,41 @@ describe('лялька із заявки в адмінці — /admin/doll/:regi
   });
 });
 
+describe('«Мої соклани» — /clan і /clan/:id', () => {
+  const MEMBER = { member: true, admin: false };
+
+  it('розбираються й будуються назад; кривий id — просто список', () => {
+    expect(parse('/clan')).toEqual({ name: 'clan' });
+    expect(parse('/clan/')).toEqual({ name: 'clan' });
+    expect(parse('/clan/58bad6ae-3041-4311-bb22-4b58ab40eda9')).toEqual({ name: 'clan-character', id: '58bad6ae-3041-4311-bb22-4b58ab40eda9' });
+    expect(parse('/clan/' + encodeURIComponent('<x>'))).toEqual({ name: 'clan' });
+    expect(routeUrl({ name: 'clan' })).toBe('/clan');
+    expect(routeUrl({ name: 'clan-character', id: 'k7' })).toBe('/clan/k7');
+    expect(parse(routeUrl({ name: 'clan-character', id: 'k7' }))).toEqual({ name: 'clan-character', id: 'k7' });
+    // сусідні адреси не зачеплено
+    expect(parse('/characters/k7')).toEqual({ name: 'character', id: 'k7' });
+    expect(parse('/clans')).toEqual({ name: 'home' });
+  });
+
+  it('лише учаснику клану (чи адміну) — гостю ні', () => {
+    expect(ROUTE_ACCESS.clan).toBe('member');
+    expect(ROUTE_ACCESS['clan-character']).toBe('member');
+    expect(canOpen('clan', GUEST)).toBe(false);
+    expect(canOpen('clan-character', GUEST)).toBe(false);
+    expect(canOpen('clan', MEMBER)).toBe(true);
+    expect(canOpen('clan-character', { member: false, admin: true })).toBe(true);
+  });
+
+  it('у сайдбарі учасника «Соклани» одразу після «Персонаж»; на /clan/:id підсвічена лише вона; гість її не бачить', () => {
+    const html = renderToStaticMarkup(<Sidebar route={{ name: 'clan-character', id: 'k7' }} viewer={MEMBER} onNavigate={() => {}} />);
+    const labels = [...html.matchAll(/<span>([^<]+)<\/span><\/button>/g)].map((m) => m[1]);
+    expect(labels).toEqual(['Головна', 'Турніри', 'Заявка', 'Мої заявки', 'Правила', 'Персонаж', 'Соклани']);
+    expect(html).toMatch(/class="tab active"[^>]*>(?:(?!<\/button>).)*Соклани/);
+    expect(html.match(/class="tab active"/g)).toHaveLength(1);
+    expect(renderToStaticMarkup(<Sidebar route={{ name: 'my' }} viewer={GUEST} onNavigate={() => {}} />)).not.toContain('Соклани');
+  });
+});
+
 // ── Застереження перед відходом (leaveGuard) ──────────────────────
 // Сторінка з незбереженими змінами реєструє guard; роутер питає window.confirm
 // перед кліком по меню (navigate) і перед «Назад / Вперед» (handlePopState):
