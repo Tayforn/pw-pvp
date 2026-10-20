@@ -112,7 +112,7 @@ describe('golden: чернетка з balance-v1.13 серіалізується
     // і жодних зайвих полів: збережений JSON = запис + нові поля верхнього рівня (setsFromDoll, swapTotalCap,
     // doll, abilityPoints, weaponPzCap); старого блоку dollScore (скор з еталонів) у шкалі немає
     const keys = (o: unknown) => Object.keys(o as object).sort();
-    expect(keys(out)).toEqual([...keys(V113_RAW), 'setsFromDoll', 'swapTotalCap', 'doll', 'abilityPoints', 'weaponPzCap'].sort());
+    expect(keys(out)).toEqual([...keys(V113_RAW), 'setsFromDoll', 'swapTotalCap', 'doll', 'abilityPoints', 'weaponPzCap', 'jewelryFromStats', 'jewelryStatCap'].sort());
     expect(out).not.toHaveProperty('dollScore');
     expect(r.abilityPoints).toEqual({ ka: 15, zl: 8, kl: 8 }); // рекомендовані абілки, поки адмін не задав свої
     expect(r.weaponPzCap).toBe(25);

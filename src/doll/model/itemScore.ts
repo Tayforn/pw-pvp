@@ -16,6 +16,11 @@
 //    точка × perLevel + камені, БЕЗ armorRefine/6 (їхня таблиця вже за точку);
 //    бонус, якщо надіті обидві хоч десь.
 //  • Кільця — лише два найкращі з усіх надітих; решта — 0.
+//  • Пояс і намисто (rules.jewelryFromStats, рішення власника 20.10.2026): за
+//    стати, а не за камені — (ПА + ПЗ екземпляра: каталог + роли) × u, не більше
+//    jewelryStatCap за річ; пояс R9R2 — як кільце R9R2 (rings.r9r1 + точка ×
+//    ringRefinePerLevel), у ліміт «два кільця» не входить; ранг 17+ — 0. Без
+//    прапорця (версії до правила) — лише камені, як решта біжутерії.
 //  • Броня rv/tg/rx/mj і звичайні шолом/накидка: armorSet[грейд речі]/4 (для
 //    ft/wy — 0) + armorRefine[кошик точки]/6 + камені.
 //  • Камені: ПЗ/ПА — u × значення допа (u = doll.gemPoints.pz1, «1 ПЗ = 1 бал»;
@@ -37,7 +42,7 @@ import type { WeaponGrade } from '../../data/types';
 import { flattenItemStats, gemDop } from '../core/stats';
 import type { Item } from '../core/types';
 import { SET_SLOT_KEYS, SLOT_CAT, SLOT_KEYS, docSizeBytes, type CharacterDoc, type SlotKey } from './doc';
-import { armorPieceOf, ringGradeOf, tractOf, weaponGradeOf } from './grades';
+import { armorPieceOf, isBeltR9r2, ringGradeOf, tractOf, weaponGradeOf } from './grades';
 import { hydrate, instStats, slotKey, type CharacterModel, type HydratedInst, type ItemLookup } from './hydrate';
 import { CLS_CHAR, SHG_ITEM, VOZNES_ITEM, armorRefineBucket, gemGradeClass, weaponRefineBucket } from './sheet';
 
@@ -85,6 +90,8 @@ const ARMOR_PIECE_SLOTS: ReadonlySet<SlotKey> = new Set<SlotKey>(['rv', 'tg', 'r
 /** Шолом і накидка: ШГ/Вознєс — окремо, решта — лише точка й камені. */
 const CAPE_SLOTS: ReadonlySet<SlotKey> = new Set<SlotKey>(['ft', 'wy']);
 const RING_SLOTS: ReadonlySet<SlotKey> = new Set<SlotKey>(['cr', 'cd']);
+/** Пояс і намисто — за статами, коли шкала це вмикає (rules.jewelryFromStats). */
+const JEWELRY_SLOTS: ReadonlySet<SlotKey> = new Set<SlotKey>(['st', 'vx']);
 /** Зброя рангу hf від цього — не з сервера (новіші версії гри, костюми): 0 балів. */
 export const WEAPON_HF_NOT_ON_SERVER = 17;
 /** Кілець у бали — не більше двох (дві руки). */
@@ -333,6 +340,25 @@ export function scoreItems(doc: CharacterDoc, rules: ScoringRules, lookup?: Item
     if (w.slot === 'qn') {
       const t = tractOf(w.item).grade;
       toCfg(row(w, rules.tract[t], `${t} ${fmt(rules.tract[t])}`));
+      continue;
+    }
+    if (rules.jewelryFromStats && JEWELRY_SLOTS.has(w.slot)) {
+      if (w.slot === 'st' && isBeltR9r2(w.item)) {
+        const r = lvl(w.h.inst.r);
+        const base = rules.rings.r9r1;
+        const rp = rules.ringRefinePerLevel * r;
+        toCfg(row(w, base + rp, why([`R9R2 як кільце ${fmt(base)}`, r > 0 ? `+${r} ${fmt(rp)}` : null])));
+        continue;
+      }
+      if (hfOf(w.item) >= WEAPON_HF_NOT_ON_SERVER) {
+        toCfg(row(w, 0, `ранг ${hfOf(w.item)}: не з сервера — 0`));
+        warn.push(`${w.slot === 'st' ? 'пояс' : 'намисто'} «${itemName(w.item)}» рангу ${hfOf(w.item)} — не з сервера, 0 балів`);
+        continue;
+      }
+      const papz = Math.max(0, effStats(w.h).reduce((s, st) => (st.type === 'ad' || st.type === 'sx' ? s + (Number(st.val) || 0) : s), 0));
+      const raw = papz * u;
+      const pts = Math.min(rules.jewelryStatCap, raw);
+      toCfg(row(w, pts, papz > 0 ? why([`ПА+ПЗ ${fmt(papz)}`, raw > pts ? `стеля ${fmt(rules.jewelryStatCap)}` : null]) : 'без ПА/ПЗ: 0'));
       continue;
     }
     // Намисто, пояс, збірник, боєприпаси, джин, тома, політ: лише камені (гнізда є тільки у збірника).

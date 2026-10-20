@@ -317,6 +317,31 @@ export default function ScaleTab() {
         </AdmFields>
       </div>
 
+      {/* ── Пояс і намисто ── */}
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+          <b>Пояс і намисто</b>
+          <span className="badge mute">
+            {draft.jewelryFromStats
+              ? `max ${Math.max(draft.rings.r9r1 + 12 * draft.ringRefinePerLevel, draft.jewelryStatCap) + draft.jewelryStatCap}`
+              : 'лише камені'}
+          </span>
+        </div>
+        <label className="checkbox-row" style={{ fontSize: 14, marginBottom: 8 }}>
+          <input type="checkbox" checked={draft.jewelryFromStats} onChange={(e) => patch({ jewelryFromStats: e.target.checked })} />
+          Бали за стати речі (ПА + ПЗ), а не за камені
+        </label>
+        <p className="hint" style={{ margin: '0 0 8px' }}>
+          Увімкнено: пояс і намисто дають бали за ПА + ПЗ, які дає річ (каталог + роли), за курсом 1 ПЗ = {fmt(unit)} бала, але не більше стелі за
+          річ — роли в ляльці нічим не обмежені. Пояс R9R2 (репутація 300 000, три зірки, ПА 5 / ПЗ 5 — «Амулет загибелі», «Пояс чистоти» …)
+          рахується як кільце R9R2: {draft.rings.r9r1} + {fmt(draft.ringRefinePerLevel)} за рівень точки (у ліміт двох кілець не входить); намиста
+          R9R2 на сервері немає. Речі рангу 17+ — 0. Вимкнено — лише камені, як у версіях до цього правила (у поясах і намистах гнізд немає, тож 0).
+        </p>
+        <AdmFields>
+          <NumInput label="Стеля за річ" value={draft.jewelryStatCap} onChange={(v) => patch({ jewelryStatCap: Math.min(100, v) })} />
+        </AdmFields>
+      </div>
+
       <NumTable
         title="Сет броні (за річ — чверть)"
         hint="Кожна з 4 речей броні (наручі, нагрудник, поножі, взуття) дає чверть балів свого грейду, тож мікс R8R і Нірвани виходить сумою частин; шолом і накидка грейду не мають. Речі в сетах — під стелю свап-сетів. Старі заявки — сет цілком, як в анкеті."

@@ -223,6 +223,14 @@ export interface ScoringRules {
    * Версії до появи поля беруть вбудовані значення (старі анкети без кілець = 0). */
   rings: Record<RingGrade, number>;
   ringRefinePerLevel: number;
+  /** Пояс і намисто (рішення власника 20.10.2026): true — бали за стати речі, а не за
+   * камені: (ПА + ПЗ екземпляра: каталог + роли) × одиниця «ПЗ+1», не більше
+   * jewelryStatCap за річ; пояс R9R2 — як кільце R9R2: rings.r9r1 + ringRefinePerLevel ×
+   * точка. false — лише камені (так рахуються всі версії, збережені до появи поля, —
+   * скор уже поданих заявок не змінюється). */
+  jewelryFromStats: boolean;
+  /** Стеля балів за стати однієї речі (пояс чи намисто): роли в ляльці нічим не обмежені. */
+  jewelryStatCap: number;
   /** Ело-рейтинг з результатів матчів (src/data/ratings.ts): бали за кожні 100
    * пунктів рейтингу понад/нижче 1000 … */
   ratingWeight: number;
@@ -331,6 +339,8 @@ export function unitGemPoints(u: number): Pick<Record<GemClass, number>, 'campPz
 export const RECOMMENDED_ABILITY_POINTS: Record<string, number> = { ka: 15, zl: 8, kl: 8 };
 /** Стеля балів за ПЗ свап-зброї у вбудованій версії. */
 export const BUILTIN_WEAPON_PZ_CAP = 25;
+/** Стеля балів за стати пояса чи намиста (за річ); найбільші ПА+ПЗ речей сервера в каталозі — 12–13. */
+export const BUILTIN_JEWELRY_STAT_CAP = 12;
 
 const ABIL_CODE = /^[a-z_]{1,32}$/;
 
@@ -560,6 +570,10 @@ const BUILTIN: GearRules = {
   // кільця (за кожне з двох): Луна і нижче 0 · ПКС/Долоня 3 · Срібний місяць/Північна зірка 6 · R9 9 · R9R1 12 + 1 за рівень точки
   rings: { moon: 0, pks: 3, silver: 6, r9: 9, r9r1: 12 },
   ringRefinePerLevel: 1,
+  // пояс і намисто за ПА+ПЗ (R9R1-пояс 3+3 = 6, «Переможець» 6+6 = 12), R9R2-пояс — як кільце. У вбудованій
+  // вимкнено: її скори не міняються; власник вмикає галочкою в «Шкалі балів» і зберігає нову версію.
+  jewelryFromStats: false,
+  jewelryStatCap: BUILTIN_JEWELRY_STAT_CAP,
   // Ело: +5 балів за кожні 100 пунктів понад 1000, не більше ±20 (рейтинг росте повільно: K=32)
   ratingWeight: 5,
   ratingCap: 20,
@@ -758,6 +772,9 @@ export function normalizeRules(raw: unknown): GearRules {
     voznesRefinePerLevel: isNum(r.voznesRefinePerLevel) ? r.voznesRefinePerLevel : BUILTIN.voznesRefinePerLevel,
     rings: numTable(r.rings, BUILTIN.rings),
     ringRefinePerLevel: isNum(r.ringRefinePerLevel) ? r.ringRefinePerLevel : BUILTIN.ringRefinePerLevel,
+    // Версія без поля — збережена до правила «пояс і намисто за статами»: лише камені, як було.
+    jewelryFromStats: r.jewelryFromStats === true,
+    jewelryStatCap: isNum(r.jewelryStatCap) && r.jewelryStatCap >= 0 ? r.jewelryStatCap : BUILTIN.jewelryStatCap,
     ratingWeight: isNum(r.ratingWeight) ? r.ratingWeight : BUILTIN.ratingWeight,
     ratingCap: isNum(r.ratingCap) ? r.ratingCap : BUILTIN.ratingCap,
     tiers: validTiers ? tiers : BUILTIN.tiers.map((t) => ({ ...t })),
@@ -903,6 +920,8 @@ const WEAPON_SOCKETS = 2;
  *  • ШГ і Вознєс +12 з 4 каменями по 2u кожна + бонус за обидві;
  *  • збірник — 4 камені по 2u;
  *  • 2 кільця — найбільший грейд + 12 рівнів точки кожне;
+ *  • пояс і намисто (jewelryFromStats) — пояс: більше з «R9R2 як кільце +12» і стелі
+ *    за стати; намисто — стеля за стати;
  *  • трактат, джин, рівень — найбільші рядки;
  *  • свап-сети — стеля swapTotalCap (без стелі сети не обмежені — у максимум не входять);
  *  • свап-зброя — стеля weaponPzCap.
@@ -920,7 +939,8 @@ export function maxGearScoreOf(r: ScoringRules): number {
   const armor = mx(r.armorSet) + (4 * mx(r.armorRefine)) / 6;
   const shgVoznes = r.shg + r.voznes + r.shgVoznesBonus + ITEM_REFINE_MAX * (r.shgRefinePerLevel + r.voznesRefinePerLevel);
   const rings = 2 * (mx(r.rings) + ITEM_REFINE_MAX * r.ringRefinePerLevel);
-  return maxClass + weapon + armor + shgVoznes + ARMOR_SOCKETS * gem + rings + mx(r.tract) + mx(r.genie) + mx(r.level) + (r.swapTotalCap ?? 0) + r.weaponPzCap;
+  const jewelry = r.jewelryFromStats ? Math.max(r.rings.r9r1 + ITEM_REFINE_MAX * r.ringRefinePerLevel, r.jewelryStatCap) + r.jewelryStatCap : 0;
+  return maxClass + weapon + armor + shgVoznes + ARMOR_SOCKETS * gem + rings + jewelry + mx(r.tract) + mx(r.genie) + mx(r.level) + (r.swapTotalCap ?? 0) + r.weaponPzCap;
 }
 
 export function maxGearScore(version?: string | null): number {
