@@ -4,9 +4,10 @@
 // чужий персонаж у тому самому редакторі ляльки, але БЕЗ збереження: речі,
 // камені, сети й бафи можна міняти, щоб подивитись, які будуть стати, —
 // зміни живуть лише у цій вкладці (власник їх не побачить), «Скинути» повертає
-// ляльку такою, як її зберіг власник. «Скопіювати собі» створює нового
-// персонажа у своєму профілі з того, що зараз на екрані (разом із примірками),
-// і відкриває його на /characters/<id>.
+// ляльку такою, як її зберіг власник. «Скопіювати собі» НЕ пише на сервер:
+// кладе те, що зараз на екрані (разом із примірками), з порожнім іменем у
+// сховище вкладки (sessionStorage) і відкриває /characters/copy — копія живе,
+// доки вкладку не закрито, у профіль потрапляє лише кнопкою «Зберегти».
 //
 // Сторінка — окремий ледачий чанк, як /characters (каталог і спрайти ляльки
 // важать мегабайти); лише учаснику клану — гейт у Layout (app/access.ts).
@@ -19,10 +20,11 @@ import PageMeta from '../app/PageMeta';
 import { useMe } from '../app/useMe';
 import type { Route } from '../app/useRoute';
 import {
-  CharacterApiError, createCharacter, getClanCharacter, listClanCharacters,
+  CharacterApiError, getClanCharacter, listClanCharacters,
   type CharacterOwner, type ClanCharacterRecord, type ClanCharacterSummary,
 } from '../doll/api/characters';
-import { DOC_LIMITS, emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
+import { COPY_DRAFT_KEY, saveDraft, tabStorage } from '../doll/api/draft';
+import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
 import { SavePill, clsLabel } from '../doll/ui/CharBar';
 import DollEditor from '../doll/ui/DollEditor';
@@ -39,10 +41,21 @@ const fmtDate = (iso: string): string => {
   }
 };
 
-/** Імʼя копії, коли таке в профілі вже є: «Нік (копія)», не довше за ліміт. */
-export function copyName(name: string): string {
-  const suffix = ' (копія)';
-  return name.slice(0, DOC_LIMITS.nameLen - suffix.length).trimEnd() + suffix;
+/** Документ копії: усе з ляльки соклана (з примірками), крім імені — його гравець дає сам. */
+export function copyDoc(doc: CharacterDoc): CharacterDoc {
+  return { ...doc, name: '' };
+}
+
+/** Чи є в цій вкладці копія з речами чи іменем — тоді нова копія її замінить. */
+function hasTabCopy(): boolean {
+  try {
+    const raw = tabStorage()?.getItem(COPY_DRAFT_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw) as Partial<CharacterDoc>;
+    return !!d.name || (Array.isArray(d.items) && d.items.length > 0);
+  } catch {
+    return false;
+  }
 }
 
 /** Персонажі одного власника підряд — для заголовків груп у списку. Порядок — як віддав сервер (за ніком). */
@@ -167,7 +180,6 @@ function ClanCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [doc, setDoc] = useState<CharacterDoc>(() => emptyDoc());
   const [activeCfg, setActiveCfg] = useState(CFG_MAIN);
-  const [copying, setCopying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -203,27 +215,15 @@ function ClanCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
     setNotice(null);
   };
 
-  /** Новий персонаж у своєму профілі з того, що на екрані. Зайняте імʼя — одна спроба з «(копія)». */
-  const copyToMine = async () => {
+  /** Копія в цій вкладці (без імені) і перехід на /characters/copy; на сервер — лише «Зберегти в профіль» там. */
+  const copyToMine = () => {
     if (state.kind !== 'ready') return;
-    setCopying(true);
-    setNotice(null);
-    const base: CharacterDoc = { ...doc, name: doc.name.trim() || state.data.rec.name };
-    const tryCreate = (name: string) => createCharacter({ ...base, name });
-    try {
-      let rec;
-      try {
-        rec = await tryCreate(base.name);
-      } catch (e) {
-        if (e instanceof CharacterApiError && e.code === 'conflict' && /ім.?ям/i.test(e.message)) rec = await tryCreate(copyName(base.name));
-        else throw e;
-      }
-      onNavigate?.({ name: 'character', id: rec.id });
-    } catch (e) {
-      if (e instanceof CharacterApiError && e.code === 'unauthorized') setNotice('Сесія завершилась — увійди через Discord ще раз.');
-      else setNotice('Не вдалося скопіювати: ' + errText(e));
-      setCopying(false);
+    if (hasTabCopy() && !window.confirm('У цій вкладці вже є незбережена копія ляльки. Замінити її цією?')) return;
+    if (!saveDraft(COPY_DRAFT_KEY, copyDoc(doc), tabStorage())) {
+      setNotice('Не вдалося скопіювати: браузер не дає зберегти дані вкладки (приватний режим чи заборона сайтових даних).');
+      return;
     }
+    onNavigate?.({ name: 'character', id: 'copy' });
   };
 
   if (state.kind === 'loading') return <p className="hint">Завантажую персонажа…</p>;
@@ -258,25 +258,28 @@ function ClanCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
         tone={dirty ? 'warn' : 'mute'}
         title={dirty ? 'Твої примірки живуть лише в цій вкладці — власник їх не побачить' : 'Лялька іншого гравця — зміни не зберігаються'}
       />
-      <button type="button" className="btn btn-ghost btn-sm" disabled={!dirty || copying} title="Повернути ляльку такою, як її зберіг власник" onClick={reset}>
+      <button type="button" className="btn btn-ghost btn-sm" disabled={!dirty} title="Повернути ляльку такою, як її зберіг власник" onClick={reset}>
         Скинути
       </button>
       <button
         type="button"
         className="btn btn-primary btn-sm"
-        disabled={copying}
-        title={dirty ? 'Створити нового персонажа у своєму профілі з цієї ляльки разом із твоїми примірками' : 'Створити нового персонажа у своєму профілі з цієї ляльки'}
-        onClick={() => void copyToMine()}
+        title={
+          dirty
+            ? 'Відкрити копію цієї ляльки разом із твоїми примірками як нового персонажа — у профіль вона потрапить, лише коли збережеш'
+            : 'Відкрити копію цієї ляльки як нового персонажа — у профіль вона потрапить, лише коли збережеш'
+        }
+        onClick={copyToMine}
       >
-        <span className="doll-page-hint-long">{copying ? 'Копіюю…' : 'Скопіювати собі'}</span>
-        <span className="doll-page-hint-short">{copying ? 'Копіюю…' : 'Копія'}</span>
+        <span className="doll-page-hint-long">Скопіювати собі</span>
+        <span className="doll-page-hint-short">Копія</span>
       </button>
     </>
   );
   const barNote = (
     <span>
       Лялька «{rec.name}» гравця {rec.owner.nickname} · змінено {fmtDate(rec.updatedAt)}. Можна приміряти інші речі й подивитись стати — зміни лишаються
-      лише в цій вкладці; «Скопіювати собі» зробить із неї нового персонажа у твоєму профілі.
+      лише в цій вкладці; «Скопіювати собі» відкриє її як нового персонажа без імені, а в профіль вона потрапить, лише коли збережеш.
     </span>
   );
   const top = (

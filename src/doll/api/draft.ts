@@ -17,6 +17,10 @@
 // відкрити новішу чи лишити цю (інакше вкладка зі старим станом мовчки
 // перезаписала б роботу в іншій).
 //
+// Копія ляльки соклана («Скопіювати собі» на /clan/<id>) — та сама чернетка,
+// але в sessionStorage (tabStorage, ключ COPY_DRAFT_KEY): живе, доки відкрита
+// вкладка, і не змішується з чернеткою нового персонажа в localStorage.
+//
 // Сховище може бути недоступне (приватний режим, заборона сайтових даних) —
 // кожен доступ у try/catch, редактор тоді просто працює без чернетки.
 // =========================================================
@@ -62,6 +66,18 @@ export function browserStorage(): DraftStorage | null {
     return null;
   }
 }
+
+/** sessionStorage — сховище вкладки (копія ляльки соклана); null, якщо його нема чи доступ кидає. */
+export function tabStorage(): DraftStorage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Копія ляльки соклана в цій вкладці (sessionStorage) — /characters/copy. */
+export const COPY_DRAFT_KEY = draftKey('anon', 'copy');
 
 export interface DraftLoad {
   doc: CharacterDoc | null;
@@ -190,15 +206,16 @@ export function initialSaveState(storage: DraftStorage | null, loaded: boolean):
  * (показати гравцеві один раз). conflict — іншу вкладку записала ту саму
  * чернетку: запис зупинено до takeTheirs() / keepMine().
  */
-export function useDraft(key: string) {
-  const [initial] = useState(() => loadDraft(key));
+export function useDraft(key: string, storageOf: () => DraftStorage | null = browserStorage) {
+  const [storage] = useState(storageOf);
+  const [initial] = useState(() => loadDraft(key, storage));
   const [doc, setDocState] = useState<CharacterDoc>(() => initial.doc ?? emptyDoc());
-  const [saveState, setSaveState] = useState<SaveState>(() => initialSaveState(browserStorage(), !!initial.doc));
+  const [saveState, setSaveState] = useState<SaveState>(() => initialSaveState(storage, !!initial.doc));
   const [conflict, setConflict] = useState(false);
   const docRef = useRef(doc);
   docRef.current = doc;
   const saverRef = useRef<ReturnType<typeof createDraftSaver> | null>(null);
-  if (!saverRef.current) saverRef.current = createDraftSaver(key, { onState: setSaveState });
+  if (!saverRef.current) saverRef.current = createDraftSaver(key, { storage, onState: setSaveState });
 
   useEffect(() => {
     const saver = saverRef.current;
@@ -232,13 +249,13 @@ export function useDraft(key: string) {
     saver?.resume();
     setConflict(false);
     setDocState(next);
-    setSaveState(saveDraft(key, next) ? 'saved' : 'failed');
-  }, [key]);
+    setSaveState(saveDraft(key, next, storage) ? 'saved' : 'failed');
+  }, [key, storage]);
 
   /** Відкрити чернетку, яку записала інша вкладка (свої незбережені зміни — відкинути). */
   const takeTheirs = useCallback((): DraftLoad => {
     const saver = saverRef.current;
-    const got = loadDraft(key);
+    const got = loadDraft(key, storage);
     saver?.cancel();
     saver?.resume();
     setConflict(false);
@@ -247,7 +264,7 @@ export function useDraft(key: string) {
       setSaveState('saved');
     }
     return got;
-  }, [key]);
+  }, [key, storage]);
 
   /** Лишити цю версію: записати її поверх тієї, що з іншої вкладки. */
   const keepMine = useCallback(() => {
@@ -255,10 +272,10 @@ export function useDraft(key: string) {
     saver?.cancel();
     saver?.resume();
     setConflict(false);
-    setSaveState(saveDraft(key, docRef.current) ? 'saved' : 'failed');
-  }, [key]);
+    setSaveState(saveDraft(key, docRef.current, storage) ? 'saved' : 'failed');
+  }, [key, storage]);
 
-  return { doc, setDoc, reset, saveState, loadError: initial.error, loadWarning: initial.warning ?? null, conflict, takeTheirs, keepMine };
+  return { doc, setDoc, reset, storage, saveState, loadError: initial.error, loadWarning: initial.warning ?? null, conflict, takeTheirs, keepMine };
 }
 
 /**

@@ -19,7 +19,7 @@ vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: 
 import { readJson } from '../core/__tests__/testData';
 import { ensureCats } from '../data/catalog';
 import { ensureRefData } from '../data/refLoader';
-import { draftKey, brokenKey } from '../api/draft';
+import { COPY_DRAFT_KEY, draftKey, brokenKey } from '../api/draft';
 import { DOC_LIMITS, emptyDoc, type CharacterDoc } from '../model/doc';
 import { CFG_MAIN, docCats } from '../model/hydrate';
 import { createSet, equip, fillEmptyFromMain } from '../model/ops';
@@ -45,6 +45,8 @@ function memoryStorage() {
   };
 }
 let store = memoryStorage();
+/** sessionStorage вкладки — там живе копія ляльки соклана (/characters/copy). */
+let tab = memoryStorage();
 
 function setLocation(search = ''): void {
   vi.stubGlobal('location', { pathname: '/characters/new', search, hash: '', href: 'http://localhost/characters/new' + search });
@@ -82,6 +84,8 @@ beforeAll(() => {
 beforeEach(() => {
   store = memoryStorage();
   vi.stubGlobal('localStorage', store);
+  tab = memoryStorage();
+  vi.stubGlobal('sessionStorage', tab);
 });
 afterAll(() => {
   vi.unstubAllGlobals();
@@ -214,6 +218,33 @@ describe('CharacterPage — перший рендер без винятків', 
     expectEditor(html);
     expect(html).toContain('Стару чернетку не вдалося відкрити');
     expect(store.getItem(brokenKey(KEY))).toBe('{"v":2,"cls":"zz"');
+  });
+
+  it('копія ляльки соклана: з вкладки (sessionStorage), без імені, без імпорту; чернетку браузера не чіпає', async () => {
+    const src = docFrom('typical-js');
+    tab.setItem(COPY_DRAFT_KEY, JSON.stringify({ ...src, name: '' }));
+    store.setItem(KEY, JSON.stringify({ ...emptyDoc('by'), name: 'Моя чернетка' }));
+    setLocation('');
+    await ensureRefData();
+    await ensureCats(docCats(src));
+    const html = renderToStaticMarkup(<CharacterPage id="copy" />);
+    expect(html).toContain('class="doll-fig-svg"');
+    expect(count(html, /class="doll-slot is-filled/g)).toBe(Object.keys(src.main).length);
+    expect(html).toMatch(/id="dollName"[^>]*value=""/);
+    expect(html).toMatch(/class="doll-save-pill warn" role="status" title="Копія живе в цій вкладці[^"]*"[^>]*>копія</);
+    const text = visible(html);
+    expect(text).toContain('Копія ляльки соклана живе лише в цій вкладці');
+    expect(text).not.toContain('Імпорт із Хелпера');
+    expect(html).toContain('aria-label="Прибрати копію"');
+    // чернетка «нового» в localStorage — окремо, перший рендер її не переписує
+    expect(JSON.parse(store.getItem(KEY)!).name).toBe('Моя чернетка');
+  });
+
+  it('копії у вкладці немає — пояснення замість редактора', async () => {
+    setLocation('');
+    const html = renderToStaticMarkup(<CharacterPage id="copy" />);
+    expect(html).toContain('Копії тут немає');
+    expect(html).not.toContain('doll-fig-svg');
   });
 
   it('збережений персонаж — до відповіді сервера лише «завантажую», без редактора', async () => {

@@ -1,6 +1,6 @@
 // =========================================================
 // ЛЯЛЬКА — «Мої соклани» (pages/ClanPage): чисті помічники сторінки (групи за
-// власником, імʼя копії) і перший рендер списку та картки чужого персонажа
+// власником, документ копії) і перший рендер списку та картки чужого персонажа
 // через renderToStaticMarkup (jsdom у проєкті нема, ефекти не виконуються —
 // тож це стан «завантажую» без мережі; сам редактор перевіряє димовий тест
 // сторінки персонажа, а бекенд — server/test/pvp.test.ts у pw-ladder).
@@ -10,9 +10,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../app/supabaseClient', () => ({ supabase: { from: () => ({ select: () => ({ order: async () => ({ data: [], error: null }) }) }) } }));
-import { DOC_LIMITS } from '../model/doc';
+import { emptyDoc } from '../model/doc';
 import type { ClanCharacterSummary } from '../api/characters';
-import ClanPage, { copyName, groupByOwner } from '../../pages/ClanPage';
+import ClanPage, { copyDoc, groupByOwner } from '../../pages/ClanPage';
 
 const sum = (id: string, ownerId: string, nickname: string, over: Partial<ClanCharacterSummary> = {}): ClanCharacterSummary => ({
   id, name: 'Перс ' + id, cls: 'rl', level: 105, revision: 1, updatedAt: '2026-10-01T10:00:00Z', items: 3, sets: 1,
@@ -30,12 +30,13 @@ describe('groupByOwner', () => {
   });
 });
 
-describe('copyName', () => {
-  it('додає «(копія)» і не перевищує ліміт імені', () => {
-    expect(copyName('Лучник')).toBe('Лучник (копія)');
-    const long = copyName('x'.repeat(DOC_LIMITS.nameLen));
-    expect(long.length).toBeLessThanOrEqual(DOC_LIMITS.nameLen);
-    expect(long.endsWith(' (копія)')).toBe(true);
+describe('copyDoc', () => {
+  it('копія — уся лялька з примірками, але без імені; оригінал не змінюється', () => {
+    const src = { ...emptyDoc('rl'), name: 'Лучник Боба', level: 104 };
+    const c = copyDoc(src);
+    expect(c.name).toBe('');
+    expect({ ...c, name: src.name }).toEqual(src);
+    expect(src.name).toBe('Лучник Боба');
   });
 });
 

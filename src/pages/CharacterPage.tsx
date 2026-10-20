@@ -3,7 +3,9 @@
 // вхід через Discord); /characters/new — новий персонаж на локальній
 // чернетці (працює й без входу; «Зберегти в профіль» просить увійти);
 // /characters/<id> — збережений персонаж із сервера (бекенд ладдера,
-// /api/pvp/characters). Сторінка — окремий ледачий чанк: каталог і спрайти
+// /api/pvp/characters); /characters/copy — копія ляльки соклана («Скопіювати
+// собі» на /clan/<id>): та сама чернетка, але в sessionStorage — живе, доки
+// відкрита вкладка, на сервер потрапляє лише кнопкою «Зберегти в профіль». Сторінка — окремий ледачий чанк: каталог і спрайти
 // ляльки важать мегабайти, і решта сайту не має їх тягнути.
 //
 // Нового персонажа можна заповнити зі скріншотів гри («Зі скріншотів» у смужці
@@ -28,7 +30,9 @@ import {
   CharacterApiError, archiveCharacter, createCharacter, getCharacter, listCharacters, updateCharacter,
   type CharacterRecord, type CharacterSummary,
 } from '../doll/api/characters';
-import { browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, useDraft, type SaveState } from '../doll/api/draft';
+import {
+  COPY_DRAFT_KEY, browserStorage, clearDraft, draftKey, loadDraft, parseHelperBuild, tabStorage, useDraft, type SaveState,
+} from '../doll/api/draft';
 import { emptyDoc, isClsKey, validateDoc, type CharacterDoc } from '../doll/model/doc';
 import { CFG_MAIN } from '../doll/model/hydrate';
 import { mergeImported } from '../doll/model/importCalc';
@@ -74,6 +78,15 @@ const SAVE_TEXT: Record<SaveState, string> = {
   failed: 'Не вдалося зберегти чернетку: сховище браузера недоступне або заповнене',
   held: 'Не зберігаю: чернетку змінено в іншій вкладці',
   off: 'Сховище браузера недоступне — чернетка не збережеться',
+};
+/** Те саме для копії ляльки соклана — вона в сховищі вкладки, а не браузера. */
+const COPY_SAVE_TEXT: Record<SaveState, string> = {
+  idle: 'Копія живе в цій вкладці, доки її не закрито',
+  saved: 'Копія живе в цій вкладці, доки її не закрито',
+  pending: 'Зберігаю копію у вкладці…',
+  failed: 'Не вдалося зберегти копію у вкладці: сховище браузера недоступне або заповнене',
+  held: 'Не зберігаю: копію змінено в іншій вкладці',
+  off: 'Сховище вкладки недоступне — копія зникне при оновленні сторінки',
 };
 /** Стани, коли чернетка НЕ пишеться в браузер: пігулка червона, повний текст — ще й у рядку під смужкою. */
 const SAVE_BAD: ReadonlySet<SaveState> = new Set(['failed', 'held', 'off']);
@@ -183,10 +196,12 @@ type Nav = ((route: Route) => void) | undefined;
 
 // ── Новий персонаж: локальна чернетка ─────────────────────────────
 
-function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
+/** Новий персонаж: чернетка браузера (localStorage) або, з copy, копія ляльки соклана у вкладці (sessionStorage). */
+function DraftCharacter({ onNavigate, copy = false }: { onNavigate: Nav; copy?: boolean }) {
   const { me, loading: meLoading, login } = useMe();
-  const key = draftKey('anon', 'new');
-  const { doc, setDoc, reset, saveState, loadError, loadWarning, conflict, takeTheirs, keepMine } = useDraft(key);
+  const key = copy ? COPY_DRAFT_KEY : draftKey('anon', 'new');
+  const { doc, setDoc, reset, storage, saveState, loadError, loadWarning, conflict, takeTheirs, keepMine } = useDraft(key, copy ? tabStorage : browserStorage);
+  const saveText = copy ? COPY_SAVE_TEXT : SAVE_TEXT;
   const [activeCfg, setActiveCfg] = useActiveCfg();
   const [importOpen, setImportOpen] = useState(false);
   const [shotsOpen, setShotsOpen] = useState(false);
@@ -210,6 +225,12 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   const toList = () => onNavigate?.({ name: 'characters' });
 
   const resetDraft = () => {
+    if (copy) {
+      if (!window.confirm('Прибрати копію? Її речі, сети й налаштування буде втрачено.')) return;
+      clearDraft(key, storage);
+      onNavigate?.({ name: 'characters' });
+      return;
+    }
     if (!window.confirm('Скинути чернетку? Усі речі, сети й налаштування персонажа буде видалено з цього браузера.')) return;
     reset(emptyDoc(doc.cls));
     setActiveCfg(CFG_MAIN);
@@ -255,13 +276,13 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
     setSaving(true);
     try {
       const rec = await createCharacter({ ...doc, name: doc.name.trim() });
-      // Персонаж тепер на сервері — чернетка «нового» більше не потрібна, застереження теж.
-      clearDraft(key);
+      // Персонаж тепер на сервері — чернетка «нового» (чи копія у вкладці) більше не потрібна, застереження теж.
+      clearDraft(key, storage);
       releaseGuard();
       onNavigate?.({ name: 'character', id: rec.id });
     } catch (e) {
       if (e instanceof CharacterApiError && e.code === 'unauthorized') {
-        setNotice('Сесія завершилась — увійди через Discord ще раз. Чернетка лишається в цьому браузері.');
+        setNotice(copy ? 'Сесія завершилась — увійди через Discord ще раз. Копія лишається в цій вкладці.' : 'Сесія завершилась — увійди через Discord ще раз. Чернетка лишається в цьому браузері.');
       } else {
         setNotice('Не вдалося зберегти: ' + errText(e));
       }
@@ -274,16 +295,21 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   const saveBad = SAVE_BAD.has(saveState);
   const barEnd = (
     <>
-      <SavePill text={saveBad ? 'не збережено' : 'чернетка'} tone={saveBad ? 'bad' : 'mute'} title={SAVE_TEXT[saveState]} />
-      <button type="button" className="btn btn-ghost btn-sm" aria-expanded={shotsOpen} aria-label="Заповнити зі скріншотів" onClick={() => setShotsOpen((v) => !v)}>
-        <span className="doll-page-hint-long">Зі скріншотів</span>
-        <span className="doll-page-hint-short">Скріни</span>
-      </button>
-      <button type="button" className="btn btn-ghost btn-sm" aria-expanded={importOpen} aria-label="Імпорт із Хелпера" onClick={() => setImportOpen((v) => !v)}>
-        <span className="doll-page-hint-long">Імпорт із Хелпера</span>
-        <span className="doll-page-hint-short">Імпорт</span>
-      </button>
-      <BarTrashButton label="Скинути чернетку" onClick={resetDraft} />
+      <SavePill text={saveBad ? 'не збережено' : copy ? 'копія' : 'чернетка'} tone={saveBad ? 'bad' : copy ? 'warn' : 'mute'} title={saveText[saveState]} />
+      {/* Копія — лялька соклана як є: заповнення зі скрінів чи імпорт її б замінили. */}
+      {!copy && (
+        <>
+          <button type="button" className="btn btn-ghost btn-sm" aria-expanded={shotsOpen} aria-label="Заповнити зі скріншотів" onClick={() => setShotsOpen((v) => !v)}>
+            <span className="doll-page-hint-long">Зі скріншотів</span>
+            <span className="doll-page-hint-short">Скріни</span>
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" aria-expanded={importOpen} aria-label="Імпорт із Хелпера" onClick={() => setImportOpen((v) => !v)}>
+            <span className="doll-page-hint-long">Імпорт із Хелпера</span>
+            <span className="doll-page-hint-short">Імпорт</span>
+          </button>
+        </>
+      )}
+      <BarTrashButton label={copy ? 'Прибрати копію' : 'Скинути чернетку'} onClick={resetDraft} />
       {me ? (
         <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void saveToProfile()}>
           {saving ? 'Зберігаю…' : 'Зберегти в профіль'}
@@ -298,9 +324,11 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
   const barNote = (
     <>
       <span>
-        {me
-          ? 'Персонаж збережеться в профілі — його буде видно з будь-якого пристрою.'
-          : 'Без входу лялька працює як чернетка в цьому браузері — після входу її можна зберегти.'}
+        {copy
+          ? 'Копія ляльки соклана живе лише в цій вкладці: закриєш вкладку — її не стане. Дай імʼя й збережи в профіль, якщо хочеш лишити.'
+          : me
+            ? 'Персонаж збережеться в профілі — його буде видно з будь-якого пристрою.'
+            : 'Без входу лялька працює як чернетка в цьому браузері — після входу її можна зберегти.'}
       </span>
       {me && blockers && (
         <span className="doll-page-blockers" role="note">
@@ -310,7 +338,7 @@ function DraftCharacter({ onNavigate }: { onNavigate: Nav }) {
       {/* «held» пояснює плашка конфлікту нижче; решту поганих станів пігулка лише позначає. */}
       {saveBad && saveState !== 'held' && (
         <span className="doll-page-blockers" role="note">
-          {SAVE_TEXT[saveState]}.
+          {saveText[saveState]}.
         </span>
       )}
     </>
@@ -550,7 +578,41 @@ function SavedCharacter({ id, onNavigate }: { id: string; onNavigate: Nav }) {
   );
 }
 
+// ── Копія ляльки соклана ──────────────────────────────────────────
+
+/** /characters/copy: копія є в цій вкладці — редактор; немає (інша вкладка, вкладку закривали) — пояснення. */
+function CopyCharacter({ onNavigate }: { onNavigate: Nav }) {
+  const [has] = useState(() => {
+    const st = tabStorage();
+    try {
+      return !!st?.getItem(COPY_DRAFT_KEY);
+    } catch {
+      return false;
+    }
+  });
+  if (has) return <DraftCharacter onNavigate={onNavigate} copy />;
+  return (
+    <div className="card doll-page-notice is-warn" role="alert">
+      <span>Копії тут немає: копія ляльки соклана живе лише у вкладці, де її зробили, і зникає, коли вкладку закрито.</span>
+      <span className="doll-page-notice-acts">
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => onNavigate?.({ name: 'clan' })}>
+          До сокланів
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onNavigate?.({ name: 'characters' })}>
+          Мої персонажі
+        </button>
+      </span>
+    </div>
+  );
+}
+
 // ── Мої персонажі ─────────────────────────────────────────────────
+
+/** Копія ляльки соклана в цій вкладці — для картки в «Моїх персонажах» і перевірки /characters/copy. */
+function copySummary(): { name: string; items: number } | null {
+  const got = loadDraft(COPY_DRAFT_KEY, tabStorage());
+  return got.doc ? { name: got.doc.name, items: got.doc.items.length } : null;
+}
 
 function draftSummary(): { name: string; items: number } | null {
   const got = loadDraft(draftKey('anon', 'new'), browserStorage());
@@ -573,6 +635,7 @@ function CharactersList({ onNavigate }: { onNavigate: Nav }) {
   const [data, setData] = useState<{ characters: CharacterSummary[]; max: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [draft] = useState(draftSummary);
+  const [copyDraft] = useState(copySummary);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -592,6 +655,13 @@ function CharactersList({ onNavigate }: { onNavigate: Nav }) {
       <span className="doll-char-name">{draft.name || 'Персонаж без імені'}</span>
       <span className="doll-char-meta">чернетка в цьому браузері · речей {draft.items}</span>
       <span className="doll-char-hint">{me ? 'Відкрити й зберегти в профіль' : 'Продовжити'}</span>
+    </button>
+  );
+  const copyCard = copyDraft && (
+    <button type="button" className="card doll-char-card is-draft" onClick={() => go('copy')}>
+      <span className="doll-char-name">{copyDraft.name || 'Копія без імені'}</span>
+      <span className="doll-char-meta">копія ляльки соклана · лише в цій вкладці · речей {copyDraft.items}</span>
+      <span className="doll-char-hint">Відкрити й зберегти в профіль</span>
     </button>
   );
 
@@ -651,8 +721,9 @@ function CharactersList({ onNavigate }: { onNavigate: Nav }) {
               </span>
             </button>
           ))}
+          {copyCard}
           {draftCard}
-          {data.characters.length === 0 && !draft && (
+          {data.characters.length === 0 && !draft && !copyDraft && (
             <p className="hint">Персонажів ще немає. Створи першого — або перенеси білд із PW Хелпера кнопкою «Імпорт» у редакторі.</p>
           )}
         </div>
@@ -679,6 +750,8 @@ export default function CharacterPage({ id, onNavigate }: { id: string | null; o
         </>
       ) : id === 'new' ? (
         <DraftCharacter onNavigate={onNavigate} />
+      ) : id === 'copy' ? (
+        <CopyCharacter onNavigate={onNavigate} />
       ) : (
         <SavedCharacter key={id} id={id} onNavigate={onNavigate} />
       )}
