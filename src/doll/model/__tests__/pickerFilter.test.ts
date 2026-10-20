@@ -47,9 +47,11 @@ describe('filterPickerItems', () => {
   it('варіанти однойменних речей: нумерація в порядку каталогу, без двійників — нема в мапі', () => {
     const v = pickerVariants(TA);
     expect(v.size).toBeGreaterThan(40); // аудит: 48 груп двійників серед зброї
-    // «Душа Лі Хуа» 80 рів.: #1168 (ПА 50) і #2355 (ПА 65) — та сама назва, іконка, рівень і грейд
-    expect(v.get(1168)).toEqual({ n: 1, of: 2 });
-    expect(v.get(2355)).toEqual({ n: 2, of: 2 });
+    // «Сокира доблесті» 62 рів.: #918 і #919 — та сама назва, іконка, рівень і грейд
+    expect(v.get(918)).toEqual({ n: 1, of: 2 });
+    expect(v.get(919)).toEqual({ n: 2, of: 2 });
+    // ЦГД (★) і РЦГД (★★) однієї назви — різні грейди, не варіанти одне одного (serverCgd.ts)
+    expect(v.has(1168)).toBe(false);
     expect(v.has(1900)).toBe(false); // сокира Ареса — одна
     for (const { n, of } of v.values()) {
       expect(of).toBeGreaterThan(1);
@@ -58,8 +60,8 @@ describe('filterPickerItems', () => {
     }
     expect(variantText({ n: 2, of: 4 })).toBe('варіант 2 з 4');
     // обидва варіанти проходять фільтр і стоять у списку
-    const named = filterPickerItems(TA, 'душа лі хуа', { cls: 'by', level: 105, onlyFit: false });
-    expect(named.rows.map((it) => Number(it.id))).toEqual(expect.arrayContaining([1168, 2355]));
+    const named = filterPickerItems(TA, 'сокира доблесті', { cls: 'by', level: 105, onlyFit: false });
+    expect(named.rows.map((it) => Number(it.id))).toEqual(expect.arrayContaining([918, 919]));
   });
 
   it('«лише що вдягається»: за build з gearAttr або за cls/level/attrs', () => {

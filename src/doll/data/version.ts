@@ -6,4 +6,4 @@
 // падає, якщо JSON змінили, а версію — ні.
 // =========================================================
 
-export const DOLL_DATA_VER = '14af80b91bbed22f';
+export const DOLL_DATA_VER = '5c72ea536e3e2a9a';
