@@ -29,6 +29,21 @@ export interface CharacterRecord {
   doc: unknown;
 }
 
+/** Власник чужого персонажа («Мої соклани») — нік із Discord-сервера клану. */
+export interface CharacterOwner {
+  id: string;
+  nickname: string;
+  avatarUrl: string | null;
+}
+
+export interface ClanCharacterSummary extends CharacterSummary {
+  owner: CharacterOwner;
+}
+
+export interface ClanCharacterRecord extends CharacterRecord {
+  owner: CharacterOwner;
+}
+
 /** Помилка API з кодом бекенда (unauthorized, not_found, conflict, rate_limited…). */
 export class CharacterApiError extends Error {
   constructor(
@@ -86,4 +101,16 @@ export function updateCharacter(id: string, doc: CharacterDoc, baseRevision: num
 
 export function archiveCharacter(id: string): Promise<{ ok: true }> {
   return request('DELETE', `${BASE}/${encodeURIComponent(id)}`);
+}
+
+// ---- «Мої соклани»: персонажі інших учасників клану, лише читання ----
+
+const CLAN_BASE = '/api/pvp/clan/characters';
+
+export function listClanCharacters(): Promise<{ characters: ClanCharacterSummary[] }> {
+  return request('GET', CLAN_BASE);
+}
+
+export function getClanCharacter(id: string): Promise<ClanCharacterRecord> {
+  return request('GET', `${CLAN_BASE}/${encodeURIComponent(id)}`);
 }

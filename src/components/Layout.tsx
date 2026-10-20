@@ -44,6 +44,8 @@ import DevBracketPage from '../pages/DevBracketPage';
 import BracketSharePage from '../pages/BracketSharePage';
 
 const CharacterPage = lazy(() => import('../pages/CharacterPage'));
+// «Мої соклани» — чужі персонажі в тому самому редакторі ляльки, той самий ледачий чанк.
+const ClanPage = lazy(() => import('../pages/ClanPage'));
 // Знімок ляльки із заявки в адмінці — той самий редактор, той самий ледачий чанк ляльки.
 const AdminDollPage = lazy(() => import('../pages/AdminDollPage'));
 // Лише dev-збірка: у проді import.meta.env.DEV = false, і гілка з чанком зникає з бандла.
@@ -119,7 +121,7 @@ export default function Layout() {
 
   // Редактор персонажа — три колонки: на його сторінці оболонка ширша (styles.css,
   // html.wide-shell). Клас знімається при виході зі сторінки.
-  const wideShell = route.name === 'character' || route.name === 'dev-doll' || route.name === 'admin-doll';
+  const wideShell = route.name === 'character' || route.name === 'dev-doll' || route.name === 'admin-doll' || route.name === 'clan-character';
   useEffect(() => {
     document.documentElement.classList.toggle('wide-shell', wideShell);
     return () => document.documentElement.classList.remove('wide-shell');
@@ -132,7 +134,7 @@ export default function Layout() {
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-goto]');
       const name = a?.dataset.goto;
-      if (name && ['home', 'tournaments', 'register', 'my', 'rules', 'admin', 'characters'].includes(name)) {
+      if (name && ['home', 'tournaments', 'register', 'my', 'rules', 'admin', 'characters', 'clan'].includes(name)) {
         e.preventDefault();
         go({ name } as Route);
       }
@@ -177,6 +179,16 @@ export default function Layout() {
       </LazyPageBoundary>
     );
   }
+  else if (route.name === 'clan' || route.name === 'clan-character') {
+    const id = route.name === 'clan-character' ? route.id : null;
+    page = (
+      <LazyPageBoundary key={'clan:' + (id ?? 'list')}>
+        <Suspense fallback={lazyFallback}>
+          <ClanPage id={id} onNavigate={go} />
+        </Suspense>
+      </LazyPageBoundary>
+    );
+  }
   else if (route.name === 'characters' || route.name === 'character') {
     const id = route.name === 'character' ? route.id : null;
     page = (
@@ -191,7 +203,8 @@ export default function Layout() {
   // Вид гостя й свого різний — до з'ясування сесії сторінку не рендеримо
   // (інакше гість на мить побачить чуже, а свій — заглушку). Заявка й
   // правила однакові для всіх, адмінка має власну перевірку сесії.
-  const viewerDependent = route.name === 'home' || route.name === 'tournaments' || route.name === 'tournament' || route.name === 'series';
+  const viewerDependent =
+    route.name === 'home' || route.name === 'tournaments' || route.name === 'tournament' || route.name === 'series' || route.name === 'clan' || route.name === 'clan-character';
   // Лялька із заявки — лише адміну; сама адмінка (/admin) має власну форму входу і сюди не підпадає.
   const adminOnly = route.name === 'admin-doll';
   if ((checking && viewerDependent) || (adminLoading && adminOnly)) {

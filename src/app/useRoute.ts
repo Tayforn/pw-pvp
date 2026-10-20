@@ -1,6 +1,6 @@
 // =========================================================
 // Роутинг pw-pvp: History API, гібрид статичних шляхів + динамічні
-// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id, /admin/doll/:id) і /my — без бібліотеки роутера, просто
+// сегменти (/series/:slug, /t/:id, /t/:id/bracket, /characters/:id, /clan/:id, /admin/doll/:id) і /my — без бібліотеки роутера, просто
 // парсимо перший/другий сегмент шляху (в стилі pw-calc/pw-events, але
 // pw-calc-івський ROUTES-реєстр тут не підходить — сторінки контент-driven,
 // а не фіксований список вкладок).
@@ -41,7 +41,11 @@ export type Route =
   /** /characters/:id — 'new' = новий персонаж на локальній чернетці; інакше — збережений (uuid) */
   | { name: 'character'; id: string }
   /** /admin/doll/:registrationId — знімок ляльки із заявки в редакторі лише для перегляду (адмін) */
-  | { name: 'admin-doll'; id: string };
+  | { name: 'admin-doll'; id: string }
+  /** /clan — «Мої соклани»: збережені персонажі інших учасників клану (учаснику клану) */
+  | { name: 'clan' }
+  /** /clan/:id — чужий персонаж у редакторі без збереження: приміряти речі, скопіювати собі */
+  | { name: 'clan-character'; id: string };
 
 /** Id персонажа чи заявки в адресі: 'new' або короткий ідентифікатор без спецсимволів. */
 const PATH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -64,6 +68,7 @@ function parsePath(): Route {
   if (a === 't' && b && c === 'bracket') return { name: 'tournament-bracket', id: b };
   if (a === 't' && b) return { name: 'tournament', id: b };
   if (a === 'characters') return b && PATH_ID_RE.test(b) ? { name: 'character', id: b } : { name: 'characters' };
+  if (a === 'clan') return b && PATH_ID_RE.test(b) ? { name: 'clan-character', id: b } : { name: 'clan' };
   if (import.meta.env.DEV && a === 'dev' && b === 'bracket') return { name: 'dev-bracket' };
   if (import.meta.env.DEV && a === 'dev' && b === 'doll') return { name: 'dev-doll' };
   return { name: 'home' };
@@ -81,6 +86,7 @@ export function routeUrl(route: Route): string {
     case 'dev-doll': return APP_BASE + 'dev/doll';
     case 'character': return APP_BASE + 'characters/' + encodeURIComponent(route.id);
     case 'admin-doll': return APP_BASE + 'admin/doll/' + encodeURIComponent(route.id);
+    case 'clan-character': return APP_BASE + 'clan/' + encodeURIComponent(route.id);
     default: return APP_BASE + route.name;
   }
 }

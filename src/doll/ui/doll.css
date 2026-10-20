@@ -553,4 +553,12 @@ html[data-theme='light'] .doll-menu-title[class*='gx-'] { color: var(--text); }
 .doll-char-meta { font-size: 13px; color: var(--text-dim); }
 .doll-char-hint { font-size: 12.5px; color: var(--accent); margin-top: 4px; }
 
+/* ── Мої соклани: групи за власником ────────────────────────── */
+.doll-clan-group { margin-top: 18px; }
+.doll-clan-group:first-of-type { margin-top: 6px; }
+.doll-clan-owner { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; font-weight: 600; }
+.doll-clan-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+.doll-clan-avatar.is-empty { display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--text-dim); background: rgba(255, 255, 255, 0.08); }
+.doll-clan-count { font-size: 12.5px; font-weight: 400; color: var(--text-mute); }
+
 /* ── Анкета для турнірів ─────────────────────────────────────── */
